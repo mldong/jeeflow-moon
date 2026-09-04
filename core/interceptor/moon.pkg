@@ -1,0 +1,11 @@
+import {
+  "mldong/jeeflow-core/model" @model,
+  "mldong/jeeflow-core/exec" @exec,
+  "mldong/jeeflow-core/spi" @spi,
+  "mldong/jeeflow-core/json" @json,
+  "mldong/jeeflow-core/error" @error,
+}
+
+import {
+  "mldong/jeeflow-core/parser" @parser,
+} for "test"

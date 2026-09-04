@@ -1,1 +1,5 @@
 import {}
+
+import {
+  "mldong/jeeflow-core/id_gen" @id_gen,
+} for "test"

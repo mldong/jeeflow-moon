@@ -1,1 +1,5 @@
-import {}
+import {
+  "moonbitlang/core/json" @cjson,
+  "moonbitlang/core/string" @string,
+  "mldong/jeeflow-core/error" @error,
+}

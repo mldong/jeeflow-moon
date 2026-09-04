@@ -1,5 +1,5 @@
 import {
   "mldong/jeeflow-core/model" @model,
+  "mldong/jeeflow-core/parser" @parser,
   "mldong/jeeflow-core/json" @json,
-  "mldong/jeeflow-core/error" @error,
 }

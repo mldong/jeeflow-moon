@@ -1,3 +1,13 @@
 import {
+  "mldong/jeeflow-core/model" @model,
+  "mldong/jeeflow-core/exec" @exec,
+  "mldong/jeeflow-core/event" @event,
+  "mldong/jeeflow-core/error" @error,
+  "mldong/jeeflow-core/json" @json,
+  "mldong/jeeflow-core/id_gen" @id_gen,
+  "moonbitlang/core/json" @cjson,
+}
+
+import {
   "moonbitlang/async",
 } for "test"

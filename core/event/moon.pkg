@@ -1,1 +1,3 @@
-import {}
+import {
+  "mldong/jeeflow-core/json" @json,
+}

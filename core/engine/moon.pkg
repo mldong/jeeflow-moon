@@ -1,1 +1,21 @@
-import {}
+import {
+  "mldong/jeeflow-core/model" @model,
+  "mldong/jeeflow-core/parser" @parser,
+  "mldong/jeeflow-core/exec" @exec,
+  "mldong/jeeflow-core/spi" @spi,
+  "mldong/jeeflow-core/json" @json,
+  "mldong/jeeflow-core/error" @error,
+  "mldong/jeeflow-core/event" @event,
+  "mldong/jeeflow-core/id_gen" @id_gen,
+  "moonbitlang/core/string" @string,
+}
+
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs" @fs,
+  "moonbitlang/core/encoding/utf8" @utf8,
+  "mldong/jeeflow-core/engine" @engine,
+  "mldong/jeeflow-core/memory" @mem,
+  "mldong/jeeflow-core/interceptor" @itl,
+  "mldong/jeeflow-core/metadata" @metadata,
+} for "test"
