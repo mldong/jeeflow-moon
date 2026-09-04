@@ -26,6 +26,9 @@ jobs:
           {"token":"${{ secrets.MOON_TOKEN }}","username":"${{ secrets.MOON_USERNAME }}"}
           EOF
 
+      - name: Install workspace dependencies
+        run: moon install
+
       # 拓扑序：core → persist → repository-mysql → facade（demo 不发布）
       - name: Publish core
         run: cd core && moon publish
