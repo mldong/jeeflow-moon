@@ -1,5 +1,5 @@
 name = "mldong/jeeflow-facade"
-version = "0.1.0"
+version = "1.0.0"
 license = "Apache-2.0"
 preferred_target = "wasm"
 description = "jeeflow unified facade: flow(action, args) 45 actions + contract outlet layer"

@@ -1,0 +1,255 @@
+{
+  "group_applicant": [
+    {
+      "avgDurationSeconds": null,
+      "count": 1,
+      "key": "applicant",
+      "label": null
+    }
+  ],
+  "group_approver": [
+    {
+      "avgDurationSeconds": null,
+      "count": 1,
+      "key": "applicant",
+      "label": null
+    },
+    {
+      "avgDurationSeconds": null,
+      "count": 1,
+      "key": "leader",
+      "label": null
+    }
+  ],
+  "group_category": [
+    {
+      "avgDurationSeconds": null,
+      "count": 1,
+      "key": "approval",
+      "label": null
+    }
+  ],
+  "group_define": [
+    {
+      "avgDurationSeconds": null,
+      "count": 1,
+      "key": "简单审批流程",
+      "label": null
+    }
+  ],
+  "group_durationBucket": [
+    {
+      "avgDurationSeconds": null,
+      "count": 1,
+      "key": "sameDay",
+      "label": null
+    }
+  ],
+  "group_node": [
+    {
+      "avgDurationSeconds": 0,
+      "count": 1,
+      "key": "发起申请",
+      "label": null
+    },
+    {
+      "avgDurationSeconds": 1,
+      "count": 1,
+      "key": "上级审批",
+      "label": null
+    }
+  ],
+  "group_state": [
+    {
+      "avgDurationSeconds": null,
+      "count": 1,
+      "key": "20",
+      "label": null
+    }
+  ],
+  "group_stuckApprover": [],
+  "group_stuckNode": [],
+  "overview": {
+    "avgDurationSeconds": 1,
+    "completed": 1,
+    "countersignRate": 0,
+    "inProgress": 0,
+    "onTimeRate": 0,
+    "overdueTaskCount": 0,
+    "pendingTaskCount": 0,
+    "rejectRate": 0,
+    "rejected": 0,
+    "suspended": 0,
+    "todayNew": 1,
+    "total": 1,
+    "withdrawn": 0
+  },
+  "overview_stateIn10": {
+    "avgDurationSeconds": 1,
+    "completed": 0,
+    "countersignRate": 0,
+    "inProgress": 0,
+    "onTimeRate": 0,
+    "overdueTaskCount": 0,
+    "pendingTaskCount": 0,
+    "rejectRate": 0,
+    "rejected": 0,
+    "suspended": 0,
+    "todayNew": 1,
+    "total": 1,
+    "withdrawn": 0
+  },
+  "trend_day": [
+    {
+      "bucket": "2026-08-01",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-02",
+      "finished": 0,
+      "started": 0
+    }
+  ],
+  "trend_hour": [
+    {
+      "bucket": "2026-08-01 00:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 01:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 02:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 03:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 04:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 05:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 06:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 07:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 08:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 09:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 10:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 11:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 12:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 13:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 14:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 15:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 16:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 17:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 18:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 19:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 20:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 21:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 22:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-01 23:00",
+      "finished": 0,
+      "started": 0
+    },
+    {
+      "bucket": "2026-08-02 00:00",
+      "finished": 0,
+      "started": 0
+    }
+  ],
+  "trend_month": [
+    {
+      "bucket": "2026-08",
+      "finished": 0,
+      "started": 0
+    }
+  ],
+  "trend_week": [
+    {
+      "bucket": "2026-W31",
+      "finished": 0,
+      "started": 0
+    }
+  ]
+}

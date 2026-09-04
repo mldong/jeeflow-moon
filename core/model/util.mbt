@@ -33,7 +33,7 @@ pub fn to_camel_case(s : String) -> String {
 
 ///|
 /// 逐码位字典序比较——绕开 String::compare 在 wasm sort 内部的怪异行为
-/// （实测 core sort/sort_by 排 String 结果错误而 compare 直调正常，issues/105-moon-）
+/// （实测 core sort/sort_by 排 String 结果错误而 compare 直调正常；D-M3-2）
 pub fn cmp_str(a : String, b : String) -> Int {
   let ac = a.to_array()
   let bc = b.to_array()

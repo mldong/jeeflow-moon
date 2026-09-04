@@ -1,6 +1,6 @@
 # jeeflow-moon · jeeflow 工作流引擎 MoonBit 实现（第 7 语言）
 
-> 状态：**M0 完成**（仓骨架 + 契约固化 + 4 spike 全绿）。实施方案：
+> 状态：**v1.0.0 发版就绪/首发**（M0–M5 全链：45 action manifest、T0 116 用例、T1 冒烟、T2 demo、一致性快照）。实施方案：
 > [`../docs/moonbit-engine-implementation-plan.md`](../docs/moonbit-engine-implementation-plan.md)（唯一方案，§9 决策已定稿）。
 > 移植模板：[`../jeeflow-rust/`](../jeeflow-rust/)（5 crate 切分 → 本仓 5 moon 模块）。
 

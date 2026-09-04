@@ -1,5 +1,5 @@
 name = "mldong/jeeflow-demo"
-version = "0.1.0"
+version = "1.0.0"
 license = "Apache-2.0"
 preferred_target = "wasm"
 description = "jeeflow lightweight HTTP demo (:8092, run_forever, not published)"

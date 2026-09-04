@@ -64,9 +64,9 @@
 - **所选项**：仅当请求携带 m_ 过滤时才做 facade 级后过滤+重分页；无过滤时透传仓储五键（仓储层 count 正确）。
 - **状态**：待追认（已实现，rust 偏差以本日志为准）。
 
-## D-M3-2 core 排序 wasm bug 绕行（issues/105-moon-）
+## D-M3-2 core 排序 wasm 问题绕行（开发期观察，工具链 v0.10.11）
 
-- **问题**：moonc v0.10.11 wasm 目标 `Array::sort/sort_by` 对 String 排序结果错误（compare 直调正常），详见 `jeeflow-hub/issues/105-moon-*.md`。
+- **问题**：moonc v0.10.11 wasm 目标 `Array::sort/sort_by` 对 String 排序结果错误（compare 直调正常）。开发期实测：`["04-...","01-...","02-..."]` 排序后得 `[01,04,02]`。
 - **所选项**：core/model/util.mbt 自写插入排序 `sort_strings/sort_i64/sort_int`，全仓 sort 使用点（memory sorted_ids/metadata 三处/stats 极值排序/demo seed）全部替换；单测锁定顺序。
 - **状态**：待追认；工具链修复后可整体回退。
 

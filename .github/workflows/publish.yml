@@ -1,0 +1,40 @@
+name: publish
+
+# mooncakes.io 发版：push tag v* 触发；按依赖拓扑序 publish 4 模块（demo 不发布）。
+# 失败重试：Actions Re-run 或本地删 tag 重打；版本号严禁跳号（1.0.0 起完整递增）。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MoonBit toolchain
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- --no-modify-path
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Write mooncakes credentials
+        run: |
+          mkdir -p ~/.moon
+          cat > ~/.moon/credentials.json <<EOF
+          {"token":"${{ secrets.MOON_TOKEN }}","username":"${{ secrets.MOON_USERNAME }}"}
+          EOF
+
+      # 拓扑序：core → persist → repository-mysql → facade（demo 不发布）
+      - name: Publish core
+        run: cd core && moon publish
+
+      - name: Publish persist
+        run: cd persist && moon publish
+
+      - name: Publish repository-mysql
+        run: cd repository-mysql && moon publish
+
+      - name: Publish facade
+        run: cd facade && moon publish
