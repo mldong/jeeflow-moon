@@ -60,7 +60,6 @@ pub(all) struct Ctx[R, E] {
   mut user_search_provider : UserSearchProviderFns?
   mut json_provider : JsonProviderFns?
   mut expression_evaluator : ((String, Map[String, Json]) -> Json raise @error.JeeflowError)?
-  mut transaction_template : ((async () -> Unit raise @error.JeeflowError) -> Unit raise @error.JeeflowError)?
   mut id_generator : (() -> Int64 raise @error.JeeflowError)?
   mut action_permission_provider : ((String) -> Array[String])?
   mut biz_data_reader : ((String, Int64) -> Map[String, Json]? raise @error.JeeflowError)?
@@ -82,7 +81,6 @@ pub fn[R, E] Ctx::new(repository : R, ext_repository : E) -> Ctx[R, E] {
     user_search_provider: None,
     json_provider: Some(default_json_provider()),
     expression_evaluator: None,
-    transaction_template: None,
     id_generator: None,
     action_permission_provider: None,
     biz_data_reader: None,
@@ -130,15 +128,6 @@ pub fn[R, E] Ctx::with_expression_evaluator(
   f : (String, Map[String, Json]) -> Json raise @error.JeeflowError
 ) -> Ctx[R, E] {
   self.expression_evaluator = Some(f)
-  self
-}
-
-///|
-pub fn[R, E] Ctx::with_transaction_template(
-  self : Ctx[R, E],
-  f : (async () -> Unit raise @error.JeeflowError) -> Unit raise @error.JeeflowError
-) -> Ctx[R, E] {
-  self.transaction_template = Some(f)
   self
 }
 

@@ -6,7 +6,7 @@
 
 - [x] M0（commit 774e5fa）：骨架/manifest/spike×4/flows/schema/decisions-log
 - [x] M1 core 全模块 + memory + 合规场景 + submitType 矩阵（T0 wasm 101/101 全绿，负向变异×2 红→还原）
-- [ ] M2 repository-mysql + T1（wasm→160 + 160 native 双跑）
+- [x] M2 repository-mysql + T1（wasm→160 ALL PASS：分页五键/hydrate/m_ 过滤/事务回滚净/办理幂等；160 native 双跑待 M4 部署时一并）
 - [ ] M3 persist + facade 45 action + 出口层
 - [ ] M4 demo :8092 全契约 + jeeflow-ui /moon-api
 - [ ] M5 发版就绪材料（版本钉死/consistency/VERSIONS 草稿/脚本增补/docs 5 篇）——**不执行 publish/tag/push**

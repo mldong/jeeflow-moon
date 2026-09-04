@@ -1,8 +1,15 @@
 import {
-  "mldong/jeeflow-repository-mysql/vendored/moon_mysql_client" @client,
   "moonbitlang/async" @async,
   "moonbitlang/core/env" @env,
   "moonbitlang/core/string" @string,
-  "Lfan-ke/moondb",
+  "mldong/jeeflow-core/model" @model,
+  "mldong/jeeflow-core/json" @json,
+  "mldong/jeeflow-core/error" @error,
+  "mldong/jeeflow-core/spi" @spi,
+  "mldong/jeeflow-core/engine" @engine,
+  "mldong/jeeflow-repository-mysql/repo" @repo,
+  "mldong/jeeflow-repository-mysql/query" @query,
+  "Lfan-ke/moondb" @moondb,
 }
+
 pkgtype(kind: "executable")
