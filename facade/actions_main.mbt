@@ -127,7 +127,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     update_user: Some(arg_str_or(args, "operator", "system")),
   }
   (self.repo).update_define(updated)
-  ok(None)
+  @json.null_json()
 }
 
 ///|
@@ -135,7 +135,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   for id in arg_ids(args) {
     (self.repo).remove_define(id)
   }
-  ok(None)
+  @json.null_json()
 }
 
 ///|
@@ -152,7 +152,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   for id in arg_ids(args) {
     (self.repo).update_define_state(id, state)
   }
-  ok(None)
+  @json.null_json()
 }
 
 ///|
@@ -282,7 +282,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     }
   }
   let _ = operator
-  ok(None)
+  @json.null_json()
 }
 
 ///|
@@ -349,7 +349,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     raise @error.Business("actorIds 缺失")
   }
   (self.repo).create_cc_instance(instance_id, operator, actors)
-  ok(None)
+  @json.null_json()
 }
 
 ///|
@@ -360,7 +360,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   }
   let operator = arg_str_or(args, "operator", "user1")
   (self.repo).update_cc_status(instance_id, operator)
-  ok(None)
+  @json.null_json()
 }
 
 ///|
@@ -430,7 +430,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     // 0 APPLY / 1 AGREE / 5 重新提交 → 普通执行
     let _ = (self.engine).execute_task_async(task_id, operator, flow_args)
   }
-  ok(None)
+  @json.null_json()
 }
 
 ///|
@@ -649,7 +649,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     raise @error.Business("processTaskId/actorIds 缺失")
   }
   (self.repo).add_task_actor(task_id, actors)
-  ok(None)
+  @json.null_json()
 }
 
 ///|
@@ -660,8 +660,8 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   }
   let doing = (self.repo).find_doing_tasks(instance_id, [])
   if doing.is_empty() {
-    ok(None)
+    @json.null_json()
   } else {
-    ok_data(task_vo(doing[0]))
+    task_vo(doing[0])
   }
 }

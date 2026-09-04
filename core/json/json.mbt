@@ -94,7 +94,12 @@ pub fn null_json() -> Json {
 
 ///|
 pub fn number_of(n : Int64) -> Json {
-  n.to_json()
+  // Int64::to_json() 在 core 里输出字符串（大整数安全惯例）；本仓契约数字键走
+  // parse 原文 → Number 且 repr 保留原文（>2^53 安全），信封 code/pageNum 等保持 number
+  match (try? @cjson.parse(n.to_string())) {
+    Ok(v) => v
+    Err(_) => number_f_of(0.0)
+  }
 }
 
 ///|

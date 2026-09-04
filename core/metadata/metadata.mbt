@@ -78,7 +78,7 @@ pub fn EnumDictRegistry::list_dict_keys(self : EnumDictRegistry) -> Array[String
   for k, _ in self.dicts {
     keys.push(k)
   }
-  keys.sort_by(fn(a, b) { a.compare(b) })
+  @model.sort_strings(keys)
   keys
 }
 
@@ -215,7 +215,16 @@ pub fn HandlerRegistry::list_handlers(self : HandlerRegistry, handler_type : Str
       out.push(h)
     }
   }
-  out.sort_by(fn(a, b) { a.order.compare(b.order) })
+  // 自写插入排序（order 升序，绕 core sort wasm 问题）
+  for i in 1..<out.length() {
+    let key = out[i]
+    let mut j = i - 1
+    while j >= 0 && out[j].order > key.order {
+      out[j + 1] = out[j]
+      j = j - 1
+    }
+    out[j + 1] = key
+  }
   out
 }
 
@@ -231,7 +240,16 @@ pub fn HandlerRegistry::list_handlers_group(
       out.push(h)
     }
   }
-  out.sort_by(fn(a, b) { a.order.compare(b.order) })
+  // 自写插入排序（order 升序，绕 core sort wasm 问题）
+  for i in 1..<out.length() {
+    let key = out[i]
+    let mut j = i - 1
+    while j >= 0 && out[j].order > key.order {
+      out[j + 1] = out[j]
+      j = j - 1
+    }
+    out[j + 1] = key
+  }
   out
 }
 
@@ -245,7 +263,7 @@ pub fn HandlerRegistry::list_handler_types(self : HandlerRegistry) -> Array[Stri
   for t, _ in seen {
     types.push(t)
   }
-  types.sort_by(fn(a, b) { a.compare(b) })
+  @model.sort_strings(types)
   types
 }
 

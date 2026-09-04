@@ -174,7 +174,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   }
   design.update_user = Some(arg_str_or(args, "operator", "system"))
   ext.update_design(design)
-  ok(None)
+  @json.null_json()
 }
 
 ///|
@@ -222,7 +222,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   design.is_deployed = 0
   design.update_user = Some(arg_str_or(args, "operator", "system"))
   ext.update_design(design)
-  ok(None)
+  @json.null_json()
 }
 
 ///|
@@ -230,7 +230,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   for id in arg_ids(args) {
     (self.ext()).remove_design(id)
   }
-  ok(None)
+  @json.null_json()
 }
 
 ///|
@@ -521,7 +521,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   for id in arg_ids(args) {
     (self.ext()).remove_surrogate(id)
   }
-  ok(None)
+  @json.null_json()
 }
 
 // ═══ 视图：bizData / highLight ═══
@@ -552,7 +552,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
       match outcome {
         Ok(rows) => match rows {
           Some(row) => obj_json(row)
-          None => ok(None)
+          None => @json.null_json()
         }
         Err(e) => raise @error.Business("业务数据读取失败: \{e.message()}")
       }

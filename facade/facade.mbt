@@ -95,7 +95,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::disp
     "processSurrogate/update" => self.surrogate_update(args)
     "processSurrogate/detail" => self.surrogate_detail(args)
     "processSurrogate/remove" => self.surrogate_remove(args)
-    _ => err("未知 action: \{action}")
+    _ => raise @error.UnknownAction(action)
   }
 }
 

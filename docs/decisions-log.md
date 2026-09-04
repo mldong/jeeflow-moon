@@ -55,3 +55,33 @@
   跑完 `DROP TABLE` 自清理——方案 §5 spike②「建表」要求与 R6「只动 jeeflow 库 wf_* 表 / 9xxxxx / 测后自清理」的交集口径。
   未新建库/表空间/账号，未触碰既有服务。
 - **状态**：留痕备查。
+
+
+## D-M3-1 facade 页查询的后过滤时机（对 java 五键语义的偏差修正）
+
+- **问题**：rust facade 对所有页查询无条件做"后过滤+重分页"（`re_paginate` 把 recordCount 重置为当前页行数），
+  未过滤场景下 recordCount 恒等于 min(pageSize, 行数)，与 java 五键语义（recordCount=过滤后总数）冲突。
+- **所选项**：仅当请求携带 m_ 过滤时才做 facade 级后过滤+重分页；无过滤时透传仓储五键（仓储层 count 正确）。
+- **状态**：待追认（已实现，rust 偏差以本日志为准）。
+
+## D-M3-2 core 排序 wasm bug 绕行（issues/105-moon-）
+
+- **问题**：moonc v0.10.11 wasm 目标 `Array::sort/sort_by` 对 String 排序结果错误（compare 直调正常），详见 `jeeflow-hub/issues/105-moon-*.md`。
+- **所选项**：core/model/util.mbt 自写插入排序 `sort_strings/sort_i64/sort_int`，全仓 sort 使用点（memory sorted_ids/metadata 三处/stats 极值排序/demo seed）全部替换；单测锁定顺序。
+- **状态**：待追认；工具链修复后可整体回退。
+
+## D-M2-1 ITransactionTemplate 不进 Ctx（工程简化）
+
+- **问题**：MoonBit 0.10 对"async 高阶函数类型作为 struct 可选字段"的类型化支持不稳定（多轮尝试均被推断/解析拒绝）。
+- **所选项**：Ctx 不携带事务模板字段；`MysqlTxTemplate`（repository-mysql）作为独立类型提供
+  `execute_in_tx(op)` 真事务（环境连接绑定=spec/05 连接级上下文的单线程形态），T1-M4 语义测试直接使用。
+- **理由**：spec/05 本就"事务由业务层持有"；rust demo 同样 transaction_template=None。
+- **状态**：待追认。
+
+## D-M2-2 T1 走 moon run 可执行通道
+
+- **问题**：`moon test` 的 wasm 测试运行器在 Windows 上对 socket/fs 读操作挂死
+  （async_driver event_loop 差异；moon run 同目标无此问题）。
+- **所选项**：T1 冒烟为可执行 `repository-mysql/smoke`（`moon run --target wasm`），断言失败 abort→非零退出；
+  async test 仅限无 IO 的纯逻辑测试。
+- **状态**：待追认；发版机口径不变（SKIP_MYSQL=1 跳过，连不上=fail）。

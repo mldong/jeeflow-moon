@@ -58,7 +58,7 @@ fn sorted_ids[V](map : Map[Int64, V]) -> Array[Int64] {
   for k, _ in map {
     ids.push(k)
   }
-  ids.sort()
+  @model.sort_i64(ids)
   ids
 }
 

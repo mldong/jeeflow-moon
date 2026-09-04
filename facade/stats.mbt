@@ -566,7 +566,16 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   for k, v in counts {
     entries.push((k, v))
   }
-  entries.sort_by(fn(a, b) { b.1.compare(a.1) })
+  // count DESC 自写插入排序
+  for i in 1..<entries.length() {
+    let key = entries[i]
+    let mut j = i - 1
+    while j >= 0 && entries[j].1 < key.1 {
+      entries[j + 1] = entries[j]
+      j = j - 1
+    }
+    entries[j + 1] = key
+  }
   var i = 0
   for entry in entries {
     if i >= limit {

@@ -1,31 +1,68 @@
-// M0 spike③：Server::run_forever 常驻服务 + curl 复核（方案 §5 M0 spike ③）
-// :8092 为 MoonBit demo 专属端口（8080-8082/8090/8091/8100 已占，方案 §0.1）。
-// M4 将扩展为 demo 全契约（POST /wf/{action} 全转发 facade + /api/stats + /api/reset + 种子，方案 §2.6）。
+// demo HTTP server :8092（run_forever 常驻 + CORS，方案 §2.6）
+// 启动：moon run --target wasm demo/cmd/main（JEEFLOW_DEMO_STORE 默认 memory）
 
 ///|
-async fn handle(
-  req : @http.Request,
-  _body : &@io.Reader,
-  conn : @http.ServerConnection
-) -> Unit {
+async fn handle(app : @demo.App, req : @http.Request, body : &@io.Reader, conn : @http.ServerConnection) -> Unit {
+  // 读 body
+  let buf = StringBuilder::new()
+  while body.read_some() is Some(data) {
+    buf.write_string(@utf8.decode_lossy(data))
+  }
+  let body_text = buf.to_string()
   let path = req.path
-  if path == "/health" {
-    conn.send_response(200, "application/json")
-    conn.write_string("{\"status\":\"ok\",\"engine\":\"jeeflow-moon\",\"store\":\"memory\"}")
+  // CORS 预检
+  if method_of(req) == "OPTIONS" {
+    conn.send_response(204, "text/plain")
+    conn.write_string("")
     conn.end_response()
     return
   }
-  conn.send_response(404, "application/json")
-  conn.write_string("{\"code\":99999999,\"msg\":\"unknown path: " + path + "\"}")
-  conn.end_response()
+  let outcome = try? app.handle(method_of(req), path, "", body_text)
+  match outcome {
+    Ok((status, payload)) => {
+      conn.send_response(status, "application/json")
+      conn.write_string(payload)
+      conn.end_response()
+    }
+    Err(e) => {
+      // facade/应用错误 → 99999999 信封（demo 层不吞）
+      let obj = @json.empty_object()
+      @json.obj_set(obj, "code", @json.number_of(99999999L))
+      @json.obj_set(obj, "msg", @json.string_of(e.to_string()))
+      conn.send_response(200, "application/json")
+      conn.write_string(@json.stringify(obj))
+      conn.end_response()
+    }
+  }
 }
 
 ///|
-fn main {
-  @async.run_async_main(() => {
-    let addr = @socket.Addr::parse("127.0.0.1:8092")
-    let server = @http.Server(addr, reuse_addr=true)
-    println("jeeflow-moon demo listening on 127.0.0.1:8092")
-    server.run_forever() <| handle
-  })
+fn method_of(req : @http.Request) -> String {
+  match req.meth {
+    Get => "GET"
+    Post => "POST"
+    Put => "PUT"
+    Delete => "DELETE"
+    Options => "OPTIONS"
+    _ => "GET"
+  }
+}
+
+///|
+async fn main {
+  let outcome = try? @demo.App::create()
+  match outcome {
+    Err(e) => {
+      println("demo 启动失败: \{e}")
+      abort("init failed")
+    }
+    Ok(app) => {
+      println("jeeflow-moon demo listening on 127.0.0.1:8092 store=\{app.store}")
+      let addr = @socket.Addr::parse("127.0.0.1:8092")
+      let server = @http.Server(addr, reuse_addr=true)
+      server.run_forever() <| fn(req, body, conn) {
+        handle(app, req, body, conn)
+      }
+    }
+  }
 }
