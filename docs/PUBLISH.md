@@ -8,7 +8,11 @@
 | 通道 | 凭据 | 说明 |
 |---|---|---|
 | GitHub Actions（推荐） | repo secrets：`MOON_TOKEN` / `MOON_USERNAME` | push tag `v*` 自动触发 `.github/workflows/publish.yml`，按拓扑序 publish 4 模块 |
-| 本地手动 | `$MOON_HOME/credentials.json`（`{"token":..., "username":...}`，`moon login` 生成） | 按下方顺序手动执行 |
+| 本地手动（**当前主通道**） | `$MOON_HOME/credentials.json`（`{"token":..., "username":...}`，`moon login` 生成） | 按下方顺序手动执行 |
+
+> ⚠️ CI 工具链坑（2026-09-05 首发实测）：install 脚本对历史版本返回 403（0.1.20260827 已下架），
+> 最新版 moon 又无法解析本仓 TOML moon.mod 的 import @版本（registry not found）。
+> **CI 通道暂不可用，走本地 publish**；工具链兼容问题待上报 moonbitlang。
 
 ## 发布拓扑序（依赖向，每次发版固定）
 
