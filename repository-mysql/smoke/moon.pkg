@@ -1,0 +1,8 @@
+import {
+  "mldong/jeeflow-repository-mysql/vendored/moon_mysql_client" @client,
+  "moonbitlang/async" @async,
+  "moonbitlang/core/env" @env,
+  "moonbitlang/core/string" @string,
+  "Lfan-ke/moondb",
+}
+pkgtype(kind: "executable")

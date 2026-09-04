@@ -1,0 +1,7 @@
+members = [
+  "./core",
+  "./repository-mysql",
+  "./persist",
+  "./facade",
+  "./demo",
+]

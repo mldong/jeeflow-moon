@@ -1,0 +1,15 @@
+// vendored 自 Lfan-ke/moon-mysql@0.3.1 的 client 包（conn.mbt/driver.mbt 原样拷贝）。
+// vendored 原因：上游 client/moon.pkg 声明 supported_targets = "native"，
+// 而本仓开发主循环要求 wasm（方案 §2.3/§2.4，decisions-log.md D-M0-2）。
+// 实测：解锁限制后 wasm 下连接/建表/查询/begin-commit-rollback 全通（160 MySQL 8）。
+// 升级策略：跟上游 0.3.x 重新拷贝 + 重跑 spike②；root codec 包仍用 registry 0.3.1 不 vendor。
+import {
+  "Lfan-ke/moon-mysql" @moon_mysql,
+  "Lfan-ke/moondb",
+  "moonbitlang/async",
+  "moonbitlang/async/socket",
+  "moonbitlang/async/io",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/env",
+  "moonbitlang/core/string",
+}

@@ -1,0 +1,6 @@
+# moon 工具链产物（R7：工具链不进仓；依赖物化目录不入 git）
+target/
+.mooncakes/
+*.core
+*.wasm
+_build/
