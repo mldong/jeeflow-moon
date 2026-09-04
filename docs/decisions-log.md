@@ -85,3 +85,14 @@
 - **所选项**：T1 冒烟为可执行 `repository-mysql/smoke`（`moon run --target wasm`），断言失败 abort→非零退出；
   async test 仅限无 IO 的纯逻辑测试。
 - **状态**：待追认；发版机口径不变（SKIP_MYSQL=1 跳过，连不上=fail）。
+
+
+## D-M5-1 首发版本号 0.1.0（mooncakes 平台强制 0.x，O1 的 1.0.0 暂不可用）
+
+- **问题**：mooncakes.io 早期阶段强制 `moon publish` 主版本必须为 0（实测报错
+  "In this very early stage, the major version must be '0'. The version should follow the format of `0.x.y`"），
+  O1 拍板的 v1.0.0 首发（方案 §7/§9）被平台拒绝。
+- **候选项**：① 首发 0.1.0（平台放开后正常升 1.0.0）；② 等 mooncakes 支持 1.x 再首发（阻塞收口）；③ 跳号直上 1.0.1（被否——违背"不断号"原则）。
+- **所选项**：①。四模块 + demo 首发钉 **0.1.0**；后续 0.1.x/0.2.x 递增；
+  **平台放开 1.x 后首个版本即 1.0.0**（semver 标准 0.x→1.0.0 演进，非跳号；rust 断号教训不复发）。
+- **状态**：待追认；本条属平台硬约束下的代决策（用户指示"不断号"精神完全保留）。
