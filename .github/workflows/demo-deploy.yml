@@ -69,6 +69,8 @@ jobs:
             # 部署后 T2 冒烟门禁：health 只证进程活着，冒烟跑数字 id 全链路
             # （教训：入站雪花 id 精度回归 health 探不出来，本地 T2 还会因 id 恰好
             #  double 可精确表示而假绿——见 docs/decisions-log.md D-M5-3）
+            # 先兜底剥 CRLF（Windows 检出残留会让远端 bash 报 invalid option）
+            sed -i 's/\r$//' /java_projects/jeeflow/demo/scripts/smoke_t2.sh
             BASE=http://127.0.0.1:16086 bash /java_projects/jeeflow/demo/scripts/smoke_t2.sh
             # 每次部署 load 新镜像后旧层会残留为悬空镜像，多次部署累积会把 40G 盘填满
             # （2026-09-05 曾满：no space left on device）——部署尾顺手清理
