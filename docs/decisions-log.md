@@ -96,3 +96,18 @@
 - **所选项**：①。四模块 + demo 首发钉 **0.1.0**；后续 0.1.x/0.2.x 递增；
   **平台放开 1.x 后首个版本即 1.0.0**（semver 标准 0.x→1.0.0 演进，非跳号；rust 断号教训不复发）。
 - **状态**：待追认；本条属平台硬约束下的代决策（用户指示"不断号"精神完全保留）。
+
+## D-M5-2 moon demo 容器 seccomp=unconfined（宿主 docker 18.09 默认 profile 拦截现代 syscall）
+
+- **问题**：demo-deploy 容器在托管机持续 Up 但不监听 TCP、docker logs 0 字节。
+  定位（2026-09-05，strace + A/B 对照）：宿主机 docker **18.09.1** 默认 seccomp 白名单停留在
+  2018 年代，MoonBit native 异步运行时启动期某现代 syscall 被拦（EPERM），
+  运行时吞掉错误后事件循环永久等待（strace 仅见纯 `epoll_wait(4,...)` 空转，
+  fd 表只有 listener socket + eventpoll + 自管道；`--security-opt seccomp=unconfined`
+  下 health 立即返回 `{"status":"ok"}`，其余条件全同）。
+- **所选项**：workflow `docker run` 加 `--security-opt seccomp=unconfined`（仅 moon demo 容器，
+  其余 demo 容器默认 profile 不动）。专用演示机 + 自家 CI 构建镜像，风险可接受。
+- **备选未取**：① 定制 seccomp profile（18.09 default + 现代 syscall 放行）——需维护 vendored
+  profile 且被拦 syscall 未能唯一确证，脆弱；② 容器内换 wasm + moonrun（handoff 方案 B）——
+  moonrun 同为新 glibc 二进制，同样暴露于老 seccomp，且部署管线重写。
+- **状态**：待追认；宿主机 docker 升级到新版默认 profile 后可回收该参数。

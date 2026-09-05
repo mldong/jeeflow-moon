@@ -43,7 +43,13 @@ jobs:
             cd /java_projects/jeeflow/demo
             docker load -i jeeflow-moon-demo.tar
             docker stop jeeflow-moon-demo 2>/dev/null && docker rm jeeflow-moon-demo 2>/dev/null || true
+            # 宿主机 docker 18.09 默认 seccomp 白名单停留在 2018 年代，拦截 MoonBit native 异步
+            # 运行时启动期需要的现代 syscall：EPERM 被运行时吞掉后事件循环永久等待（容器 Up、
+            # 无 TCP 监听、docker logs 0 字节）。实测 seccomp=unconfined 后 health 立即通过
+            # （2026-09-05 托管机 strace + A/B 对照定位）。宿主机 docker 升级到含现代默认
+            # profile 的版本后可回收此参数（决策记录 docs/decisions-log.md D-M5-2）。
             docker run -d --name jeeflow-moon-demo --restart always \
+              --security-opt seccomp=unconfined \
               -p 16086:8092 \
               jeeflow-moon-demo:latest
             rm -f jeeflow-moon-demo.tar

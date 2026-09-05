@@ -12,6 +12,17 @@
 
 ## 当前卡点（唯一未完成）
 
+**✅ 已解决（2026-09-05 接手会话）**：根因是宿主机 docker **18.09.1** 默认 seccomp 白名单拦截 MoonBit native
+异步运行时启动期的现代 syscall（EPERM 被吞 → 事件循环永久等待 → 不监听）。定位路径：托管机 A/B 对照
+（`--security-opt seccomp=unconfined` 下 health 立即通、默认 seccomp 照旧卡死）+ strace（卡死进程仅纯
+`epoll_wait(4,...)` 空转，无重试）+ fd 表（仅 listener socket + eventpoll + 自管道）。修复：workflow
+`docker run` 加 `--security-opt seccomp=unconfined`（仅 moon 容器），决策记录 docs/decisions-log.md D-M5-2。
+原始排查记录保留如下备查。
+
+---
+
+### 原卡点存档
+
 moon demo 容器化部署，CI workflow `jeeflow-moon/.github/workflows/demo-deploy.yml` 连跑 5 轮修复后：**docker build 成功、镜像 load 到托管机成功、容器 Up（端口 16086→8092），但容器内进程不监听 TCP、docker logs 0 字节、health 超时**。
 
 ### 失败演进史（每轮已修，勿重复踩）
