@@ -1,0 +1,35 @@
+name: Native Probe
+
+# 试验：demo 在 linux native 下能否构建/运行（wasm 之外的第二形态，
+# 为 Docker 容器化部署铺路；本机 Windows 因 MSVC 墙不可构建，见 D-M0-2/R8）。
+on:
+  workflow_dispatch:
+
+jobs:
+  native-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MoonBit toolchain (latest)
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Toolchain version
+        run: |
+          moon version --all
+          moon update
+
+      - name: Native build (workspace)
+        run: moon build --target native
+
+      - name: Run demo health flow (native)
+        run: |
+          # 后台起 demo（native 二进制），健康检查通过即形态成立
+          (moon run --target native demo/cmd/main > /tmp/demo.log 2>&1 &)
+          sleep 8
+          curl -sf http://127.0.0.1:8092/health && echo "NATIVE DEMO OK"
+
+      - name: Native test (full suite)
+        run: moon test --target native
