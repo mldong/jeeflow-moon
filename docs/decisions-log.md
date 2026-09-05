@@ -127,6 +127,7 @@
   core/engine parse_cc_actors、facade/outbound stringify_id_value（出口安全网同步加固）、
   repository-mysql value_to_string（SQL 字面量）；T0 增大整数精度回归测试（117 用例）；
   demo-deploy.yml 部署后加 T2 冒烟门禁（数字 id 全链路，防假绿复发）。
-- **后果与跟进**：mooncakes 四模块 0.1.0 含此缺陷，下次发版（0.1.1）捎带修复；
+- **后果与跟进**：mooncakes 四模块 0.1.0 含此缺陷，已随 **0.1.1** 发版修复（2026-09-05，
+  checklist 全绿：T0 117 / T1 160 / T2 多轮 / manifest 45 / mooncakes 回拉验证 PASS）；
   工具链暂不钉版本（bug 在本仓未用 repr，非 core 漂移）。
-- **状态**：待追认。
+- **状态**：已随 0.1.1 发版落地，待追认。
