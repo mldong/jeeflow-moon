@@ -204,36 +204,21 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
       }
     }
   }
-  // 平均完成时长（MAX(finish)-create，C23）
-  // avgDurationSeconds = MAX(finish_time) - create_time（C23）
-  var max_duration = 0L
-  var has_dur = false
+  // 平均完成时长（C23：MAX(task.finish_time)-create_time 的**均值**，非最大值）
+  var dur_total = 0L
+  var dur_count = 0L
   for inst in all {
     if inst.state == 20 && in_range(inst.create_time, start, end) {
-      match (inst.create_time, parse_epoch_secs(inst.create_time.unwrap_or(""))) {
-        (Some(_), Some(cs)) => {
-          var latest_finish = cs
-          for t in inst.tasks {
-            match t.finish_time {
-              Some(f) =>
-                match parse_epoch_secs(f) {
-                  Some(fs) => if fs > latest_finish { latest_finish = fs }
-                  None => ()
-                }
-              None => ()
-            }
-          }
-          let dur = latest_finish - cs
-          if dur > max_duration {
-            max_duration = dur
-            has_dur = true
-          }
+      match stats_instance_duration_secs(inst.create_time, inst.tasks) {
+        Some(dur) => {
+          dur_total += dur
+          dur_count += 1L
         }
-        _ => ()
+        None => ()
       }
     }
   }
-  let avg_duration = if has_dur { max_duration.to_int() } else { 0 }
+  let avg_duration = if dur_count > 0L { (dur_total / dur_count).to_int() } else { 0 }
   let o = @json.empty_object()
   @json.obj_set(o, "total", @json.number_of(total))
   @json.obj_set(o, "inProgress", @json.number_of(in_progress))
@@ -447,6 +432,9 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   // [key, count, avgDurSeconds?]
   let counts : Map[String, Int64] = Map::new()
   let durations : Map[String, Int64] = Map::new()
+  let dur_counts : Map[String, Int64] = Map::new()
+  // define 维度：key=编码 name，label=display_name（spec 06 §4.2 契约口径）
+  let labels : Map[String, String] = Map::new()
   fn bump(k : String) -> Unit {
     match counts.get(k) {
       Some(c) => counts[k] = c + 1L
@@ -478,7 +466,29 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
         continue
       }
       match (self.repo).find_define_by_id(inst.define_id) {
-        Some(d) => bump(d.display_name)
+        Some(d) => {
+          bump(d.name)
+          match labels.get(d.name) {
+            None => labels[d.name] = d.display_name
+            Some(_) => ()
+          }
+          // 已完成实例时长进 define 平均（C23）
+          if inst.state == 20 {
+            match stats_instance_duration_secs(inst.create_time, inst.tasks) {
+              Some(dur) => {
+                match durations.get(d.name) {
+                  Some(v) => durations[d.name] = v + dur
+                  None => durations[d.name] = dur
+                }
+                match dur_counts.get(d.name) {
+                  Some(c) => dur_counts[d.name] = c + 1L
+                  None => dur_counts[d.name] = 1L
+                }
+              }
+              None => ()
+            }
+          }
+        }
         None => ()
       }
     }
@@ -507,6 +517,10 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
           match durations.get(t.display_name) {
             Some(v) => durations[t.display_name] = v + dur
             None => durations[t.display_name] = dur
+          }
+          match dur_counts.get(t.display_name) {
+            Some(c) => dur_counts[t.display_name] = c + 1L
+            None => dur_counts[t.display_name] = 1L
           }
         }
       }
@@ -584,17 +598,20 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     let (k, c) = entry
     let row = @json.empty_object()
     @json.obj_set(row, "key", @json.string_of(k))
-    @json.obj_set(row, "label", @json.null_json())
+    match labels.get(k) {
+      Some(l) => @json.obj_set(row, "label", @json.string_of(l))
+      None => @json.obj_set(row, "label", @json.null_json())
+    }
     @json.obj_set(row, "count", @json.number_of(c))
-    if dimension == "node" {
-      match durations.get(k) {
-        Some(total) =>
-          if c > 0L {
-            @json.obj_set(row, "avgDurationSeconds", @json.number_of((total / c).to_int().to_int64()))
+    if dimension == "node" || dimension == "define" {
+      match (durations.get(k), dur_counts.get(k)) {
+        (Some(total), Some(n)) =>
+          if n > 0L {
+            @json.obj_set(row, "avgDurationSeconds", @json.number_of((total / n).to_int().to_int64()))
           } else {
             @json.obj_set(row, "avgDurationSeconds", @json.null_json())
           }
-        None => @json.obj_set(row, "avgDurationSeconds", @json.null_json())
+        _ => @json.obj_set(row, "avgDurationSeconds", @json.null_json())
       }
     } else {
       @json.obj_set(row, "avgDurationSeconds", @json.null_json())
@@ -607,4 +624,31 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     @json.arr_push(arr, r)
   }
   arr
+}
+
+///|
+/// 实例办结时长秒（C23：MAX(task.finish_time) - create_time；时间缺失/不可解析返回 None；
+/// 同秒完成返回 Some(0)，计入均值样本）
+fn stats_instance_duration_secs(create_time : String?, tasks : Array[@model.ProcessTask]) -> Int64? {
+  let base = match create_time {
+    Some(c) => parse_epoch_secs(c)
+    None => None
+  }
+  match base {
+    Some(cs) => {
+      var latest = cs
+      for t in tasks {
+        match t.finish_time {
+          Some(f) =>
+            match parse_epoch_secs(f) {
+              Some(fs) => if fs > latest { latest = fs }
+              None => ()
+            }
+          None => ()
+        }
+      }
+      Some(if latest > cs { latest - cs } else { 0L })
+    }
+    None => None
+  }
 }
