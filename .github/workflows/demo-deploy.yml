@@ -70,4 +70,7 @@ jobs:
             # （教训：入站雪花 id 精度回归 health 探不出来，本地 T2 还会因 id 恰好
             #  double 可精确表示而假绿——见 docs/decisions-log.md D-M5-3）
             BASE=http://127.0.0.1:16086 bash /java_projects/jeeflow/demo/scripts/smoke_t2.sh
+            # 每次部署 load 新镜像后旧层会残留为悬空镜像，多次部署累积会把 40G 盘填满
+            # （2026-09-05 曾满：no space left on device）——部署尾顺手清理
+            docker image prune -f >/dev/null 2>&1 || true
             echo "✅ Moon demo deployed (port 16086->8092)"
