@@ -2,11 +2,27 @@ name: publish
 
 # mooncakes.io 发版：push tag v* 触发；按依赖拓扑序 publish 4 模块（demo 不发布）。
 # 失败重试：Actions Re-run 或本地删 tag 重打；版本号严禁跳号（1.0.0 起完整递增）。
+#
+# 工具链策略（2026-09-05 分析，见 docs/PUBLISH.md）：
+# - 服务端对显式版本路径返回 403（binaries/0.1.20260827/* 403，latest 别名 200），
+#   因此只能装 latest，不能钉版本号；
+# - 9/4 晚 latest 曾是含 "TOML moon.mod import @版本解析" bug 的较新构建，后被官方撤回，
+#   现 latest 回到已验证可用的 0.1.20260827（与本地发版工具链同构建 d0aaa07）；
+# - 为防 latest 漂移到未验证构建：装完先校验版本号（EXPECTED_MOON_VERSION），
+#   不匹配立即失败并提示重新验证，绝不带着未知工具链发版。
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      validate_only:
+        description: "仅自检通道（装工具链+依赖+构建），不执行 publish"
+        type: boolean
+        default: false
+
+env:
+  EXPECTED_MOON_VERSION: "0.1.20260827"
 
 jobs:
   publish:
@@ -14,10 +30,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install MoonBit toolchain
+      - name: Install MoonBit toolchain (latest) + version guard
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- 0.1.20260827
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> $GITHUB_PATH
+          "$HOME/.moon/bin/moon" version
+          if ! "$HOME/.moon/bin/moon" version | grep -qF "$EXPECTED_MOON_VERSION"; then
+            echo "::error::latest moon 已漂移出已验证版本（期望 $EXPECTED_MOON_VERSION）。"
+            echo "::error::请先用新版本在本地过 T0/T1/T2 + publish 前检查，更新 EXPECTED_MOON_VERSION 后再发版。"
+            exit 1
+          fi
 
       - name: Write mooncakes credentials
         run: |
@@ -29,15 +51,25 @@ jobs:
       - name: Install workspace dependencies
         run: moon install
 
+      - name: Validate channel only (build gate, no publish)
+        if: ${{ inputs.validate_only }}
+        run: |
+          echo "通道自检：工具链 + workspace 依赖 + native 构建全通过即视为发版通道可用"
+          moon build --target native
+
       # 拓扑序：core → persist → repository-mysql → facade（demo 不发布）
       - name: Publish core
+        if: ${{ !inputs.validate_only }}
         run: cd core && moon publish
 
       - name: Publish persist
+        if: ${{ !inputs.validate_only }}
         run: cd persist && moon publish
 
       - name: Publish repository-mysql
+        if: ${{ !inputs.validate_only }}
         run: cd repository-mysql && moon publish
 
       - name: Publish facade
+        if: ${{ !inputs.validate_only }}
         run: cd facade && moon publish
