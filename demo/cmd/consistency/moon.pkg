@@ -1,0 +1,10 @@
+import {
+  "mldong/jeeflow-core/error" @error,
+  "mldong/jeeflow-core/json" @json,
+  "mldong/jeeflow-core/memory" @memory,
+  "mldong/jeeflow-core/model" @model,
+  "mldong/jeeflow-core/spi" @spi,
+  "mldong/jeeflow-facade" @facade,
+  "moonbitlang/async" @async,
+}
+pkgtype(kind: "executable")

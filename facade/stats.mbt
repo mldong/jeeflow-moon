@@ -137,17 +137,17 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   var rejected = 0L
   var suspended = 0L
   for inst in all {
-    if in_range(inst.create_time, start, end) {
+    // B 对齐 java（issues/103）：total = 六状态计数之和，由 stateIn 门控（缺省剔除 99），
+    // 不是窗口内全量；avgDuration/todayNew 不受 stateIn 影响
+    if in_range(inst.create_time, start, end) && state_in.contains(inst.state) {
       total = total + 1L
-      if state_in.contains(inst.state) {
-        match inst.state {
-          10 => in_progress = in_progress + 1L
-          20 => completed = completed + 1L
-          30 => withdrawn = withdrawn + 1L
-          45 => rejected = rejected + 1L
-          50 => suspended = suspended + 1L
-          _ => ()
-        }
+      match inst.state {
+        10 => in_progress = in_progress + 1L
+        20 => completed = completed + 1L
+        30 => withdrawn = withdrawn + 1L
+        45 => rejected = rejected + 1L
+        50 => suspended = suspended + 1L
+        _ => ()
       }
     }
   }
@@ -532,16 +532,29 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
       }
     }
   } else if dimension == "stuckApprover" {
+    // 对齐 java：按 task_actor 关系逐人计数（含会签/加签的额外 actor），不只数主 actor
     for t in (self.repo).get_all_tasks() {
       if t.task_state == 10 {
-        match t.actor_id {
-          Some(op) => if !op.is_empty() { bump(op) }
-          None => ()
+        let actors = if t.actor_ids.is_empty() {
+          match t.actor_id {
+            Some(a) => [a]
+            None => []
+          }
+        } else {
+          t.actor_ids
+        }
+        for a in actors {
+          if !a.is_empty() { bump(a) }
         }
       }
     }
   } else {
     // durationBucket：4 桶（sameDay/1to3d/3to7d/over7d）
+    // 对齐 java：固定 4 桶全枚举，空桶也输出（count=0），不是只发非空桶
+    counts["sameDay"] = 0L
+    counts["1to3d"] = 0L
+    counts["3to7d"] = 0L
+    counts["over7d"] = 0L
     for inst in (self.repo).get_all_instances() {
       if inst.state != 20 || !in_range(inst.create_time, start, end) {
         continue
@@ -580,11 +593,11 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   for k, v in counts {
     entries.push((k, v))
   }
-  // count DESC 自写插入排序
+  // count DESC 自写插入排序；平级按 key ASC（确定性序，java HashMap 序在快照数据集上与之等价）
   for i in 1..<entries.length() {
     let key = entries[i]
     let mut j = i - 1
-    while j >= 0 && entries[j].1 < key.1 {
+    while j >= 0 && (entries[j].1 < key.1 || (entries[j].1 == key.1 && entries[j].0 > key.0)) {
       entries[j + 1] = entries[j]
       j = j - 1
     }

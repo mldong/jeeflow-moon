@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 未发布（0.1.3 待发）
+
+issues/103 §8 stats 一致性补跑抓出的 4 处偏差修复（均在 `facade/stats.mbt`；
+T0 117/117 回归绿，与 java/rust 快照 15/15 逐字段全等）：
+
+- **overview `total` 按 stateIn 门控**：此前统计窗口内全量实例（缺省不剔 99，
+  `stateIn=[10]` 也不生效）；对齐 java「total = 六状态计数之和」。
+- **`stuckApprover` 按 actor 关系逐人计数**：此前只数主 actor，漏会签/加签的
+  额外 actor（task_actor 关系里的 u10 丢失）。
+- **`durationBucket` 固定 4 桶全枚举**：此前只发非空桶；对齐 java 空桶也输出（count=0）。
+- **分组平级行序确定化**：count DESC + key ASC（此前按插入序，平级序不稳定）。
+
+新增一致性驱动 `demo/cmd/consistency`（固定数据集驱动 15 个 stats action，
+输出 `consistency/moon.json` 快照，可复现）。
+
+## 0.1.2（2026-09-05）
+
+- **publish.yml CI 通道恢复**（D-M5-4）：装 latest + `EXPECTED_MOON_VERSION` 守卫 +
+  `moon update` 前置 + `validate_only` 自检；tag `v0.1.2` 实战发版成功（run 33951631628）。
+- **stats 口径收口**（D-M5-5）：overview 均值修 max 误用；stats 计数/时长 int 出参与契约
+  §4.2 同口径；公网 `/moon-api` 部署 + UI `?lang=moon` 全链路验证。
+
+## 0.1.1（2026-09-05）
+
+- **雪花 id 精度修复**（D-M5-3）：Number→Int64/id 串转换改 repr 优先（5 处：core/json
+  `as_i64`、facade/args `arg_actor_ids`、core/engine `parse_cc_actors`、facade/outbound
+  `stringify_id_value`、repository-mysql `value_to_string`）；T0 增大整数精度回归至 117 用例；
+  demo-deploy.yml 加 T2 冒烟门禁（数字 id 全链路防假绿）。
+
 ## 0.1.0（2026-09-05）
 
 jeeflow 工作流引擎 MoonBit 实现（第 7 语言）首发版本。独立版本线（联邦"契约同代、发版分轨"）。
