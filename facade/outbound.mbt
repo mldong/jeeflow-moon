@@ -144,7 +144,12 @@ pub fn stringify_ids(val : Json) -> Json {
 ///|
 fn stringify_id_value(v : Json) -> Json {
   match v {
-    Json::Number(n, ..) => @json.string_of(n.to_int64().to_string())
+    // id 字符串化走 repr 原文优先（>2^53 防 double 取整，D-M5-3）
+    Json::Number(n, repr~) =>
+      match repr {
+        Some(s) => @json.string_of(s)
+        None => @json.string_of(n.to_int64().to_string())
+      }
     other => other
   }
 }

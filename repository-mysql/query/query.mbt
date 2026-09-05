@@ -78,14 +78,20 @@ fn is_empty_value(v : Json) -> Bool {
 fn value_to_string(v : Json) -> String {
   match v {
     Json::String(s) => s
-    Json::Number(n, ..) => {
-      let i = n.to_int64().to_double()
-      if n == i {
-        n.to_int64().to_string()
-      } else {
-        n.to_string()
+    // 整数走 repr 原文优先（>2^53 防 double 取整，D-M5-3）；repr 仅出现在超限整数
+    // 字面量（词法器保证纯数字文本，无注入面），小数值仍走 double 判定
+    Json::Number(n, repr~) =>
+      match repr {
+        Some(s) => s
+        None => {
+          let i = n.to_int64().to_double()
+          if n == i {
+            n.to_int64().to_string()
+          } else {
+            n.to_string()
+          }
+        }
       }
-    }
     Json::True => "true"
     Json::False => "false"
     _ => ""

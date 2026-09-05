@@ -223,7 +223,12 @@ pub fn arg_actor_ids(args : Map[String, Json]) -> Array[String] {
       for v in arr {
         match v {
           Json::String(s) => if !s.is_empty() { out.push(s) }
-          Json::Number(n, ..) => out.push(n.to_int64().to_string())
+          // id 字符串化走 repr 原文优先（>2^53 防 double 取整，D-M5-3）
+          Json::Number(n, repr~) =>
+            match repr {
+              Some(s) => out.push(s)
+              None => out.push(n.to_int64().to_string())
+            }
           Json::Null => ()
           _ => ()
         }

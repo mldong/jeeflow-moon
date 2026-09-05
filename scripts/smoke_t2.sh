@@ -4,7 +4,8 @@
 set -e
 BASE=${BASE:-http://127.0.0.1:8092}
 B=$BASE/wf
-jqf() { python -c "import json,sys; d=json.load(sys.stdin); $1"; }
+PY=${PY:-$(command -v python || command -v python3)}
+jqf() { "$PY" -c "import json,sys; d=json.load(sys.stdin); $1"; }
 
 echo "[1] health"
 curl -s -m 5 "$BASE/health" | grep -q '"status":"ok"' && echo "  ok"

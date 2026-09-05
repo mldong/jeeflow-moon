@@ -29,7 +29,7 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: root
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: jeeflow-moon-demo.tar
+          source: jeeflow-moon-demo.tar,scripts/smoke_t2.sh
           target: /java_projects/jeeflow/demo/
 
       - name: Load image and restart
@@ -66,4 +66,8 @@ jobs:
               docker logs jeeflow-moon-demo 2>&1 | tail -80
               exit 1
             fi
+            # 部署后 T2 冒烟门禁：health 只证进程活着，冒烟跑数字 id 全链路
+            # （教训：入站雪花 id 精度回归 health 探不出来，本地 T2 还会因 id 恰好
+            #  double 可精确表示而假绿——见 docs/decisions-log.md D-M5-3）
+            BASE=http://127.0.0.1:16086 bash /java_projects/jeeflow/demo/scripts/smoke_t2.sh
             echo "✅ Moon demo deployed (port 16086->8092)"

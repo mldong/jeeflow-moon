@@ -111,3 +111,22 @@
   profile 且被拦 syscall 未能唯一确证，脆弱；② 容器内换 wasm + moonrun（handoff 方案 B）——
   moonrun 同为新 glibc 二进制，同样暴露于老 seccomp，且部署管线重写。
 - **状态**：待追认；宿主机 docker 升级到新版默认 profile 后可回收该参数。
+
+## D-M5-3 入站 JSON 大整数 id 走 repr 精确解析（上线后真回归抓出，本地 T2 假绿教训）
+
+- **问题**：moon demo 上线后线上冒烟第 4 步"同意"报 `"任务不存在: 2096086641704706048"`
+  （实发 taskId …050）——入站 JSON 数字统一走 `Json::Number` 的 **double 分量**，
+  雪花 id（~2.1e18）远超 2^53 被取整；字符串 id 双收路径正常。Java 线上基线同链路数字 id 全通
+  （state=20），属 moon 相对联邦的 parity 缺陷。
+- **假绿根源**：本地 T2 此前 ALL PASS 是因为该次雪花 id 恰好 double 可精确表示
+  （id 为 256 的整数倍，ULP=256；python 实测本地两次 taskId mod256=0）——
+  冒烟通过与否取决于 id 低位是否凑巧对齐，health 门禁也探不出此类缺陷。
+- **所选项**：`as_i64` 等 5 处 Number→Int64/id 串转换改为 **repr 优先**
+  （core 词法器对超限字面量在 `Json::Number(n, repr~)` 保留原文，有 repr 按原文精确解析，
+  无 repr 照旧 double 截断）：core/json as_i64、facade/args arg_actor_ids、
+  core/engine parse_cc_actors、facade/outbound stringify_id_value（出口安全网同步加固）、
+  repository-mysql value_to_string（SQL 字面量）；T0 增大整数精度回归测试（117 用例）；
+  demo-deploy.yml 部署后加 T2 冒烟门禁（数字 id 全链路，防假绿复发）。
+- **后果与跟进**：mooncakes 四模块 0.1.0 含此缺陷，下次发版（0.1.1）捎带修复；
+  工具链暂不钉版本（bug 在本仓未用 repr，非 core 漂移）。
+- **状态**：待追认。

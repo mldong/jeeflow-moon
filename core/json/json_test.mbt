@@ -80,3 +80,15 @@ test "flowdata: insert/get/merge/prefix" {
   let str = @json.stringify(obj)
   assert_true(str.contains("张三"))
 }
+
+///|
+test "json: big-int id precision — >2^53 字面量走 repr 精确解析（D-M5-3 线上取整事故回归）" {
+  // 2096086641704706050 不可被 double 精确表示（最近 double 是 …048）；
+  // 修复前 as_i64 走 double 分量 → "任务不存在: …048"
+  let big = @json.parse_json("{\"processTaskId\":2096086641704706050}")
+  assert_eq(@json.get_i64(big, "processTaskId").unwrap(), 2096086641704706050L)
+  // 小整数 / 字符串双收行为不变
+  assert_eq(@json.get_i64(@json.parse_json("{\"n\":42}"), "n").unwrap(), 42L)
+  let as_str = @json.parse_json("{\"id\":\"2096086641704706050\"}")
+  assert_eq(@json.get_i64(as_str, "id").unwrap(), 2096086641704706050L)
+}

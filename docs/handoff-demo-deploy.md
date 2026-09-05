@@ -12,11 +12,19 @@
 
 ## 当前卡点（唯一未完成）
 
-**✅ 已解决（2026-09-05 接手会话）**：根因是宿主机 docker **18.09.1** 默认 seccomp 白名单拦截 MoonBit native
-异步运行时启动期的现代 syscall（EPERM 被吞 → 事件循环永久等待 → 不监听）。定位路径：托管机 A/B 对照
-（`--security-opt seccomp=unconfined` 下 health 立即通、默认 seccomp 照旧卡死）+ strace（卡死进程仅纯
-`epoll_wait(4,...)` 空转，无重试）+ fd 表（仅 listener socket + eventpoll + 自管道）。修复：workflow
-`docker run` 加 `--security-opt seccomp=unconfined`（仅 moon 容器），决策记录 docs/decisions-log.md D-M5-2。
+**✅ 已解决①（2026-09-05 接手会话）**：容器 Up 但不监听——根因是宿主机 docker **18.09.1** 默认 seccomp
+白名单拦截 MoonBit native 异步运行时启动期的现代 syscall（EPERM 被吞 → 事件循环永久等待 → 不监听）。
+定位路径：托管机 A/B 对照（`--security-opt seccomp=unconfined` 下 health 立即通、默认 seccomp 照旧卡死）
++ strace（卡死进程仅纯 `epoll_wait(4,...)` 空转，无重试）+ fd 表（仅 listener socket + eventpoll + 自管道）。
+修复：workflow `docker run` 加 `--security-opt seccomp=unconfined`（仅 moon 容器），决策记录 D-M5-2。
+
+**✅ 已解决②（2026-09-05 接手会话，上线验证时发现）**：线上冒烟第 4 步"同意"报
+`任务不存在: …048`——入站 JSON 大整数 id 走 double 分量被取整（雪花 id 超 2^53）。
+**本地 T2 假绿**：该次 id 恰好 double 可精确表示（mod256=0）。修复：5 处 Number→Int64/id 串
+转换改 **repr 优先**（core 对超限字面量在 `Json::Number(n, repr~)` 保留原文），T0 增回归测试
+（117 全绿），demo-deploy 加部署后 T2 冒烟门禁。详见 decisions-log D-M5-3。
+mooncakes 0.1.0 含此缺陷，下次发版（0.1.1）捎带。
+
 原始排查记录保留如下备查。
 
 ---

@@ -548,7 +548,12 @@ pub fn parse_cc_actors(v : Json?) -> Array[String] {
       for it in items {
         match it {
           Json::String(s) => if !s.is_empty() { out.push(s) }
-          Json::Number(n, ..) => out.push(n.to_int64().to_string())
+          // id 字符串化走 repr 原文优先（>2^53 防 double 取整，D-M5-3）
+          Json::Number(n, repr~) =>
+            match repr {
+              Some(s) => out.push(s)
+              None => out.push(n.to_int64().to_string())
+            }
           Json::True => out.push("true")
           Json::False => out.push("false")
           _ => ()
