@@ -1,0 +1,31 @@
+# jeeflow-moon demo（native 形态）
+# 对齐 rust 先例（jeeflow-rust/Dockerfile.demo）：CI ubuntu 构建，托管机 docker 常驻。
+# 与 rust 的差异：本仓 demo 是 MoonBit native 产物（wasm 形态见 demo/cmd/main，由 moonrun 宿主）。
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 工具链（latest；CI 已验证 latest 可构建/运行本仓 native demo）
+RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+ENV PATH=/root/.moon/bin:$PATH
+
+WORKDIR /app
+# 先复制 workspace 清单（未来加依赖缓存层时再拆分）
+COPY moon.work moon.work
+COPY core core
+COPY repository-mysql repository-mysql
+COPY persist persist
+COPY facade facade
+COPY demo demo
+
+RUN moon update && moon build --target native
+
+# 产物路径兜底：native 二进制在 target/native/release/build/demo/cmd/main/ 下
+RUN BIN=$(find target/native/release/build -type f -name main -perm -u+x | head -1) \
+    && echo "#!/bin/sh\nexec /app/$BIN" > /usr/local/bin/jeeflow-demo \
+    && chmod +x /usr/local/bin/jeeflow-demo
+
+EXPOSE 8092
+CMD ["jeeflow-demo"]

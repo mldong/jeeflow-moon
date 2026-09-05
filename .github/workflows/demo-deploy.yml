@@ -1,0 +1,57 @@
+name: Demo Deploy
+
+# moon demo 常驻部署（对齐 jeeflow-rust demo-deploy 先例）：
+# tag v* / 手动触发 → CI ubuntu native 构建 → docker 镜像 → 托管机 16086:8092 → healthz 验证。
+# 部署后需 nginx /moon-api/ 段（deploy/nginx-moon-api.conf）指向 localhost:16086。
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy Moon demo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -f Dockerfile.demo -t jeeflow-moon-demo:latest .
+
+      - name: Export image
+        run: |
+          docker save jeeflow-moon-demo:latest -o jeeflow-moon-demo.tar
+          chmod 644 jeeflow-moon-demo.tar
+
+      - name: Upload to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: root
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: jeeflow-moon-demo.tar
+          target: /java_projects/jeeflow/demo/
+
+      - name: Load image and restart
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: root
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /java_projects/jeeflow/demo
+            docker load -i jeeflow-moon-demo.tar
+            docker stop jeeflow-moon-demo 2>/dev/null && docker rm jeeflow-moon-demo 2>/dev/null || true
+            docker run -d --name jeeflow-moon-demo --restart always \
+              -p 16086:8092 \
+              jeeflow-moon-demo:latest
+            rm -f jeeflow-moon-demo.tar
+            sleep 3
+            if ! curl -sf http://127.0.0.1:16086/health; then
+              echo "health failed"
+              docker ps -a --filter name=jeeflow-moon-demo
+              docker logs jeeflow-moon-demo 2>&1 | tail -80
+              exit 1
+            fi
+            echo "✅ Moon demo deployed (port 16086->8092)"
