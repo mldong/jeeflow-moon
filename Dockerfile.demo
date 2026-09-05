@@ -4,7 +4,7 @@
 FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates git \
+      curl ca-certificates git gcc libc-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # 工具链（latest；CI 已验证 latest 可构建/运行本仓 native demo）
