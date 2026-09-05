@@ -131,6 +131,14 @@ Two MoonBit realities shaped the code, both documented in `docs/decisions-log.md
 See also `docs/contract-notes.md` (contract → implementation map), `docs/integration.md`
 (embedding guide), `docs/testing.md` (T0/T1/T2) and `docs/PUBLISH.md` (mooncakes release runbook).
 
+## Origin
+
+This engine is a MoonBit port. The workflow engine itself originated as the built-in
+workflow module of the [mldong rapid-development platform](https://gitee.com/mldong/mldong)
+(Apache-2.0, 10k+ stars on Gitee); the external contract follows the jeeflow federation's
+Java reference implementation [jeeflow-java](https://github.com/mldong/jeeflow-java)
+(Apache-2.0). Same fixtures, same envelope, same state machine — reimplemented in MoonBit.
+
 ## License
 
 Apache-2.0.
