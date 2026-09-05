@@ -58,7 +58,9 @@ async fn main {
     }
     Ok(app) => {
       println("jeeflow-moon demo listening on 127.0.0.1:8092 store=\{app.store}")
-      let addr = @socket.Addr::parse("127.0.0.1:8092")
+      // 监听 0.0.0.0：容器部署时 docker-proxy 从容器外转发（127.0.0.1 会 Empty reply）
+      let listen = @env.get_env_var("LISTEN_ADDR").unwrap_or("0.0.0.0:8092")
+      let addr = @socket.Addr::parse(listen)
       let server = @http.Server(addr, reuse_addr=true)
       server.run_forever() <| fn(req, body, conn) {
         handle(app, req, body, conn)
