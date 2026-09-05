@@ -23,10 +23,10 @@ COPY demo demo
 RUN moon update && moon build --target native
 
 # 产物动态定位（moon build 默认落 debug 目录；find 全 target 兜底），拷为固定路径
-RUN BIN=$(find target -type f -name 'main*' -perm -u+x | head -1) \
+RUN BIN=$(find _build target -type f -name 'main*' -perm -u+x 2>/dev/null | head -1) \
     && [ -n "$BIN" ] \
     && cp "$BIN" /usr/local/bin/jeeflow-demo-bin \
-    || (echo "=== binary not found, target tree:"; find target -type f -perm -u+x | head -40; exit 1)
+    || (echo "=== binary not found, target tree:"; find _build target -type f -perm -u+x 2>/dev/null | head -40; exit 1)
 
 EXPOSE 8092
 CMD ["/usr/local/bin/jeeflow-demo-bin"]
