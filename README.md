@@ -1,63 +1,136 @@
-# jeeflow-moon · jeeflow 工作流引擎 MoonBit 实现（第 7 语言）
+<div align="center">
 
-> 状态：**v1.0.0 发版就绪/首发**（M0–M5 全链：45 action manifest、T0 116 用例、T1 冒烟、T2 demo、一致性快照）。实施方案：
-> [`../docs/moonbit-engine-implementation-plan.md`](../docs/moonbit-engine-implementation-plan.md)（唯一方案，§9 决策已定稿）。
-> 移植模板：[`../jeeflow-rust/`](../jeeflow-rust/)（5 crate 切分 → 本仓 5 moon 模块）。
+# jeeflow-moon
 
-## workspace 布局（方案 §2.5）
+**The jeeflow workflow engine in MoonBit — the federation's 7th language.**
 
-| 模块 | 定位 | 依赖 |
-|---|---|---|
-| `core/` | 引擎核心：model/spi/engine/parser/handler/event/metadata/memory + json/error/id_gen。**运行时零 registry 依赖**（测试经 `for "test"` 引 async，见 docs/decisions-log.md D-M0-1） | 无 |
-| `repository-mysql/` | MySQL 仓储（moondb Driver + moon-mysql async conn）+ 分页/m_ 解析 + schema 副本 + smoke | core、moondb、moon-mysql、async |
-| `persist/` | DynamicTableWriter + PersistPostInterceptor + Meta | core |
-| `facade/` | `flow(action, args)` 45 action + 契约出口层 | core、persist |
-| `demo/` | 轻量 HTTP demo :8092（**不发布**） | facade、repository-mysql、async |
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+[![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--core-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-core)
+[![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--facade-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-facade)
+[![T0](https://img.shields.io/badge/T0-116%20tests%20green-brightgreen)](./docs/testing.md)
 
-其余：`flows/`（15 份共享 LogicFlow 副本，编辑源=jeeflow-java）、`consistency/`（M5 生成 moon.json）、
-`docs/`、`scripts/`。
+</div>
 
-## M0 产物清单
+`jeeflow-moon` is a full workflow (BPM) engine — process definitions, instances, tasks,
+countersign gates, CC notifications, stats — behind a **single 45-action facade**:
+`flow(action, args) → {code, msg, data}`. It is the MoonBit port of the
+jeeflow federation (Java reference implementation), API-compatible with the Go / Python / Node /
+PHP / Rust builds: same 15 shared LogicFlow fixtures, same `99999999` error envelope, same
+five-key pagination, same state machine.
 
-- **45 action manifest**：[docs/action-manifest.json](docs/action-manifest.json)（与 Java `JeeflowFacade` 实查 diff 无差集，
-  校验器 [scripts/check-action-manifest.mjs](../scripts/check-action-manifest.mjs)，负向变异已验证红→还原）
-- **4 spike 全绿**：
-  1. `async test` wasm 跑绿（`core/spi/*_test.mbt`，2/2）
-  2. moon-mysql（wasm，vendored 解锁）连 160 真事务：建表/rollback/commit/自清理
-     （`repository-mysql/smoke/`；上游 client 包钉 native-only 的对策见 docs/decisions-log.md D-M0-2）
-  3. `Server::run_forever` wasm :8092 curl 通（/health + 契约信封）
-  4. 泛型约束引擎骨架 + 闭包字段 ServiceContext 编译并运行时验证（`core/spi/spike_service_context.mbt`）
-- **schema-mysql.sql + flows/ 15 份副本**：与 jeeflow-java 编辑源逐字一致
-- **spec 基线锚定**：java `58fd0b3` / doc `426a1db` / issue 起点 105（`-moon-` 后缀）——写入 manifest `_meta.baseline`
-
-## 常用命令
-
-```bash
-# 工具链（Git Bash）
-export MOON_HOME=/g/dev-tools/moon PATH=/g/dev-tools/moon/bin:$PATH
-
-moon build --target wasm                                   # 全 workspace 构建
-moon test  --target wasm                                   # 全 workspace 测试（T0）
-node scripts/check-action-manifest.mjs                     # 45 action manifest gate
-
-# T1 MySQL 冒烟（wasm → 160，凭据只走 env，红线 R6）
-JEFFLOW_DB_HOST=192.168.1.160 JEFFLOW_DB_USER=root JEFFLOW_DB_PWD=... \
-  moon run --target wasm repository-mysql/smoke
-
-# demo（M0 = spike③ /health；M4 扩展全契约）
-moon run --target wasm demo/cmd/main        # curl http://127.0.0.1:8092/health
+```mermaid
+flowchart LR
+  ui["jeeflow-ui (?lang=moon)"] -->|"/moon-api → POST /wf/{action}"| demo["demo :8092<br/>run_forever"]
+  demo --> f["**Facade** flow(action, args)<br/>45 actions · outbound contract layer"]
+  f --> e["**Engine** (async)<br/>start · execute · jump · countersign gates"]
+  e -->|"`async fn` SPI"| spi["ProcessRepository · SPI methods"]
+  spi --> mem["Memory repo<br/>(T0)"]
+  spi --> my[("MySQL<br/>tx template · m_ filters")]
+  f --> p["**Persist**<br/>ARCHIVE / SYNC · field permissions"]
 ```
 
-## 文档
+## Quickstart
 
-| 文档 | 内容 |
-|---|---|
-| [docs/toolchain.md](docs/toolchain.md) | 工具链钉死版本 + 构建目标纪律 + moonc 0.10.11 语法口径备忘 |
-| [docs/decisions-log.md](docs/decisions-log.md) | 代决策日志（问题/候选/所选项/理由，等用户逐条追认） |
-| [docs/action-manifest.json](docs/action-manifest.json) | 45 action 契约基准（M0 gate） |
+```bash
+git clone git@github.com:mldong/jeeflow-moon.git && cd jeeflow-moon
+export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH
 
-## 红线速览（全文见方案 §0.2 R1–R9）
+moon test --target wasm                                   # T0: 116 tests, all green
+moon run --target wasm demo/cmd/main                      # demo on :8092 (memory store)
+bash scripts/smoke_t2.sh                                  # start → todo → approve → highlight
+```
 
-不自动 push；发版动作（mooncakes publish/tag/远端建仓）等用户账号与确认；160 只动 jeeflow 库 wf_* 表、
-id 用 9xxxxx、测后自清理、凭据只走 `JEFFLOW_DB_*` env；三场景测试不过不 commit；工具链不进仓；
-范围 = 引擎本体 + 轻量 demo + jeeflow-ui /moon-api 接入。
+Consume from your own module (`moon.mod`):
+
+```toml
+import {
+  "mldong/jeeflow-core@0.1.0",     # engine core — zero runtime registry deps
+  "mldong/jeeflow-facade@0.1.0",   # 45-action unified facade
+}
+```
+
+```moonbit
+// Wire once at startup: repositories are generic parameters, small SPIs are closure fields.
+let repo    = @memory.MemoryRepository::new()
+let ctx     = @spi.Ctx::new(repo, repo)
+              .with_user_provider(my_user_provider)       // (String) -> UserInfo? raise
+let facade  = @facade.Facade::make(ctx)
+
+// Every workflow capability is one call:
+let resp = facade.flow("processDefine/startAndExecute", args)   // {code:0, msg, data}
+```
+
+## What's here
+
+- **45-action facade** — every engine capability routes through `flow(action, args)` with the
+  federation envelope: success `code=0`, business failure `99999999` (and nothing else), unknown
+  action rejected at the top level. Groups: `processDefine` (8), `processInstance` (14, incl. 3
+  stats), `processTask` (9), `processDesign` (9), `processSurrogate` (5). An outbound contract
+  layer runs on every response: snake→camel keys, recursive id stringification (including plural
+  id arrays — snowflakes exceed float64), `yyyy-MM-dd HH:mm:ss` times, five-key pagination
+  (`pageNum/pageSize/recordCount/totalPage/rows`).
+- **Fully async engine** — repository SPI, engine and facade are `async fn` end to end, one event
+  loop, zero nested runtimes (MoonBit has no `block_on`; the sync-SPI + bridge shape used
+  elsewhere is not portable here). Engine operations: `start`, `execute`, `jump`, `jump_to_end`,
+  `jump_to_first`, withdraw — with hydrate-from-repository as a first-class step.
+- **Countersign gates** — parallel (all-finish), sequential (one task at a time, full roster kept
+  in task variables), ratio expressions (`#nrOfCompletedInstances==2`), and one-vote veto
+  (`countersignCompletionCondition=ONE_VOTE_VETO`); soft reject via `submitType=20` sets
+  `countersignDisagreeFlag` and abandons merged leftovers.
+- **Events** — `TASK_CREATE` (fired after persistence, so listeners can resolve the task),
+  `INSTANCE_END` (both finish and reject paths), `CC_CREATE` (per actor, id passed in the event);
+  per-listener fault isolation — one bad listener never breaks the flow.
+- **Metadata & handlers** — 7 built-in assignment handlers registered under their Java FQCNs
+  (applicant / dept leaders / form-field / role), `EnumDictRegistry` with the 7 `wf_*` dicts,
+  `HandlerRegistry`.
+- **Persist** (separate module) — `PersistPostInterceptor` drives business-table writes off
+  `persistMode`: **ARCHIVE** (one idempotent INSERT at end+agree, keyed by `process_instance_id`)
+  or **SYNC** (INSERT at start → per-task UPDATE filtered by the target node's
+  `PERMISSION_*` field rights → final-state UPDATE), with table-name safety checks.
+- **MySQL repository** (separate module) — all SPI methods over a vendored pure-MoonBit
+  MySQL wire client (works on wasm), `m_` three-segment filters, NULL-safe row hydration,
+  DATETIME text normalization, and a real `BEGIN/COMMIT/ROLLBACK` transaction template
+  (connection-bound via ambient single-thread context).
+- **Memory repository** (in core) — the T0 store: same behavior, no I/O; row listing is
+  id-ordered for deterministic tests.
+- **Clock SPI** — core has no wall clock; time is injected (`set_clock`), so stats snapshots and
+  `autoGenTitle` are fully deterministic under test (fixed clock = byte-stable consistency runs).
+- **Zero-registry-dependency core** — `jeeflow-core` runs on the MoonBit standard library only;
+  JSON, expressions, users and transactions are all SPI. Demo wiring shows a full assembly in
+  ~40 lines.
+
+## Modules
+
+| module | mooncakes | role |
+|---|---|---|
+| [`core`](./core) | [`mldong/jeeflow-core`](https://mooncakes.io/docs/mldong/jeeflow-core) | model / async SPI / engine / parser / events / metadata / memory repo |
+| [`facade`](./facade) | [`mldong/jeeflow-facade`](https://mooncakes.io/docs/mldong/jeeflow-facade) | 45-action `flow(action, args)` + outbound contract layer + stats |
+| [`persist`](./persist) | [`mldong/jeeflow-persist`](https://mooncakes.io/docs/mldong/jeeflow-persist) | business-table persist: ARCHIVE / SYNC + field permissions |
+| [`repository-mysql`](./repository-mysql) | [`mldong/jeeflow-repository-mysql`](https://mooncakes.io/docs/mldong/jeeflow-repository-mysql) | MySQL SPI over a pure-MoonBit wire client + tx template |
+| `demo` | not published | `:8092` HTTP demo + jeeflow-ui `?lang=moon` |
+
+## Test matrix
+
+| Tier | Command | Scope |
+|---|---|---|
+| T0 | `moon test --target wasm` | 116 tests: 22 compliance scenarios over the 15 shared flows, submitType matrix, event timing, outbound contracts, persist idempotency/permissions (mutation-verified) |
+| T1 | `JEFFLOW_DB_*=… moon run --target wasm repository-mysql/smoke` | real MySQL: five-key pages, hydrate, `m_` filters over SQL, tx rollback leaves no half instance, double-execute is rejected |
+| T2 | `bash scripts/smoke_t2.sh` | demo HTTP: start → todo → approve → state 20 → highlight → 99999999 negative |
+
+## Design notes
+
+Two MoonBit realities shaped the code, both documented in `docs/decisions-log.md`:
+
+- **JSON numbers are doubles.** Snowflake ids exceed 2⁵³, so row VOs stringify ids at
+  construction time and the outbound `stringify_ids` pass is a recursive safety net, not the
+  first line of defense.
+- **`Array::sort` on `String` mis-sorts on wasm** (calling `compare` directly is correct). The repo
+  ships its own insertion sorts (`sort_strings` / `sort_i64` / `sort_int`) and uses them everywhere;
+  when the toolchain is fixed the swaps are one-line.
+
+See also `docs/contract-notes.md` (contract → implementation map), `docs/integration.md`
+(embedding guide), `docs/testing.md` (T0/T1/T2) and `docs/PUBLISH.md` (mooncakes release runbook).
+
+## License
+
+Apache-2.0.
