@@ -19,6 +19,8 @@ COPY repository-mysql repository-mysql
 COPY persist persist
 COPY facade facade
 COPY demo demo
+# demo 种子：flows_dir() 候选路径解析到 /flows（WORKDIR=/app 的 ../../flows）
+COPY flows /flows
 
 RUN moon update && moon build --target native
 

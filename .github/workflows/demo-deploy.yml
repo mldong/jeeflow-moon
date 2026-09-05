@@ -47,8 +47,14 @@ jobs:
               -p 16086:8092 \
               jeeflow-moon-demo:latest
             rm -f jeeflow-moon-demo.tar
-            sleep 3
-            if ! curl -sf http://127.0.0.1:16086/health; then
+            # native 冷启动 + seed 装载需数秒：轮询等待而非固定 sleep
+            ok=""
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+              sleep 2
+              if curl -sf http://127.0.0.1:16086/health; then ok=1; break; fi
+              echo "waiting ($i/15)..."
+            done
+            if [ -z "$ok" ]; then
               echo "health failed"
               docker ps -a --filter name=jeeflow-moon-demo
               docker logs jeeflow-moon-demo 2>&1 | tail -80
