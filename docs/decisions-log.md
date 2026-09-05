@@ -131,3 +131,29 @@
   checklist 全绿：T0 117 / T1 160 / T2 多轮 / manifest 45 / mooncakes 回拉验证 PASS）；
   工具链暂不钉版本（bug 在本仓未用 repr，非 core 漂移）。
 - **状态**：已随 0.1.1 发版落地，待追认。
+
+## D-M5-4 发版 CI 通道恢复（latest 别名 + 版本守卫 + moon update）
+
+- **问题**：publish.yml 首发连挂 5 轮后弃用（走本地 publish）。三层根因（2026-09-05 定位）：
+  ① 服务端对显式版本路径一律 403（`binaries/0.1.20260827/*` GET 实测 403，`latest` 别名 200）——钉版本号的安装方式当前不可用；
+  ② 9/4 晚 latest 是含"TOML moon.mod import @版本解析"缺陷的坏构建，后被官方撤回，
+  2026-09-05 实测 latest=0.1.20260827（d0aaa07，与本地发版工具链同构建）；
+  ③ `moon install` 前缺 `moon update`——0.1.20260827 内置 registry 索引陈旧，不认识 async/moon-mysql 等依赖
+  （本地因缓存常新未暴露）。
+- **所选项**：workflow 改装 latest + `EXPECTED_MOON_VERSION` 守卫（latest 漂移出已验证版本即 fail-fast）+
+  `moon update` 前置 + `validate_only` 通道自检入参。自检绿后 tag v0.1.2 实战发版成功
+  （run 33951631628，mooncakes 四模块 0.1.2 已生效）——CI 通道恢复。
+- **遗留风险**：latest 未来漂移到坏构建时守卫会拦下；届时本地重验后更新期望版本。
+- **状态**：待追认（0.1.2 已经 CI 通道发布，实战通过）。
+
+## D-M5-5 stats 口径对齐（group/define 编码口径 + overview 均值）
+
+- **问题**：七语言公网 demo 契约验证（jeeflow-ui 工作台联调触发）发现 moon 侧偏差：
+  ① `stats/group`(define) key 用 display_name（契约=编码 name）、label=null（契约=display_name）、avgDurationSeconds=null；
+  ② `stats/overview` avgDurationSeconds 误取**最大值**（跨实例 max），契约=均值（C23）。
+- **所选项**：define 分组改按 `d.name` + labels 表；node/define 维度 avg=D总量/样本数（新增 dur_counts）；
+  时长口径抽 `stats_instance_duration_secs` 助手（C23：MAX(task.finish_time)-create_time）；
+  overview 改均值。T0 117 全绿；本地+公网（0.1.2 部署后）复核 key=01-simple/label=简单审批流程/avg=1。
+- **同类待办**：java 参考实现 trend started/finished 与 group avgDurationSeconds 返回**字符串**（契约 int）——
+  记 issues/105，六语言待核（本轮不动，涉 §6.8 全覆盖）。
+- **状态**：待追认（随 0.1.2 已发布）。
