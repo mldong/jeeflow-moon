@@ -17,10 +17,13 @@ pub async fn App::memory_only() -> App raise {
   seed_memory(repo)
   let n = 0L
   let ctx = make_mem_ctx(repo)
+  let f = @facade.Facade::make(ctx)
+  // T003：业务数据种子（引擎真实启动 16 进行中 + 9 已完成 + 8 委托）
+  seed_business(f)
   {
     store: "memory",
     memory_repo: repo,
-    mem_facade: @facade.Facade::make(ctx),
+    mem_facade: f,
     mysql_repo: None,
     my_facade: None,
     seeded_defines: n,
@@ -72,13 +75,15 @@ pub async fn App::create() -> App raise {
 }
 
 ///|
-/// /api/reset：memory 重建状态 + 重载种子；mysql 仅清 demo 自身不可行（共享库）→ 回 ok
+/// /api/reset：memory 重建状态 + 重载种子 + 复跑业务种子；mysql 仅清 demo 自身不可行（共享库）→ 回 ok
 pub async fn App::reset(self : App) -> Unit raise {
   if self.store == "memory" {
     let repo = @memory.MemoryRepository::new()
     seed_memory(repo)
     self.memory_repo = repo
-    self.mem_facade = @facade.Facade::make(make_mem_ctx(repo))
+    let f = @facade.Facade::make(make_mem_ctx(repo))
+    self.mem_facade = f
+    seed_business(f)
   }
 }
 
