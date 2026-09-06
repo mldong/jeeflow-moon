@@ -129,3 +129,73 @@ async test "memory: design his newest first" {
   assert_eq(list[0].content, "v2")
   assert_eq(list[2].content, "v0")
 }
+
+///|
+async test "memory: doneList 解析流程显示名 + operator『我的』过滤 (issues/107 A/B)" {
+  let repo = @memory.MemoryRepository::new()
+  let define = make_define_struct()
+  repo.save_define(define)
+  let inst = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  repo.save_instance(inst)
+  // 同实例两个已完成任务：leader 办一个、user1 办一个（create_user 都是发起人 user1）
+  let tA : @model.ProcessTask = {
+    task_id: 0L,
+    process_instance_id: inst.instance_id,
+    task_name: "审批",
+    display_name: "审批",
+    task_type: 0,
+    perform_type: 0,
+    task_state: 20,
+    actor_id: Some("leader"),
+    actor_ids: ["leader"],
+    finish_time: Some("2026-09-01 10:00:00"),
+    expire_time: None,
+    form_key: None,
+    parent_task_id: None,
+    variables: @json.FlowData::new(),
+    create_time: Some("2026-09-01 09:00:00"),
+    create_user: Some("user1"),
+    update_time: None,
+    update_user: None,
+  }
+  let tB : @model.ProcessTask = {
+    task_id: 0L,
+    process_instance_id: inst.instance_id,
+    task_name: "发起申请",
+    display_name: "发起申请",
+    task_type: 0,
+    perform_type: 0,
+    task_state: 20,
+    actor_id: Some("user1"),
+    actor_ids: ["user1"],
+    finish_time: Some("2026-09-01 09:30:00"),
+    expire_time: None,
+    form_key: None,
+    parent_task_id: None,
+    variables: @json.FlowData::new(),
+    create_time: Some("2026-09-01 09:00:00"),
+    create_user: Some("user1"),
+    update_time: None,
+    update_user: None,
+  }
+  repo.save_task(tA)
+  repo.save_task(tB)
+  // A 正向：operator=leader → 只见 tA，且行显示名非 null（= 流程显示名 "Test"）
+  let q = @model.PageQuery::new(1L, 10L)
+  q.set_operator(Some("leader"))
+  let page = repo.page_done_tasks(q)
+  assert_eq(page.record_count(), 1L)
+  assert_eq(page.rows().length(), 1)
+  assert_eq(page.rows()[0].task_name, "审批")
+  assert_eq(page.rows()[0].define_display_name, Some("Test"))
+  // B 负向：operator=user1 → 只见 tB（排除 leader 的 tA）
+  let q2 = @model.PageQuery::new(1L, 10L)
+  q2.set_operator(Some("user1"))
+  let page2 = repo.page_done_tasks(q2)
+  assert_eq(page2.record_count(), 1L)
+  assert_eq(page2.rows()[0].task_name, "发起申请")
+  // 回归：不带 operator（None）→ 全量 2
+  let q3 = @model.PageQuery::new(1L, 10L)
+  let page3 = repo.page_done_tasks(q3)
+  assert_eq(page3.record_count(), 2L)
+}

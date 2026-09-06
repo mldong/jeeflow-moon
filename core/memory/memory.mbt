@@ -13,6 +13,19 @@ fn query_match(q : @model.PageQuery, actor_ids : Array[String]) -> Bool {
 }
 
 ///|
+/// 已办 operator 过滤：t.operator = 我（对齐 java doneList query.add("t.operator","EQ",userId)）。
+/// moon memory 语义 = 任务办理人 actor_id（finish(operator) 写入），非发起人 create_user。
+fn done_operator_match(q : @model.PageQuery, t : @model.ProcessTask) -> Bool {
+  match q.operator() {
+    Some(op) => match t.actor_id {
+      Some(a) => a == op
+      None => false
+    }
+    None => true
+  }
+}
+
+///|
 fn flow_data_json_string(fd : @json.FlowData) -> String? {
   Some(fd.to_object_json().stringify())
 }
@@ -345,8 +358,13 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_done_tasks(sel
   let rows : Array[@model.TaskRow] = []
   for tid in sorted_ids(self.tasks) {
     let t = self.tasks[tid]
-    if t.task_state == @model.TaskState::Finished.code() {
-      rows.push(task_row_of(t, self.instances.get(t.process_instance_id), None))
+    if t.task_state == @model.TaskState::Finished.code() && done_operator_match(query, t) {
+      let inst = self.instances.get(t.process_instance_id)
+      let define = match inst {
+        Some(i) => self.defines.get(i.define_id)
+        None => None
+      }
+      rows.push(task_row_of(t, inst, define))
     }
   }
   let total = rows.length().to_int64()

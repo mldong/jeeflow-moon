@@ -102,8 +102,9 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_done_tasks(self
   let (m_where, m_params) = @query.build_m_where(query.filters())
   let operator = query.operator()
   let conn = self.open_or_tx()
+  // doneList「我的」口径对齐 java t.operator EQ（issues/107：不含发起人 create_user）
   let count_sql = "SELECT COUNT(*) AS cnt FROM wf_process_task t WHERE t.task_state = 20" + m_where + (match operator {
-    Some(_) => " AND (t.operator = ? OR t.create_user = ?)"
+    Some(_) => " AND t.operator = ?"
     None => ""
   })
   let count_params : Array[@moondb.Value] = []
@@ -113,14 +114,13 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_done_tasks(self
   match operator {
     Some(op) => {
       count_params.push(@moondb.Text(op))
-      count_params.push(@moondb.Text(op))
     }
     None => ()
   }
   let count_rows = q(conn, count_sql, count_params)
   let total = if count_rows.is_empty() { 0L } else { row_i64(count_rows[0], "cnt") }
   let sql = "SELECT t.id, t.process_instance_id, t.task_name, t.display_name, t.task_type, t.perform_type, t.task_state, t.operator, t.finish_time, t.expire_time, t.form_key, t.task_parent_id, t.variable, t.create_time, t.create_user, t.update_time, t.update_user, pi.process_define_id, pi.state AS instance_state, pi.operator AS instance_operator, pi.business_no, pi.variable AS instance_variable, pi.create_time AS instance_create_time, pd.name AS define_name, pd.display_name AS define_display_name, pd.version AS define_version FROM wf_process_task t LEFT JOIN wf_process_instance pi ON pi.id = t.process_instance_id LEFT JOIN wf_process_define pd ON pd.id = pi.process_define_id WHERE t.task_state = 20" + m_where + (match operator {
-      Some(op) => " AND (t.operator = ? OR t.create_user = ?)"
+      Some(op) => " AND t.operator = ?"
       None => ""
     }) + " ORDER BY t.id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()
   let params : Array[@moondb.Value] = []
@@ -129,7 +129,6 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_done_tasks(self
   }
   match operator {
     Some(op) => {
-      params.push(@moondb.Text(op))
       params.push(@moondb.Text(op))
     }
     None => ()
