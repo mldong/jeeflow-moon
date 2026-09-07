@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 未发布（0.1.3 待发）
+## 0.1.3（2026-09-06）
 
 issues/103 §8 stats 一致性补跑抓出的 4 处偏差修复（均在 `facade/stats.mbt`；
 T0 117/117 回归绿，与 java/rust 快照 15/15 逐字段全等）：
@@ -14,6 +14,20 @@ T0 117/117 回归绿，与 java/rust 快照 15/15 逐字段全等）：
 
 新增一致性驱动 `demo/cmd/consistency`（固定数据集驱动 15 个 stats action，
 输出 `consistency/moon.json` 快照，可复现）。
+
+issues/107 doneList 双缺陷修复（2026-09-06 夜班批，`298c1ce`）：
+
+- **`page_done_tasks` 解析 instance→define**：此前 define 硬编码 None，
+  行 `processDefineDisplayName` 恒 null（公网「我的已办」流程列整列「-」）。
+- **新增 `done_operator_match` 按 `t.actor_id=我` 过滤**：此前不过滤混入他人任务
+  （对齐 java `t.operator EQ` / spec 06-facade doneList；过滤在算 total 前执行，
+  保证 recordCount=命中数）。T0 118 用例全绿（显示名非 null + operator 正负向 + 无过滤回归）。
+- **repository-mysql doneList operator 收敛** `t.operator=?`（原
+  `t.operator=? OR t.create_user=?` 过宽，对齐 java；T1 wasm→160 smoke ALL PASS）。
+
+发版：tag `v0.1.3` → publish.yml CI 发 mooncakes 四模块（run 34046826425）+
+demo-deploy 公网 moon demo 重建（run 34046826422）；公网复核「我的已办」流程列
+非「-」且仅本人任务（API + 浏览器双证据）。
 
 ## 0.1.2（2026-09-05）
 
