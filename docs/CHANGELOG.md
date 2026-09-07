@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## 0.1.4（2026-09-07）
+
+issues/108 instancePage/ccList 缺 operator 过滤修复（`f073134`，`core/memory/memory.mbt`）：
+
+- **`page_instances` 补 `i.operator` 过滤**：此前全量构建 rows 不读 `query.operator()`，
+  任意用户「流程实例」页可见所有人实例。新增 `operator_eq` helper（String 列版），
+  实例 operator 即发起人（与 java `t.operator EQ` / `JeeflowFacade.java:254` 同源，
+  spec 06-facade §2.5）。过滤在构建 rows 时执行，`recordCount` 为过滤后计数（issues/106 分页教训）。
+- **`page_cc_instances` 补 `cc.actor_id` 过滤**：此前遍历 `cc_instances` 全量构建，
+  「抄送我的」页返回所有人抄送行。按 `cc.actor_id = operator`（java `:649` 同口径）。
+- **repository-mysql 路径核查无需改**：`page_instances`/`page_cc_instances` 的 count/select
+  本就有 `AND pi.operator=?` / `AND cc.actor_id=?`，与 memory/java 三方口径一致（无
+  issues/107 式「OR create_user」偏宽）。
+- T0 119 用例全绿（新增 instancePage/ccList operator 正负向 + 无 operator 全量回归）；
+  T1 wasm→160 mysql smoke **ALL PASS**（M1–M5，含 instancePage 分页五键 + operator 过滤回归）。
+- 红线保持：`processSurrogate/page`（我的委托）无过滤是全语言现状（T003 矩阵不变量 7 依赖），
+  未动；`page_todo_tasks`/`page_done_tasks` 行为不变（issues/107 收口保持）。
+
+发版：tag `v0.1.4` → publish.yml CI 发 mooncakes 四模块 + demo-deploy 公网 moon demo 重建；
+公网双身份（张三/李四）instancePage 与 ccList 互不可见复核。
+
 ## 0.1.3（2026-09-06）
 
 issues/103 §8 stats 一致性补跑抓出的 4 处偏差修复（均在 `facade/stats.mbt`；
