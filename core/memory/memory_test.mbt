@@ -199,3 +199,54 @@ async test "memory: doneList 解析流程显示名 + operator『我的』过滤 
   let page3 = repo.page_done_tasks(q3)
   assert_eq(page3.record_count(), 2L)
 }
+
+///|
+async test "memory: instancePage/ccList operator『我的』过滤 (issues/108)" {
+  let repo = @memory.MemoryRepository::new()
+  let define = make_define_struct()
+  repo.save_define(define)
+  // 两个实例：user1 发起一个、leader 发起一个（实例 operator 即发起人）
+  let instA = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  repo.save_instance(instA)
+  let instB = @model.ProcessInstance::create(define, "leader", @json.FlowData::new())
+  repo.save_instance(instB)
+  // 抄送：instA 抄给 leader/user2，instB 抄给 user1（共 3 行）
+  repo.create_cc_instance(instA.instance_id, "user1", ["leader", "user2"])
+  repo.create_cc_instance(instB.instance_id, "leader", ["user1"])
+
+  // instancePage 正向：operator=user1 → 只见 user1 发起的实例
+  let q = @model.PageQuery::new(1L, 10L)
+  q.set_operator(Some("user1"))
+  let page = repo.page_instances(q)
+  assert_eq(page.record_count(), 1L)
+  assert_eq(page.rows().length(), 1)
+  assert_eq(page.rows()[0].operator, "user1")
+  // instancePage 负向：operator=leader → 只见 leader 发起的实例（排除 user1 的）
+  let q2 = @model.PageQuery::new(1L, 10L)
+  q2.set_operator(Some("leader"))
+  let page2 = repo.page_instances(q2)
+  assert_eq(page2.record_count(), 1L)
+  assert_eq(page2.rows()[0].operator, "leader")
+  // 回归：不带 operator（None）→ 全量 2
+  let q3 = @model.PageQuery::new(1L, 10L)
+  let page3 = repo.page_instances(q3)
+  assert_eq(page3.record_count(), 2L)
+
+  // ccList 正向：operator=leader → 只见抄给 leader 的行
+  let qc = @model.PageQuery::new(1L, 10L)
+  qc.set_operator(Some("leader"))
+  let pagec = repo.page_cc_instances(qc)
+  assert_eq(pagec.record_count(), 1L)
+  assert_eq(pagec.rows().length(), 1)
+  assert_eq(pagec.rows()[0].operator, "leader")
+  // ccList 负向：operator=user1 → 只见抄给 user1 的行（排除 leader/user2 的）
+  let qc2 = @model.PageQuery::new(1L, 10L)
+  qc2.set_operator(Some("user1"))
+  let pagec2 = repo.page_cc_instances(qc2)
+  assert_eq(pagec2.record_count(), 1L)
+  assert_eq(pagec2.rows()[0].operator, "user1")
+  // 回归：不带 operator（None）→ 全量 3 行 cc
+  let qc3 = @model.PageQuery::new(1L, 10L)
+  let pagec3 = repo.page_cc_instances(qc3)
+  assert_eq(pagec3.record_count(), 3L)
+}

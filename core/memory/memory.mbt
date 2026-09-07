@@ -26,6 +26,17 @@ fn done_operator_match(q : @model.PageQuery, t : @model.ProcessTask) -> Bool {
 }
 
 ///|
+/// 实例/抄送行 operator 过滤（String 列版）：传 operator 时列值须相等，不传全量。
+/// java 口径：instancePage `t.operator EQ`（实例 operator 即发起人，memory `i.operator`
+/// 与 java t.operator 列同源）、ccList `cc.actor_id EQ`（spec 06-facade §2.5，issues/108）。
+fn operator_eq(q : @model.PageQuery, col : String) -> Bool {
+  match q.operator() {
+    Some(op) => col == op
+    None => true
+  }
+}
+
+///|
 fn flow_data_json_string(fd : @json.FlowData) -> String? {
   Some(fd.to_object_json().stringify())
 }
@@ -376,7 +387,9 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_instances(self
   let rows : Array[@model.InstanceRow] = []
   for iid in sorted_ids(self.instances) {
     let i = self.instances[iid]
-    rows.push(instance_row_of(i, self.defines.get(i.define_id)))
+    if operator_eq(query, i.operator) {
+      rows.push(instance_row_of(i, self.defines.get(i.define_id)))
+    }
   }
   let total = rows.length().to_int64()
   @model.PageResult::new(query.page_num(), query.page_size(), total, page_slice(rows, query.page_num(), query.page_size()))
@@ -416,6 +429,10 @@ fn instance_row_of(
 pub impl @spi.ProcessRepository for MemoryRepository with fn page_cc_instances(self, query) {
   let rows : Array[@model.InstanceRow] = []
   for cc in self.cc_instances {
+    // ccList「我的」：只留抄给我的行（cc.actor_id = operator），total 为过滤后计数
+    if !operator_eq(query, cc.actor_id) {
+      continue
+    }
     let inst = self.instances.get(cc.process_instance_id)
     let define = match inst {
       Some(i) => self.defines.get(i.define_id)
