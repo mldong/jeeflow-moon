@@ -23,7 +23,7 @@ flowchart LR
   ui["jeeflow-ui (?lang=moon)"] -->|"/moon-api → POST /wf/{action}"| demo["demo :8092<br/>run_forever"]
   demo --> f["**Facade** flow(action, args)<br/>45 actions · outbound contract layer"]
   f --> e["**Engine** (async)<br/>start · execute · jump · countersign gates"]
-  e -->|"`async fn` SPI"| spi["ProcessRepository · SPI methods"]
+  e -->|"async fn SPI"| spi["ProcessRepository · SPI methods"]
   spi --> mem["Memory repo<br/>(T0)"]
   spi --> my[("MySQL<br/>tx template · m_ filters")]
   f --> p["**Persist**<br/>ARCHIVE / SYNC · field permissions"]
