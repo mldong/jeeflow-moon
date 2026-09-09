@@ -1,7 +1,12 @@
 name: publish
 
-# mooncakes.io 发版：push tag v* 触发；按依赖拓扑序 publish 4 模块（demo 不发布）。
-# 失败重试：Actions Re-run 或本地删 tag 重打；版本号严禁跳号（1.0.0 起完整递增）。
+# mooncakes.io 发版：push tag v* 或 workflow_dispatch（手动 `gh workflow run publish.yml`）触发；
+# 按依赖拓扑序 publish 4 模块（demo 不发布）。版本号严禁跳号（1.0.0 起完整递增）。
+# 失败重试（关键，09-09 v0.1.5 教训）：**修复落在 master、而 tag 仍指旧 commit 时**，Actions
+# Re-run / 删 tag 重打都只 checkout tag 记录的那个旧 commit，**拿不到该修复**（v0.1.5 即因此
+# Re-run 会重撞旧守卫发不出去）——须改用 workflow_dispatch（checkout master HEAD）或把 tag
+# 重指到修复后的 commit 再推；**纯偶发**（网络/CDN 抖动）才直接 Actions Re-run 原 run；部分
+# 模块已发成功则按拓扑步进补发失败模块、勿 bump 版本号绕（详见 docs/PUBLISH.md）。
 #
 # 工具链策略（2026-09-05 分析见 docs/PUBLISH.md；2026-09-09 复测 + owner 定调改策略）：
 # - 只能装 latest，钉版本不可行（09-09 复测）：cli.moonbitlang.com 显式版本路径为 S3
@@ -11,7 +16,8 @@ name: publish
 #   永久拦死发版——**09-09 owner 定调：去掉守卫，直接装 latest 发版**，仅在日志记录
 #   本次发版实际编译器版本留痕。注：编译器小版本**仍可能引入破坏**（实测 0.1.20260904
 #   把旧式泛型写法 fn name[T] 判为 parse error [3002]，仓内 3 处漏网已改标准 fn[T] name，
-#   见 0d23278）——发版遇 check 失败按错误信息修语法后 re-run 即可，不必等/回退编译器。
+#   见 0d23278）——发版遇 check 失败按错误信息修语法、commit 进 master，再走
+#   workflow_dispatch 重发（直接 Re-run 会 checkout tag 旧 commit，修复不生效），不必等/回退编译器。
 # - 留痕：9/4 晚 latest 曾是含 "TOML moon.mod import @版本解析" bug 的坏构建，
 #   官方撤回后 09-05 回到 0.1.20260827（d0aaa07）；09-09 latest 前移到 0.1.20260904。
 

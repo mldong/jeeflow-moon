@@ -1,6 +1,6 @@
-# mooncakes.io 发版通道（jeeflow-moon，v1.0.0 起）
+# mooncakes.io 发版通道（jeeflow-moon，独立 0.x 线，现 0.1.5）
 
-> 原则：**首次发版失败可重试、tag 可删重打，版本号严禁跳号**（1.0.0 起完整递增，不断号）。
+> 原则：**首次发版失败可重试、tag 可删重打，版本号严禁跳号**（0.1.0 起完整递增，不断号）。
 > CI 不跑测试——本地 T0/T1/T2 已验口径不变。
 
 ## 凭据（两种通道）
@@ -41,12 +41,19 @@ demo 模块不发布。
 
 ```bash
 git push origin master            # 代码先行（本 clone 的 GitHub remote 名为 origin）
-git tag v1.0.0 && git push origin v1.0.0   # 触发 publish workflow
+git tag v0.1.5 && git push origin v0.1.5   # 触发 publish workflow（版本号以 moon.mod 当前值为准）
 ```
 
-- 失败重试：Actions 页 Re-run；或本地删 tag 重打（`git tag -d v1.0.0 && git push origin :refs/tags/v1.0.0 && git tag v1.0.0 && git push origin v1.0.0`）。
-- 版本号不变（仍 1.0.0），重试 publish 同版本号——mooncakes 对已存在版本会拒绝，
-  若部分模块已发成功：仅重发失败模块（workflow 幂等按模块步进），**不要 bump 版本号来绕**。
+- 失败重试（**按失败原因选路径，09-09 v0.1.5 教训**）：
+  - **修复落在 master、tag 仍指旧 commit 时**（改 CI / 改源码修编译错）：Actions Re-run 或删 tag 重打
+    都只 checkout tag 记录的那个旧 commit，**拿不到该修复**——须改用 `gh workflow run publish.yml`
+    （workflow_dispatch，checkout master HEAD）或把 tag 重指到修复后的 commit 再推。
+  - **纯偶发**（网络 / CDN / registry 抖动，代码与 CI 都没动）：直接 Actions 页 Re-run 原 run；
+    或删 tag 重打（`git tag -d v0.1.5 && git push origin :refs/tags/v0.1.5 && git tag v0.1.5 && git push origin v0.1.5`）。
+- 版本号不变（moon 走 **0.x 独立线**，现 0.1.5，见 docs/decisions-log.md D-M5-1；下方示例的
+  `1.0.0` 系早期文档残留，实际以仓内 `moon.mod` 当前版本为准），重试 publish 同版本号——mooncakes
+  对已存在版本会拒绝，若部分模块已发成功：仅重发失败模块（workflow 幂等按模块步进），**不要 bump
+  版本号来绕**。
 
 ## 本地手动（兜底）
 
@@ -62,7 +69,7 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
 
 ```bash
 mkdir -p /tmp/pull-verify && cd /tmp/pull-verify
-# 新建空模块 import 四包 @1.0.0 → moon install → moon build --target wasm → 冒烟
+# 新建空模块 import 四包 @<当前版本>（引号包名格式 "mldong/jeeflow-core@0.1.5"，勿用裸 `name@ver` 空格写法）→ moon build --target wasm → 冒烟
 ```
 
 ## 发版前 checklist（缺一不包）
