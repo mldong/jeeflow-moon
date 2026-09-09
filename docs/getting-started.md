@@ -2,18 +2,16 @@
 
 ## 安装
 
-mooncakes.io 正式版本（0.1.x，平台放开 1.x 后首版即 1.0.0 不断号）。核心引擎仅依赖 MoonBit 标准库，按需引入仓储/门面：
+mooncakes.io 正式版本（0.1.x 线）。核心引擎仅依赖 MoonBit 标准库，按需引入仓储/门面——
+`moon add` 不带版本即拉 latest，自动把解析到的精确版本写进 moon.mod（实测 0.1.5，
+传递依赖 moondb/moon-mysql/async 一并解析，无需手声明）：
 
-```toml
-import {
-  "mldong/jeeflow-core@0.1.2",     # 引擎核心（运行时零 registry 依赖）
-  "mldong/jeeflow-facade@0.1.2",   # 45-action 统一门面
-  "mldong/jeeflow-persist@0.1.2",  # 可选：业务数据动态入库（ARCHIVE/SYNC）
-  "mldong/jeeflow-repository-mysql@0.1.2", # 可选：MySQL 仓储（含 vendored 解锁的 client）
-}
+```bash
+moon add mldong/jeeflow-core                  # 引擎核心（运行时零 registry 依赖）
+moon add mldong/jeeflow-facade                # 45-action 统一门面
+moon add mldong/jeeflow-persist               # 可选：业务数据动态入库（ARCHIVE/SYNC）
+moon add mldong/jeeflow-repository-mysql      # 可选：MySQL 仓储（含 vendored 解锁的 client）
 ```
-
-> repository-mysql 传递依赖 `Lfan-ke/moondb` / `Lfan-ke/moon-mysql` / `moonbitlang/async` 按需显式声明。钉精确版本（mooncakes 无 lockfile）。
 
 ## 5 分钟上手（内存仓储）
 
@@ -49,7 +47,7 @@ let facade = @facade.Facade::make(ctx_with(repo))
 ```bash
 export MOON_HOME=/g/dev-tools/moon PATH=$MOON_HOME/bin:$PATH   # 便携工具链
 
-moon test --target wasm              # T0：117 用例全绿（合规场景/submitType 矩阵/事件/出口契约）
+moon test --target wasm              # T0：119 用例全绿（合规场景/submitType 矩阵/事件/出口契约）
 moon run --target wasm demo/cmd/main # demo :8092（memory 默认）
 bash scripts/smoke_t2.sh             # T2：发起→待办→办理→完成→高亮→负向
 ```

@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--core-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-core)
 [![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--facade-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-facade)
-[![T0](https://img.shields.io/badge/T0-116%20tests%20green-brightgreen)](./docs/testing.md)
+[![T0](https://img.shields.io/badge/T0-119%20tests%20green-brightgreen)](./docs/testing.md)
 
 </div>
 
@@ -35,18 +35,17 @@ flowchart LR
 git clone git@github.com:mldong/jeeflow-moon.git && cd jeeflow-moon
 export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH
 
-moon test --target wasm                                   # T0: 116 tests, all green
+moon test --target wasm                                   # T0: 119 tests, all green
 moon run --target wasm demo/cmd/main                      # demo on :8092 (memory store)
 bash scripts/smoke_t2.sh                                  # start → todo → approve → highlight
 ```
 
-Consume from your own module (`moon.mod`):
+Consume from your own module — `moon add` pulls the latest release, no version pin:
 
-```toml
-import {
-  "mldong/jeeflow-core@0.1.0",     # engine core — zero runtime registry deps
-  "mldong/jeeflow-facade@0.1.0",   # 45-action unified facade
-}
+```bash
+moon add mldong/jeeflow-core     # engine core — zero runtime registry deps
+moon add mldong/jeeflow-facade   # 45-action unified facade
+# each add resolves the latest version (e.g. 0.1.5) and writes it into your moon.mod
 ```
 
 ```moonbit
@@ -113,7 +112,7 @@ let resp = facade.flow("processDefine/startAndExecute", args)   // {code:0, msg,
 
 | Tier | Command | Scope |
 |---|---|---|
-| T0 | `moon test --target wasm` | 116 tests: 22 compliance scenarios over the 15 shared flows, submitType matrix, event timing, outbound contracts, persist idempotency/permissions (mutation-verified) |
+| T0 | `moon test --target wasm` | 119 tests: 22 compliance scenarios over the 15 shared flows, submitType matrix, event timing, outbound contracts, persist idempotency/permissions (mutation-verified) |
 | T1 | `JEFFLOW_DB_*=… moon run --target wasm repository-mysql/smoke` | real MySQL: five-key pages, hydrate, `m_` filters over SQL, tx rollback leaves no half instance, double-execute is rejected |
 | T2 | `bash scripts/smoke_t2.sh` | demo HTTP: start → todo → approve → state 20 → highlight → 99999999 negative |
 

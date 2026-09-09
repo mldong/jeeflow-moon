@@ -4,18 +4,14 @@
 
 ## 安装（mooncakes.io）
 
-在宿主模块的 `moon.mod` import 块按需引入（钉精确版本，无 lockfile）：
+在宿主模块用 `moon add` 按需引入（不带版本 = 拉 latest，自动写精确版本进 moon.mod；
+repository-mysql 的传递依赖 moondb/moon-mysql/async 一并解析，无需手声明）：
 
-```toml
-import {
-  "mldong/jeeflow-core@1.0.0",           // 必需：引擎核心（运行时零依赖）
-  "mldong/jeeflow-facade@1.0.0",         // 推荐：45 action 统一门面
-  "mldong/jeeflow-persist@1.0.0",        // 可选：业务数据动态入库（ARCHIVE/SYNC）
-  "mldong/jeeflow-repository-mysql@1.0.0", // 可选：MySQL 仓储（含 vendored 解锁的 client）
-  "Lfan-ke/moondb@0.1.7",                // repository-mysql 的传递依赖（按需显式声明）
-  "Lfan-ke/moon-mysql@0.3.1",
-  "moonbitlang/async@0.20.3",
-}
+```bash
+moon add mldong/jeeflow-core                  # 必需：引擎核心（运行时零依赖）
+moon add mldong/jeeflow-facade                # 推荐：45 action 统一门面
+moon add mldong/jeeflow-persist               # 可选：业务数据动态入库（ARCHIVE/SYNC）
+moon add mldong/jeeflow-repository-mysql      # 可选：MySQL 仓储（含 vendored 解锁的 client）
 ```
 
 ## 最小装配（内存仓储）
