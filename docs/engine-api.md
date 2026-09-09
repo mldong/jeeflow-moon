@@ -38,7 +38,7 @@ let resp = facade.flow("processTask/execute", args)   // {code, msg, data}
 
 | 事件 | 时机 |
 |------|------|
-| `TASK_CREATE` | 落库**后** fire（监听器可解析到任务行，issues/13 时机对齐） |
+| `TASK_CREATE` | 落库**后** fire（监听器可解析到任务行 时机对齐） |
 | `INSTANCE_END` | 办结与拒绝双路都 fire |
 | `CC_CREATE` | 逐人 fire，事件携带 cc 记录 id |
 

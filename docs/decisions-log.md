@@ -155,5 +155,5 @@
   时长口径抽 `stats_instance_duration_secs` 助手（C23：MAX(task.finish_time)-create_time）；
   overview 改均值。T0 117 全绿；本地+公网（0.1.2 部署后）复核 key=01-simple/label=简单审批流程/avg=1。
 - **同类待办**：java 参考实现 trend started/finished 与 group avgDurationSeconds 返回**字符串**（契约 int）——
-  记 issues/105，六语言待核（本轮不动，涉 §6.8 全覆盖）。
+  记，六语言待核（本轮不动，涉 §6.8 全覆盖）。
 - **状态**：待追认（随 0.1.2 已发布）。

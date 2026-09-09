@@ -23,7 +23,7 @@
 | C7 时间 yyyy-MM-dd HH:mm:ss | Clock 注入（model.current_time_str）+ 出口 T→空格 + mysql DATETIME 文本归一 19 位 |
 | C8–C10 会签 | `core/engine` 门控（串行逐个/并行全齐/比例表达式/一票否决）+ `core/handler check_merge` |
 | C11 抄送双路径（f_ccActors/tf_ccActors） | `engine start_async` / `execute_task_async` + CC_CREATE 逐人 fire |
-| C12/C13 事件三型 + per-listener 兜底 | `core/event`（TASK_CREATE 落库后 fire，issues/13 时机） |
+| C12/C13 事件三型 + per-listener 兜底 | `core/event`（TASK_CREATE 落库后 fire 时机） |
 | C14 action 全齐/加签去重追加/决策 true 边 | manifest + `engine collect_path` + `repo add_task_actor` |
 | C15 ids/id 双收、空显式报错 | `facade arg_ids` |
 | C16–C20 persist | `persist/interceptor.mbt`（幂等键/权限双格式键/状态列探测/表名安全） |

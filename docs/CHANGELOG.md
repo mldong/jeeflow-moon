@@ -2,13 +2,13 @@
 
 ## 0.1.5（2026-09-09）
 
-issues/110 五语言引擎 SQL 仓 `find_instance_by_id` 不装 tasks 修复（`246d1ab`，
+五语言引擎 SQL 仓 `find_instance_by_id` 不装 tasks 修复（`246d1ab`，
 `repository-mysql/repo/repository.mbt`）：
 
 - **`MysqlRepository::find_instance_by_id` 水合任务**：此前只查 `wf_process_instance`
   单表，`tasks` 硬编码 `[]`，门面 `processInstance/detail` 的 tasks/activeTaskList
   恒为空数组（T015 gate26 L2-12 门禁真根因）。对齐 Java `findTasksByInstanceId` /
-  PHP `PdoProcessRepository` / C# `FindTasksInternalAsync`（issues/89 聚合水合口径）：
+  PHP `PdoProcessRepository` / C# `FindTasksInternalAsync`（聚合水合口径）：
   二次查 `wf_process_task`（复用 `find_history_tasks`：`ORDER BY id` + `hydrate_tasks`
   批查 actor_ids，事务内经 `open_or_tx` 复用环境连接，autocommit 独立连接语义不变）。
 - **级联安全性**：`update_instance` 本就不级联任务（仅实例行 state/variable/update_time），
@@ -26,28 +26,28 @@ issues/110 五语言引擎 SQL 仓 `find_instance_by_id` 不装 tasks 修复（`
 
 ## 0.1.4（2026-09-07）
 
-issues/108 instancePage/ccList 缺 operator 过滤修复（`f073134`，`core/memory/memory.mbt`）：
+instancePage/ccList 缺 operator 过滤修复（`f073134`，`core/memory/memory.mbt`）：
 
 - **`page_instances` 补 `i.operator` 过滤**：此前全量构建 rows 不读 `query.operator()`，
   任意用户「流程实例」页可见所有人实例。新增 `operator_eq` helper（String 列版），
   实例 operator 即发起人（与 java `t.operator EQ` / `JeeflowFacade.java:254` 同源，
-  spec 06-facade §2.5）。过滤在构建 rows 时执行，`recordCount` 为过滤后计数（issues/106 分页教训）。
+  spec 06-facade §2.5）。过滤在构建 rows 时执行，`recordCount` 为过滤后计数（分页教训）。
 - **`page_cc_instances` 补 `cc.actor_id` 过滤**：此前遍历 `cc_instances` 全量构建，
   「抄送我的」页返回所有人抄送行。按 `cc.actor_id = operator`（java `:649` 同口径）。
 - **repository-mysql 路径核查无需改**：`page_instances`/`page_cc_instances` 的 count/select
   本就有 `AND pi.operator=?` / `AND cc.actor_id=?`，与 memory/java 三方口径一致（无
-  issues/107 式「OR create_user」偏宽）。
+  式「OR create_user」偏宽）。
 - T0 119 用例全绿（新增 instancePage/ccList operator 正负向 + 无 operator 全量回归）；
   T1 wasm→160 mysql smoke **ALL PASS**（M1–M5，含 instancePage 分页五键 + operator 过滤回归）。
 - 红线保持：`processSurrogate/page`（我的委托）无过滤是全语言现状（T003 矩阵不变量 7 依赖），
-  未动；`page_todo_tasks`/`page_done_tasks` 行为不变（issues/107 收口保持）。
+  未动；`page_todo_tasks`/`page_done_tasks` 行为不变（收口保持）。
 
 发版：tag `v0.1.4` → publish.yml CI 发 mooncakes 四模块 + demo-deploy 公网 moon demo 重建；
 公网双身份（张三/李四）instancePage 与 ccList 互不可见复核。
 
 ## 0.1.3（2026-09-06）
 
-issues/103 §8 stats 一致性补跑抓出的 4 处偏差修复（均在 `facade/stats.mbt`；
+stats 一致性补跑抓出的 4 处偏差修复（均在 `facade/stats.mbt`；
 T0 117/117 回归绿，与 java/rust 快照 15/15 逐字段全等）：
 
 - **overview `total` 按 stateIn 门控**：此前统计窗口内全量实例（缺省不剔 99，
@@ -60,7 +60,7 @@ T0 117/117 回归绿，与 java/rust 快照 15/15 逐字段全等）：
 新增一致性驱动 `demo/cmd/consistency`（固定数据集驱动 15 个 stats action，
 输出 `consistency/moon.json` 快照，可复现）。
 
-issues/107 doneList 双缺陷修复（2026-09-06 夜班批，`298c1ce`）：
+doneList 双缺陷修复（2026-09-06 夜班批，`298c1ce`）：
 
 - **`page_done_tasks` 解析 instance→define**：此前 define 硬编码 None，
   行 `processDefineDisplayName` 恒 null（公网「我的已办」流程列整列「-」）。

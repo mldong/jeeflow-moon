@@ -36,5 +36,5 @@
 | `applicant` | 发起人（实例 operator） |
 | `u_*` 变量 | 从流程变量解析用户 |
 | 内置 handler | 7 个，按 Java 全限定类名注册（applicant / 部门主管×主职 / 表单字段 / 角色取人） |
-| `f_*` 表单字段 | 发起表单字段取人（resume 合并变量可达，对齐 issues/71） |
-| 抄送 `f_ccActors` / `tf_ccActors` | 数组/字符串双形态解析（对齐 Go issues/56） |
+| `f_*` 表单字段 | 发起表单字段取人（resume 合并变量可达，对齐） |
+| 抄送 `f_ccActors` / `tf_ccActors` | 数组/字符串双形态解析（对齐 Go） |

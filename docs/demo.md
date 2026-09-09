@@ -46,4 +46,4 @@ moon run --target wasm demo/cmd/consistency > moon.json
 ```
 
 固定数据集（2 流程 / 6 实例 / 5 任务）驱动 15 个 stats action，输出与六语言逐字段比对的
-快照（`consistency/moon.json`，口径见 jeeflow-hub issues/103 §8）。
+快照（`consistency/moon.json`，口径见 jeeflow-hub）。
