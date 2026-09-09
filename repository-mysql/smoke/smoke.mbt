@@ -222,6 +222,53 @@ async fn t1_m5_idempotent() -> Unit raise {
 }
 
 ///|
+///|
+/// T1-I110：SQL 仓 find_instance_by_id 水合任务 → detail 任务列表非空（issues/110）
+/// 修复前：find_instance_by_id 只查 wf_process_instance 单表，tasks 硬编码 []，
+/// 门面 processInstance/detail 的 tasks/activeTaskList 恒空（L2-12 门禁真根因）。
+/// 对齐 Java findTasksByInstanceId / PHP PdoProcessRepository / C# issues/89 聚合水合。
+/// 真实 MySQL：引擎发起 doing 实例（落 9903xx 段）→ 断言 find_instance_by_id 水合任务
+/// 非空 + 带 actor_ids，且门面 detail 消费（遍历 inst.tasks 组 tasks/activeTaskList）非空。
+async fn t1_i110_hydrate() -> Unit raise {
+  let repo = @repo.MysqlRepository::from_env()
+  clean_9x(repo)
+  save_define_9x(repo, 990301L, "t1-i110", SIMPLE_FLOW)
+  // 独立 id 段 9903xx：实例/任务 id 落测试段（R6 可清理）
+  let counter : Ref[Int64] = Ref::new(990301L)
+  let ctx = @spi.Ctx::new(repo, @spi.NoExtRepository::new())
+  let ctx2 = ctx.with_id_generator(fn() {
+    let v = counter.val
+    counter.val = v + 1L
+    v
+  })
+  let engine = @engine.Engine::make(ctx2)
+  let inst = engine.start_async(990301L, "user9x", @json.FlowData::new())
+  check(inst.instance_id >= 990300L, "9xxxxx 段实例 id")
+
+  // ① 仓储层：find_instance_by_id 水合任务 + actor_ids（修复前恒空）
+  let loaded = repo.find_instance_by_id(inst.instance_id).unwrap()
+  check(!loaded.tasks.is_empty(), "find_instance_by_id 水合任务非空")
+  var actors_ok = true
+  for t in loaded.tasks {
+    if t.actor_ids.is_empty() {
+      actors_ok = false
+    }
+  }
+  check(actors_ok, "水合任务带参与者 actor_ids")
+
+  // ② 门面 detail 消费口径：遍历 inst.tasks 组 tasks/activeTaskList
+  var active_count = 0
+  for t in loaded.tasks {
+    if t.is_doing() {
+      active_count += 1
+    }
+  }
+  check(loaded.tasks.length() > 0, "detail tasks 非空")
+  check(active_count > 0, "detail activeTaskList 非空")
+  clean_9x(repo)
+}
+
+///|
 async fn t1_all() -> Unit raise {
   println("T1-M1 page five keys...")
   t1_m1_page()
@@ -233,6 +280,8 @@ async fn t1_all() -> Unit raise {
   t1_m4_tx_rollback()
   println("T1-M5 idempotent execute...")
   t1_m5_idempotent()
+  println("T1-I110 find_instance_by_id hydrate tasks...")
+  t1_i110_hydrate()
   println("T1 ALL PASS (wasm → 160)")
 }
 

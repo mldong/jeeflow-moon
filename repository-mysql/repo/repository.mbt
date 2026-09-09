@@ -136,7 +136,11 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_instance_by_id(
     operator: row_text(r, "operator", ""),
     expire_time: row_opt_datetime(r, "expire_time"),
     variables: parse_flow_data(row_opt_text(r, "variable")),
-    tasks: [],
+    // issues/110：聚合水合——二次查 wf_process_task 装任务副本（含 actor_ids），
+    // 对齐 Java findTasksByInstanceId / PHP PdoProcessRepository / C# issues/89；
+    // 否则门面 detail 的 tasks/activeTaskList 恒空。
+    // 复用 find_history_tasks（ORDER BY id + 批查 actor，事务内经 open_or_tx 复用环境连接）
+    tasks: self.find_history_tasks(instance_id),
     create_time: row_opt_datetime(r, "create_time"),
     create_user: row_opt_text(r, "create_user"),
     update_time: row_opt_datetime(r, "update_time"),
