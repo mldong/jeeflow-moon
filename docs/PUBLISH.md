@@ -37,11 +37,11 @@ demo 模块不发布。
 ## GitHub Actions（推荐路径）
 
 ```bash
-git push github master            # 代码先行
-git tag v1.0.0 && git push github v1.0.0   # 触发 publish workflow
+git push origin master            # 代码先行（本 clone 的 GitHub remote 名为 origin）
+git tag v1.0.0 && git push origin v1.0.0   # 触发 publish workflow
 ```
 
-- 失败重试：Actions 页 Re-run；或本地删 tag 重打（`git tag -d v1.0.0 && git push github :refs/tags/v1.0.0 && git tag v1.0.0 && git push github v1.0.0`）。
+- 失败重试：Actions 页 Re-run；或本地删 tag 重打（`git tag -d v1.0.0 && git push origin :refs/tags/v1.0.0 && git tag v1.0.0 && git push origin v1.0.0`）。
 - 版本号不变（仍 1.0.0），重试 publish 同版本号——mooncakes 对已存在版本会拒绝，
   若部分模块已发成功：仅重发失败模块（workflow 幂等按模块步进），**不要 bump 版本号来绕**。
 
