@@ -40,6 +40,15 @@ moon run --target wasm demo/cmd/main                      # demo on :8092 (memor
 bash scripts/smoke_t2.sh                                  # start → todo → approve → highlight
 ```
 
+## Live demo
+
+Already running against this exact facade (no setup needed):
+
+- [jeeflow demo site — MoonBit tab](https://jeeflow-demo.mldong.com/?lang=moon): the shared
+  [jeeflow-ui](https://github.com/mldong/jeeflow-ui) workspace, `?lang=moon` routes every
+  `POST /wf/{action}` to this engine's `:8092` backend (`/moon-api/` proxy).
+- API health: [moon-api/health](https://jeeflow-demo.mldong.com/moon-api/health)
+
 Consume from your own module — `moon add` pulls the latest release, no version pin:
 
 ```bash
