@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## 0.1.5（2026-09-09）
+
+issues/110 五语言引擎 SQL 仓 `find_instance_by_id` 不装 tasks 修复（`246d1ab`，
+`repository-mysql/repo/repository.mbt`）：
+
+- **`MysqlRepository::find_instance_by_id` 水合任务**：此前只查 `wf_process_instance`
+  单表，`tasks` 硬编码 `[]`，门面 `processInstance/detail` 的 tasks/activeTaskList
+  恒为空数组（T015 gate26 L2-12 门禁真根因）。对齐 Java `findTasksByInstanceId` /
+  PHP `PdoProcessRepository` / C# `FindTasksInternalAsync`（issues/89 聚合水合口径）：
+  二次查 `wf_process_task`（复用 `find_history_tasks`：`ORDER BY id` + `hydrate_tasks`
+  批查 actor_ids，事务内经 `open_or_tx` 复用环境连接，autocommit 独立连接语义不变）。
+- **级联安全性**：`update_instance` 本就不级联任务（仅实例行 state/variable/update_time），
+  水合后 withdraw 的逐任务 `update_task` 路径不变；memory 仓本就水合（基线正确，未动）；
+  引擎核心会签语义未动。
+- **T0**：`smoke.mbt` 新增 `t1_i110_hydrate`（T1 通道 `moon run --target wasm`，真实 160
+  MySQL，9903xx 独立 id 段 + `clean_9x` 自清理）：引擎 `start_async` 发起 doing 实例
+  → 断言 `find_instance_by_id` 水合任务非空 + 带 actor_ids，且门面 detail 消费
+  （遍历 `inst.tasks` 组 tasks/activeTaskList）非空。
+- **验证**：`moon test --target wasm` 119/119 绿（单测套件未动）；`moon run
+  repository-mysql/smoke` T1 ALL PASS（M1–M5 + 新增 I110 五断言全过）；
+  `moon check --target wasm` 全 workspace 无硬错误。
+
+发版：tag `v0.1.5` → publish.yml CI 发 mooncakes 四模块（core/persist/repository-mysql/facade）。
+
 ## 0.1.4（2026-09-07）
 
 issues/108 instancePage/ccList 缺 operator 过滤修复（`f073134`，`core/memory/memory.mbt`）：
