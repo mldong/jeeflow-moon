@@ -32,7 +32,7 @@ flowchart LR
 ## Quickstart
 
 ```bash
-git clone git@github.com:mldong/jeeflow-moon.git && cd jeeflow-moon
+git clone https://github.com/mldong/jeeflow-moon.git && cd jeeflow-moon
 export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH
 
 moon test --target wasm                                   # T0: 119 tests, all green
