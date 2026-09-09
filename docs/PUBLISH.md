@@ -10,14 +10,21 @@
 | GitHub Actions（推荐） | repo secrets：`MOON_TOKEN` / `MOON_USERNAME` | push tag `v*` 自动触发 `.github/workflows/publish.yml`，按拓扑序 publish 4 模块 |
 | 本地手动（**当前主通道**） | `$MOON_HOME/credentials.json`（`{"token":..., "username":...}`，`moon login` 生成） | 按下方顺序手动执行 |
 
-> ⚠️ CI 工具链坑（2026-09-04 首发连挂 5 轮 → 2026-09-05 定位修复）：
-> 1. **钉版下载 403**：服务端对显式版本路径一律 403（`binaries/0.1.20260827/*` 与 `cores/core-0.1.20260827.tar.gz`
->    实测 GET 403），但 `latest` 别名 200——钉版本号的安装方式在当前服务端策略下不可用；
+> ⚠️ CI 工具链坑（2026-09-04 首发连挂 5 轮 → 2026-09-05 定位修复；2026-09-09 复测精读后更正）：
+> 1. **钉版下载 403**：脚本 host `cli.moonbitlang.com` 对显式版本路径一律 403（`binaries/0.1.20260827/*`
+>    与 `cores/core-0.1.20260827.tar.gz` 实测完整 GET 403，响应体为 S3 原生 `AccessDenied`，
+>    **服务端持久策略而非 CDN 瞬断**，换浏览器 UA 同样 403），仅 `latest` 别名可装——钉版本号的安装方式
+>    在当前服务端策略下不可用。另：`www.moonbitlang.com` 同名路径此前记的「200」是 **Docusaurus 404 页**
+>    （28944B HTML "Page Not Found"，latest/显式同内容），**并非产物**，不可作为钉版本通道；
 > 2. **9/4 晚的 latest 是坏构建**：含"TOML moon.mod import @版本解析（registry not found）"缺陷，
->    后被官方撤回；2026-09-05 实测 latest 已回到 `0.1.20260827`（d0aaa07，与本地发版工具链同构建）。
-> **修复**：workflow 改装 latest + `EXPECTED_MOON_VERSION` 版本守卫（latest 漂移即 fail-fast，
-> 提示先本地重验再更新期望版本）；另加 `validate_only` 手动入参做通道自检（装工具链+依赖+native 构建跳过 publish）。
-> 遗留风险：latest 未来漂移到坏构建时守卫会拦下，届时需本地验证后更新期望版本号。
+>    后被官方撤回；2026-09-05 实测 latest 已回到 `0.1.20260827`（d0aaa07，与本地发版工具链同构建）；
+> 3. **09-09 latest 再次漂移 `0.1.20260904`**（v0.1.5 两次 attempt 均被守卫按设计拦截——工具链下载
+>    两次都 100% 成功，失败点纯是版本断言；此前「CDN 403 卡原始 run」为本地复现误判，已推翻）。
+> **修复**：workflow 装 latest + `EXPECTED_MOON_VERSION` 版本守卫（该参数是**发版闸门**——保证发布
+> 编译器 == 本地 T0/T1/T2 验证过的编译器，非下载钉；latest 漂移即 fail-fast，提示先本地重验再更新
+> 期望版本）；另加 `validate_only` 手动入参做通道自检（装工具链+依赖+native 构建跳过 publish）。
+> 遗留风险：latest 漂移到新构建时守卫必拦、发版卡死，解锁二选一——等官方 latest 回到期望版本后 Re-run，
+> 或用新构建本地过 T0/T1/T2 后更新 `EXPECTED_MOON_VERSION`（改发版工具链，需 owner 拍板）。
 
 ## 发布拓扑序（依赖向，每次发版固定）
 

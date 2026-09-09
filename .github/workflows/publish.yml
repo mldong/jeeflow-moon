@@ -3,17 +3,22 @@ name: publish
 # mooncakes.io 发版：push tag v* 触发；按依赖拓扑序 publish 4 模块（demo 不发布）。
 # 失败重试：Actions Re-run 或本地删 tag 重打；版本号严禁跳号（1.0.0 起完整递增）。
 #
-# 工具链策略（2026-09-05 分析见 docs/PUBLISH.md；2026-09-09 复测）：
-# - 服务端对显式版本路径返回 403、只能装 latest（09-09 复测：脚本下载 host 为 cli.moonbitlang.com，
-#   其 binaries/0.1.20260827/* 与 cores/core-0.1.20260827.tar.gz 仍 403；www 域显式路径 200 但脚本不走，
-#   钉版本仍不可行，维持装 latest）；
+# 工具链策略（2026-09-05 分析见 docs/PUBLISH.md；2026-09-09 复测精读后更正）：
+# - 只能装 latest，钉版本不可行（09-09 复测）：脚本下载 host 为 cli.moonbitlang.com，
+#   其显式版本路径（binaries/0.1.20260827/* 与 cores/core-0.1.20260827.tar.gz）返回 S3 原生
+#   AccessDenied 403（**服务端持久策略，非 CDN 瞬断**，换浏览器 UA 同样 403）；www 域此前记的
+#   「显式路径 200」是 **Docusaurus 404 页**（28944B HTML，latest/显式同内容），**并非产物**——
+#   故 latest+下面版本守卫是唯一可行模式；
 # - 9/4 晚 latest 曾是含 "TOML moon.mod import @版本解析" bug 的较新构建，后被官方撤回，
 #   09-05 latest 回到已验证可用的 0.1.20260827（与本地发版工具链同构建 d0aaa07）；
-# - **09-09 latest 已漂移 0.1.20260904**（v0.1.5 publish 被下面守卫按设计拦截）。解锁二选一：
-#   ① 等官方 latest 回到 0.1.20260827 后 Actions Re-run（零风险，推荐）；
-#   ② 用 0.1.20260904 本地过 T0/T1/T2 + publish 前检查后，更新 EXPECTED_MOON_VERSION 再发版。
-# - 为防 latest 漂移到未验证构建：装完先校验版本号（EXPECTED_MOON_VERSION），
-#   不匹配立即失败并提示重新验证，绝不带着未知工具链发版。
+# - **09-09 latest 已漂移 0.1.20260904**（v0.1.5 两次 attempt 均被下面守卫按设计拦截——
+#   工具链下载两次都 100% 成功，失败点纯是装出 0.1.20260904 ≠ 期望 0.1.20260827；
+#   此前「CDN 403 卡原始 run」为本地复现误判，已推翻）。解锁二选一：
+#   ① 等官方 latest 回到 0.1.20260827 后 Actions Re-run（零风险，推荐；已挂每 3h 自动探测）；
+#   ② 用 0.1.20260904 本地过 T0/T1/T2 + publish 前检查后，更新 EXPECTED_MOON_VERSION 再发版
+#     （改的是发版工具链，需 owner 拍板）。
+# - EXPECTED_MOON_VERSION 是**发版闸门**（保证发布编译器 == 本地验证过的编译器），非下载钉；
+#   装完先校验版本号，不匹配立即失败并提示重新验证，绝不带着未知工具链发版。
 
 on:
   push:
