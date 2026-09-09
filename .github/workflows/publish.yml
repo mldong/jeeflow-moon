@@ -3,22 +3,15 @@ name: publish
 # mooncakes.io 发版：push tag v* 触发；按依赖拓扑序 publish 4 模块（demo 不发布）。
 # 失败重试：Actions Re-run 或本地删 tag 重打；版本号严禁跳号（1.0.0 起完整递增）。
 #
-# 工具链策略（2026-09-05 分析见 docs/PUBLISH.md；2026-09-09 复测精读后更正）：
-# - 只能装 latest，钉版本不可行（09-09 复测）：脚本下载 host 为 cli.moonbitlang.com，
-#   其显式版本路径（binaries/0.1.20260827/* 与 cores/core-0.1.20260827.tar.gz）返回 S3 原生
-#   AccessDenied 403（**服务端持久策略，非 CDN 瞬断**，换浏览器 UA 同样 403）；www 域此前记的
-#   「显式路径 200」是 **Docusaurus 404 页**（28944B HTML，latest/显式同内容），**并非产物**——
-#   故 latest+下面版本守卫是唯一可行模式；
-# - 9/4 晚 latest 曾是含 "TOML moon.mod import @版本解析" bug 的较新构建，后被官方撤回，
-#   09-05 latest 回到已验证可用的 0.1.20260827（与本地发版工具链同构建 d0aaa07）；
-# - **09-09 latest 已漂移 0.1.20260904**（v0.1.5 两次 attempt 均被下面守卫按设计拦截——
-#   工具链下载两次都 100% 成功，失败点纯是装出 0.1.20260904 ≠ 期望 0.1.20260827；
-#   此前「CDN 403 卡原始 run」为本地复现误判，已推翻）。解锁二选一：
-#   ① 等官方 latest 回到 0.1.20260827 后 Actions Re-run（零风险，推荐；已挂每 3h 自动探测）；
-#   ② 用 0.1.20260904 本地过 T0/T1/T2 + publish 前检查后，更新 EXPECTED_MOON_VERSION 再发版
-#     （改的是发版工具链，需 owner 拍板）。
-# - EXPECTED_MOON_VERSION 是**发版闸门**（保证发布编译器 == 本地验证过的编译器），非下载钉；
-#   装完先校验版本号，不匹配立即失败并提示重新验证，绝不带着未知工具链发版。
+# 工具链策略（2026-09-05 分析见 docs/PUBLISH.md；2026-09-09 复测 + owner 定调改策略）：
+# - 只能装 latest，钉版本不可行（09-09 复测）：cli.moonbitlang.com 显式版本路径为 S3
+#   AccessDenied 403（服务端持久策略）；www 域同路径实为 Docusaurus 404 页，非产物；
+# - latest 是**向前别名**，正常只前进（出 bug 也是修完升版本号，不回退旧构建）；
+#   原 EXPECTED_MOON_VERSION 版本守卫（9/4 坏构建事故后设）会在每次编译器正常更新时
+#   永久拦死发版——**09-09 owner 定调：去掉守卫，直接装 latest 发版**（小版本漂移
+#   对引擎编译无影响），仅在日志记录本次发版实际编译器版本留痕。
+# - 留痕：9/4 晚 latest 曾是含 "TOML moon.mod import @版本解析" bug 的坏构建，
+#   官方撤回后 09-05 回到 0.1.20260827（d0aaa07）；09-09 latest 前移到 0.1.20260904。
 
 on:
   push:
@@ -30,25 +23,17 @@ on:
         type: boolean
         default: false
 
-env:
-  EXPECTED_MOON_VERSION: "0.1.20260827"
-
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install MoonBit toolchain (latest) + version guard
+      - name: Install MoonBit toolchain (latest)
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> $GITHUB_PATH
-          "$HOME/.moon/bin/moon" version
-          if ! "$HOME/.moon/bin/moon" version | grep -qF "$EXPECTED_MOON_VERSION"; then
-            echo "::error::latest moon 已漂移出已验证版本（期望 $EXPECTED_MOON_VERSION）。"
-            echo "::error::请先用新版本在本地过 T0/T1/T2 + publish 前检查，更新 EXPECTED_MOON_VERSION 后再发版。"
-            exit 1
-          fi
+          "$HOME/.moon/bin/moon" version   # 留痕：本次发版实际编译器版本进 run log
 
       - name: Write mooncakes credentials
         run: |
