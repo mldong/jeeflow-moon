@@ -227,7 +227,7 @@ pub fn transform_output(val : Json) -> Json {
 
 ///|
 /// 分页五键（C22）
-pub fn page_to_json[T](page : @model.PageResult[T], row_json : (T) -> Json) -> Json {
+pub fn[T] page_to_json(page : @model.PageResult[T], row_json : (T) -> Json) -> Json {
   let obj = @json.empty_object()
   @json.obj_set(obj, "pageNum", @json.number_of(page.page_num()))
   @json.obj_set(obj, "pageSize", @json.number_of(page.page_size()))

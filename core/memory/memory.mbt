@@ -77,7 +77,7 @@ fn MemoryRepository::next_id(self : MemoryRepository) -> Int64 {
 }
 
 ///|
-fn sorted_ids[V](map : Map[Int64, V]) -> Array[Int64] {
+fn[V] sorted_ids(map : Map[Int64, V]) -> Array[Int64] {
   let ids : Array[Int64] = []
   for k, _ in map {
     ids.push(k)
@@ -282,7 +282,7 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn update_cc_status(se
 }
 
 ///|
-fn page_slice[T](rows : Array[T], page_num : Int64, page_size : Int64) -> Array[T] {
+fn[T] page_slice(rows : Array[T], page_num : Int64, page_size : Int64) -> Array[T] {
   let start = ((page_num - 1L) * page_size).to_int()
   if start < 0 || start >= rows.length() {
     return []
