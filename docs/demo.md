@@ -15,7 +15,7 @@ JEFFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main   # 默认 memory
 
 | 路由 | 说明 |
 |------|------|
-| `POST /wf/{action}` | 全转发 facade（45 action） |
+| `POST /wf/{action}` | 全转发 facade（40+ action） |
 | `GET /health` | 健康检查（返回 engine/store） |
 | `POST /api/reset` | memory 模式重建状态 + 重载种子；mysql 模式回 ok |
 | `GET /api/stats?operator=` | 待办/实例计数（demo 专用） |

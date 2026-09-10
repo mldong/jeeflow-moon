@@ -9,7 +9,7 @@ repository-mysql 的传递依赖 moondb/moon-mysql/async 一并解析，无需�
 
 ```bash
 moon add mldong/jeeflow-core                  # 必需：引擎核心（运行时零依赖）
-moon add mldong/jeeflow-facade                # 推荐：45 action 统一门面
+moon add mldong/jeeflow-facade                # 推荐：40+ action 统一门面
 moon add mldong/jeeflow-persist               # 可选：业务数据动态入库（ARCHIVE/SYNC）
 moon add mldong/jeeflow-repository-mysql      # 可选：MySQL 仓储（含 vendored 解锁的 client）
 ```
@@ -27,7 +27,7 @@ let ctx = ctx
   .with_user_search_provider(my_search_fns)    // IUserSearchProvider
   .with_expression_evaluator(my_eval)          // 可选；缺省内置简单比较求值
 let facade = @facade.Facade::make(ctx)
-// 45 action 单入口：
+// 40+ action 单入口：
 let resp = facade.flow("processDefine/startAndExecute", args)  // {code,msg,data}
 ```
 

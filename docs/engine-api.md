@@ -2,7 +2,7 @@
 
 ## 单入口：`flow(action, args)`
 
-45 个 action 全部经由一个门面入口，返回联邦统一信封：
+40+ 个 action 全部经由一个门面入口，返回联邦统一信封：
 
 ```moonbit
 let resp = facade.flow("processTask/execute", args)   // {code, msg, data}
@@ -11,7 +11,7 @@ let resp = facade.flow("processTask/execute", args)   // {code, msg, data}
 - 成功 `code=0`；业务失败 `99999999`（仅此两值）；未知 action 在顶层拒绝。
 - **出口契约层**（每个响应都过一遍）：snake→camel 键名、id 递归字符串化（含复数 id 数组——雪花超出 float64 精度）、时间 `yyyy-MM-dd HH:mm:ss`、分页五键 `pageNum/pageSize/recordCount/totalPage/rows`。
 
-## 45 action 分组
+## 40+ action 分组
 
 | 组 | 数量 | action |
 |----|------|--------|
