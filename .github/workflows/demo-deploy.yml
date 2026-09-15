@@ -47,7 +47,7 @@ jobs:
             # 运行时启动期需要的现代 syscall：EPERM 被运行时吞掉后事件循环永久等待（容器 Up、
             # 无 TCP 监听、docker logs 0 字节）。实测 seccomp=unconfined 后 health 立即通过
             # （2026-09-05 托管机 strace + A/B 对照定位）。宿主机 docker 升级到含现代默认
-            # profile 的版本后可回收此参数（决策记录 docs/decisions-log.md D-M5-2）。
+            # profile 的版本后可回收此参数（决策记录 MAINTAINING.md §4 D-M5-2）。
             docker run -d --name jeeflow-moon-demo --restart always \
               --security-opt seccomp=unconfined \
               -p 16086:8092 \
@@ -68,7 +68,7 @@ jobs:
             fi
             # 部署后 T2 冒烟门禁：health 只证进程活着，冒烟跑数字 id 全链路
             # （教训：入站雪花 id 精度回归 health 探不出来，本地 T2 还会因 id 恰好
-            #  double 可精确表示而假绿——见 docs/decisions-log.md D-M5-3）
+            #  double 可精确表示而假绿——见 MAINTAINING.md §4 D-M5-3）
             # 先兜底剥 CRLF（Windows 检出残留会让远端 bash 报 invalid option）
             sed -i 's/\r$//' /java_projects/jeeflow/demo/scripts/smoke_t2.sh
             BASE=http://127.0.0.1:16086 bash /java_projects/jeeflow/demo/scripts/smoke_t2.sh

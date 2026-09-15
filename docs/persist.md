@@ -38,4 +38,4 @@ UPDATE 时只写当前办理人对目标节点有权限的列。
 ## 测试
 
 persist 行为在 T0 覆盖（幂等性/权限键/状态列为**变异验证**——改坏实现测试必须红），
-见 [测试指南](./testing.md)。
+见 [MAINTAINING.md §2 T0](../MAINTAINING.md)（维护者向）。

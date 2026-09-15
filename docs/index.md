@@ -1,6 +1,7 @@
 # jeeflow-moon 文档
 
 > jeeflow 引擎的 **MoonBit 实现**——联邦第七个成员，对齐 Java 参考实现的行为语义：同一份 15 个 LogicFlow 共享流程、同一 `99999999` 错误信封、同一分页五键、同一状态机。
+> 本目录（`docs/`）只放**用户文档**，并同步到 [jeeflow-doc 文档站语言指南](https://jeeflow-doc.mldong.com/languages/moon/)。
 
 ## 引擎定位
 
@@ -13,20 +14,17 @@
 
 | 文档 | 内容 |
 |------|------|
-| [快速开始（SDK 集成）](./getting-started.md) | mooncakes 安装、最小装配、MySQL 仓储 |
+| [快速开始（SDK 集成）](./getting-started.md) | 工具链安装、mooncakes 安装、最小装配、MySQL 仓储 |
 | [引擎 API](./engine-api.md) | 40+ action 分组、出口契约层、会签门控、事件、stats |
 | [流程定义格式](./flow-definition.md) | LogicFlow JSON、共享 flows、persistMode |
 | [SPI 实现指南](./spi-guide.md) | 全异步 SPI 清单、Ctx 注册、MoonBit 特有注意点 |
 | [业务数据入库（persist）](./persist.md) | ARCHIVE/SYNC、字段权限、表名安全 |
+| [集成指南（工程向）](./integration.md) | 宿主应用嵌入要点（与 getting-started 互补） |
 | [演示站（Demo）](./demo.md) | :8092 本地 demo、公网 `/moon-api`、T2 冒烟 |
 
-## 过程文档（维护者向）
+## 相关
 
-| 文档 | 内容 |
-|------|------|
-| [CHANGELOG](./CHANGELOG.md) | 版本历史（0.1.0 起，独立 0.x 线完整递增） |
-| [契约对照](./contract-notes.md) | 契约 → moon 实现落点映射（C1–C28） |
-| [集成指南（工程向）](./integration.md) | 宿主嵌入要点（与 getting-started 互补） |
-| [测试指南](./testing.md) | T0/T1/T2 + 工具链坑位 |
-| [发布手册](./PUBLISH.md) | mooncakes 发版通道与守卫 |
-| [决策日志](./decisions-log.md) | D-M0~D-M5 设计决策台账 |
+- **版本历史**：[CHANGELOG](./CHANGELOG.md)（0.1.0 起，独立 0.x 线完整递增）
+- **引擎规范（契约唯一事实来源）**：[规范总览](https://jeeflow-doc.mldong.com/spec/)（01 数据模型 ~ 08 合规测试）
+- **设计原理 / 通用指南**：[jeeflow-doc 文档站](https://jeeflow-doc.mldong.com/)
+- **维护者向**（工具链口径 / T0–T2 测试 / 发版通道 / 设计决策 / 契约对照）：[MAINTAINING.md](../MAINTAINING.md)（仓根，不入本目录、不上文档站）

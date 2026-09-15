@@ -3,7 +3,7 @@
 ## 本地起 demo（:8092）
 
 ```bash
-export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH      # 装法见 toolchain.md
+export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH      # 装法见 getting-started.md 安装节
 JEFFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main   # 默认 memory
 ```
 

@@ -21,7 +21,7 @@ let resp = facade.flow("processTask/execute", args)   // {code, msg, data}
 | processDesign | 9（需扩展仓储） | page / detail / save / update / updateDefine / remove / deploy / redeploy / listByType |
 | processSurrogate | 5（需扩展仓储） | page / save / update / detail / remove |
 
-契约源：`docs/action-manifest.json`（与 java `JeeflowFacade` 实查双向无差集，精确计数以 manifest 为准）。
+契约源：`scripts/action-manifest.json`（与 java `JeeflowFacade` 实查双向无差集，精确计数以 manifest 为准）。
 
 ## 引擎操作（核心语义）
 

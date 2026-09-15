@@ -2,12 +2,21 @@
 
 ## 工具链（首次必装）
 
-还没装 MoonBit 工具链的话，按 [toolchain.md](./toolchain.md) 装（latest-only，不钉版本）：
+还没装 MoonBit 工具链的话，先装（**latest-only，不钉版本**——服务端对显式版本路径一律 403，钉版本不可行；编译器判错时按错误信息本地适配即可）：
 
-- **Windows（PowerShell）**：`irm https://cli.moonbitlang.com/install/powershell.ps1 | iex`
-  （若从 32 位父进程链跑报 x86 错误，先 `$env:PROCESSOR_ARCHITECTURE='AMD64'` 再装——见 toolchain.md）
-- **Linux / macOS**：`curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash`
-- 装完 `moon update` 刷新 registry 索引，确认 `moon version` 可用。
+| 平台 | 安装命令 |
+|------|----------|
+| Windows（PowerShell） | `irm https://cli.moonbitlang.com/install/powershell.ps1 \| iex` |
+| Linux / macOS | `curl -fsSL https://cli.moonbitlang.com/install/unix.sh \| bash` |
+
+- 装完先跑一次 `moon update` 刷新 registry 索引——工具链内置索引可能陈旧，不认识 async / moon-mysql 等依赖，缺 `moon update` 时 `moon install` 会失败。
+- ⚠️ **Windows 专属坑**：从 32 位父进程链（某些终端启动器）跑安装脚本会误报
+  `Install Failed: MoonBit for Windows is currently only available for x86 64-bit...`——
+  原因是继承的 `$env:PROCESSOR_ARCHITECTURE` 为 `x86`（系统实际是 `PROCESSOR_ARCHITEW6432=AMD64`）。
+  先覆盖 `$env:PROCESSOR_ARCHITECTURE='AMD64'` 再执行安装命令即可。
+- 版本自查：`moon version` / `moonc -v`（`moonc` 无 `--version`）。
+- 工具链装到哪都行，本文档后续用 `<your-moon-home>` 指代你的安装目录
+  （Windows PowerShell 安装默认 `C:\Program Files\MoonBit`；Linux/macOS 官方脚本默认 `~/.moon`）。
 
 ## 安装（作为 SDK 依赖）
 
@@ -50,12 +59,12 @@ let facade = @facade.Facade::make(ctx_with(repo))
 - 建表 DDL：`repository-mysql/schema/schema-mysql.sql`（编辑源在 jeeflow-java，勿手改）。
 - 真事务：`MysqlTxTemplate::from_env().execute_in_tx(op)`——op 内仓储调用共用环境连接，
   回调抛错整体回滚。
-- 首次连库的建库/导入步骤与 env 口径见 [testing.md T1 段](./testing.md)。
+- 首次连库的建库/导入步骤与 env 口径见 [MAINTAINING.md §2 T1](../MAINTAINING.md)（维护者向）。
 
 ## 本地开发（本仓源码）
 
 ```bash
-export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH   # MOON_HOME=你的工具链安装目录，装法见 toolchain.md
+export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH   # MOON_HOME=你的工具链安装目录（见上方安装节）
 
 moon test --target wasm              # T0：119 用例全绿（合规场景/submitType 矩阵/事件/出口契约）
 moon run --target wasm demo/cmd/main # demo :8092（memory 默认）

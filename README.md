@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--core-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-core)
 [![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--facade-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-facade)
-[![T0](https://img.shields.io/badge/T0-119%20tests%20green-brightgreen)](./docs/testing.md)
+[![T0](https://img.shields.io/badge/T0-119%20tests%20green-brightgreen)](./MAINTAINING.md)
 
 </div>
 
@@ -127,7 +127,7 @@ let resp = facade.flow("processDefine/startAndExecute", args)   // {code:0, msg,
 
 ## Design notes
 
-Two MoonBit realities shaped the code, both documented in `docs/decisions-log.md`:
+Two MoonBit realities shaped the code, both documented in `MAINTAINING.md` (§4 decisions):
 
 - **JSON numbers are doubles.** Snowflake ids exceed 2⁵³, so row VOs stringify ids at
   construction time and the outbound `stringify_ids` pass is a recursive safety net, not the
@@ -136,8 +136,8 @@ Two MoonBit realities shaped the code, both documented in `docs/decisions-log.md
   ships its own insertion sorts (`sort_strings` / `sort_i64` / `sort_int`) and uses them everywhere;
   when the toolchain is fixed the swaps are one-line.
 
-See also `docs/contract-notes.md` (contract → implementation map), `docs/integration.md`
-(embedding guide), `docs/testing.md` (T0/T1/T2) and `docs/PUBLISH.md` (mooncakes release runbook).
+See also `docs/integration.md` (embedding guide) and `MAINTAINING.md`
+(maintainer guide: toolchain, T0–T2 testing, mooncakes release, design decisions, contract map).
 
 ## Origin
 

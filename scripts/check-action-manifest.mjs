@@ -13,7 +13,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const manifestPath = join(repoRoot, "docs", "action-manifest.json");
+const manifestPath = join(repoRoot, "scripts", "action-manifest.json");
 
 const javaArgIdx = process.argv.indexOf("--java");
 const javaPath =

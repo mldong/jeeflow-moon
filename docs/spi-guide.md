@@ -49,4 +49,4 @@ ctx.register_assignment_handler("com.mldong.wf.handler.XxxHandler", my_handler) 
 5. **async 无 await 关键字**：async 调用自动挂起；`moon test` 的 wasm 运行器 Windows 下
    socket/fs 会挂死——IO 验证写 `moon run` 可执行，不放 `_test.mbt`（D-M2-2）。
 
-完整坑位与决策依据见 `docs/decisions-log.md`（D-M0~D-M5）与 `docs/contract-notes.md`（契约 C1–C28 → 实现落点映射）。
+完整坑位与决策依据见 [MAINTAINING.md](../MAINTAINING.md)（§2 已知坑、§4 代决策 D-M0~D-M5、§5 契约 C1–C28 → 实现落点映射）。
