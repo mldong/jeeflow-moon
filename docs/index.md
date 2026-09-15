@@ -27,4 +27,4 @@
 - **版本历史**：[CHANGELOG](./CHANGELOG.md)（0.1.0 起，独立 0.x 线完整递增）
 - **引擎规范（契约唯一事实来源）**：[规范总览](https://jeeflow-doc.mldong.com/spec/)（01 数据模型 ~ 08 合规测试）
 - **设计原理 / 通用指南**：[jeeflow-doc 文档站](https://jeeflow-doc.mldong.com/)
-- **维护者向**（工具链口径 / T0–T2 测试 / 发版通道 / 设计决策 / 契约对照）：[MAINTAINING.md](../MAINTAINING.md)（仓根，不入本目录、不上文档站）
+- **维护者向**（工具链口径 / T0–T2 测试 / 发版通道 / 设计决策 / 契约对照）：仓根 `MAINTAINING.md`（不入本目录、不上文档站）

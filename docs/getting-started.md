@@ -59,7 +59,7 @@ let facade = @facade.Facade::make(ctx_with(repo))
 - 建表 DDL：`repository-mysql/schema/schema-mysql.sql`（编辑源在 jeeflow-java，勿手改）。
 - 真事务：`MysqlTxTemplate::from_env().execute_in_tx(op)`——op 内仓储调用共用环境连接，
   回调抛错整体回滚。
-- 首次连库的建库/导入步骤与 env 口径见 [MAINTAINING.md §2 T1](../MAINTAINING.md)（维护者向）。
+- 首次连库的建库/导入步骤与 env 口径见仓根 `MAINTAINING.md` §2 T1（维护者向，不在本目录）。
 
 ## 本地开发（本仓源码）
 
