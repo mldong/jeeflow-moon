@@ -1,6 +1,15 @@
 # 快速开始
 
-## 安装
+## 工具链（首次必装）
+
+还没装 MoonBit 工具链的话，按 [toolchain.md](./toolchain.md) 装（latest-only，不钉版本）：
+
+- **Windows（PowerShell）**：`irm https://cli.moonbitlang.com/install/powershell.ps1 | iex`
+  （若从 32 位父进程链跑报 x86 错误，先 `$env:PROCESSOR_ARCHITECTURE='AMD64'` 再装——见 toolchain.md）
+- **Linux / macOS**：`curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash`
+- 装完 `moon update` 刷新 registry 索引，确认 `moon version` 可用。
+
+## 安装（作为 SDK 依赖）
 
 mooncakes.io 正式版本（0.1.x 线）。核心引擎仅依赖 MoonBit 标准库，按需引入仓储/门面——
 `moon add` 不带版本即拉 latest，自动把解析到的精确版本写进 moon.mod（实测 0.1.5，
@@ -8,7 +17,7 @@ mooncakes.io 正式版本（0.1.x 线）。核心引擎仅依赖 MoonBit 标准�
 
 ```bash
 moon add mldong/jeeflow-core                  # 引擎核心（运行时零 registry 依赖）
-moon add mldong/jeeflow-facade                # 45-action 统一门面
+moon add mldong/jeeflow-facade                # 40+ action 统一门面
 moon add mldong/jeeflow-persist               # 可选：业务数据动态入库（ARCHIVE/SYNC）
 moon add mldong/jeeflow-repository-mysql      # 可选：MySQL 仓储（含 vendored 解锁的 client）
 ```
@@ -41,11 +50,12 @@ let facade = @facade.Facade::make(ctx_with(repo))
 - 建表 DDL：`repository-mysql/schema/schema-mysql.sql`（编辑源在 jeeflow-java，勿手改）。
 - 真事务：`MysqlTxTemplate::from_env().execute_in_tx(op)`——op 内仓储调用共用环境连接，
   回调抛错整体回滚。
+- 首次连库的建库/导入步骤与 env 口径见 [testing.md T1 段](./testing.md)。
 
 ## 本地开发（本仓源码）
 
 ```bash
-export MOON_HOME=/g/dev-tools/moon PATH=$MOON_HOME/bin:$PATH   # 便携工具链
+export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH   # MOON_HOME=你的工具链安装目录，装法见 toolchain.md
 
 moon test --target wasm              # T0：119 用例全绿（合规场景/submitType 矩阵/事件/出口契约）
 moon run --target wasm demo/cmd/main # demo :8092（memory 默认）

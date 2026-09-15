@@ -58,7 +58,7 @@ git tag v0.1.5 && git push origin v0.1.5   # 触发 publish workflow（版本号
 ## 本地手动（兜底）
 
 ```bash
-export MOON_HOME=/g/dev-tools/moon PATH=/g/dev-tools/moon/bin:$PATH
+export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH      # 机器无关；MOON_HOME=你的安装目录，见 docs/toolchain.md
 cd core              && moon publish   # 1. mldong/jeeflow-core
 cd ../persist        && moon publish   # 2. mldong/jeeflow-persist
 cd ../repository-mysql && moon publish # 3. mldong/jeeflow-repository-mysql
