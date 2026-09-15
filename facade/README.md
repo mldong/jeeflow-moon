@@ -9,7 +9,7 @@
 
 </div>
 
-The unified 45-action facade of [jeeflow-moon](https://github.com/mldong/jeeflow-moon): one
+The unified 40+ action facade of [jeeflow-moon](https://github.com/mldong/jeeflow-moon): one
 entry point, one federation envelope (`code=0` success / `99999999` failure), one outbound
 contract layer that every response passes through.
 
@@ -23,7 +23,7 @@ let _    = facade.flow("processTask/execute", args)            // submitType dis
 let page = facade.flow("processTask/todoList", args)           // five-key pagination
 ```
 
-## The 45 actions
+## The 40+ actions
 
 | group | actions |
 |---|---|

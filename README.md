@@ -12,7 +12,7 @@
 </div>
 
 `jeeflow-moon` is a full workflow (BPM) engine — process definitions, instances, tasks,
-countersign gates, CC notifications, stats — behind a **single 45-action facade**:
+countersign gates, CC notifications, stats — behind a **single 40+ action facade**:
 `flow(action, args) → {code, msg, data}`. It is the MoonBit port of the
 jeeflow federation (Java reference implementation), API-compatible with the Go / Python / Node /
 PHP / Rust builds: same 15 shared LogicFlow fixtures, same `99999999` error envelope, same
@@ -21,7 +21,7 @@ five-key pagination, same state machine.
 ```mermaid
 flowchart LR
   ui["jeeflow-ui (?lang=moon)"] -->|"/moon-api → POST /wf/{action}"| demo["demo :8092<br/>run_forever"]
-  demo --> f["**Facade** flow(action, args)<br/>45 actions · outbound contract layer"]
+  demo --> f["**Facade** flow(action, args)<br/>40+ actions · outbound contract layer"]
   f --> e["**Engine** (async)<br/>start · execute · jump · countersign gates"]
   e -->|"async fn SPI"| spi["ProcessRepository · SPI methods"]
   spi --> mem["Memory repo<br/>(T0)"]
@@ -53,7 +53,7 @@ Consume from your own module — `moon add` pulls the latest release, no version
 
 ```bash
 moon add mldong/jeeflow-core     # engine core — zero runtime registry deps
-moon add mldong/jeeflow-facade   # 45-action unified facade
+moon add mldong/jeeflow-facade   # 40+ action unified facade
 # each add resolves the latest version (e.g. 0.1.5) and writes it into your moon.mod
 ```
 
@@ -70,7 +70,7 @@ let resp = facade.flow("processDefine/startAndExecute", args)   // {code:0, msg,
 
 ## What's here
 
-- **45-action facade** — every engine capability routes through `flow(action, args)` with the
+- **40+ action facade** — every engine capability routes through `flow(action, args)` with the
   federation envelope: success `code=0`, business failure `99999999` (and nothing else), unknown
   action rejected at the top level. Groups: `processDefine` (8), `processInstance` (14, incl. 3
   stats), `processTask` (9), `processDesign` (9), `processSurrogate` (5). An outbound contract
@@ -112,7 +112,7 @@ let resp = facade.flow("processDefine/startAndExecute", args)   // {code:0, msg,
 | module | mooncakes | role |
 |---|---|---|
 | [`core`](./core) | [`mldong/jeeflow-core`](https://mooncakes.io/docs/mldong/jeeflow-core) | model / async SPI / engine / parser / events / metadata / memory repo |
-| [`facade`](./facade) | [`mldong/jeeflow-facade`](https://mooncakes.io/docs/mldong/jeeflow-facade) | 45-action `flow(action, args)` + outbound contract layer + stats |
+| [`facade`](./facade) | [`mldong/jeeflow-facade`](https://mooncakes.io/docs/mldong/jeeflow-facade) | 40+ action `flow(action, args)` + outbound contract layer + stats |
 | [`persist`](./persist) | [`mldong/jeeflow-persist`](https://mooncakes.io/docs/mldong/jeeflow-persist) | business-table persist: ARCHIVE / SYNC + field permissions |
 | [`repository-mysql`](./repository-mysql) | [`mldong/jeeflow-repository-mysql`](https://mooncakes.io/docs/mldong/jeeflow-repository-mysql) | MySQL SPI over a pure-MoonBit wire client + tx template |
 | `demo` | not published | `:8092` HTTP demo + jeeflow-ui `?lang=moon` |

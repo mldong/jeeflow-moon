@@ -15,7 +15,7 @@
 - **所选项**：2。core/spi/moon.pkg 只写 `for "test"` 块；async 测试全部黑盒化（配 `pub(all)` 模型字段 + `with_*` 公开构造器）。
 - **理由**：core 发布面（运行时依赖图）保持零依赖，与 Rust 先例 dev-dependencies（tokio）同构；aqueue（async 官方包）即此形态。
 - **实测证据**：`moon test --target wasm -p mldong/jeeflow-core/spi` 2/2 绿（spike① + spike④ 运行时）。
-- **状态**：待追认。
+- **状态**：已追认（2026-09-05）。
 - **影响**：M1 起所有 core 异步测试走黑盒 `_test.mbt`；白盒测试仅限纯同步逻辑。
 
 ## D-M0-2 moon-mysql 0.3.1 client 包 wasm 解锁（vendored）
@@ -34,7 +34,7 @@
   证明上游限制是保守声明而非技术墙；保住方案 §2.4 本机开发主循环（wasm → 160:3306）与 §2.3 全异步架构；
   vendor 面积仅 client 2 文件，root codec（wire 协议核心）不 vendor，0.3.x 升级仍可跟 upstream。
 - **风险与回退**：若后续 wasm 出现目标特有 bug（大包分帧/流式查询），回退候选 2（160 native 口径，方案 §2.4 本就有此行）。
-- **状态**：待追认。
+- **状态**：已追认（2026-09-05）。
 - **关联**：方案 §2.4 表「T1 MySQL 冒烟 wasm 本机→160」一行因此依赖本 vendored 解锁，方案文档不改，以本日志为准。
 
 ## D-M0-3 Clock SPI 的默认实现来源（core/env.now() 的发现）
@@ -47,7 +47,7 @@
 - **所选项**：2。
 - **理由**：Clock SPI 的真正价值是测试确定化（固定钟 2026-08-01 → stats 快照确定，方案 §3.4.1），
   这不因墙钟存在而贬值；默认实现有现成来源后 demo 无需自己搓钟。
-- **状态**：待追认。
+- **状态**：已追认（2026-09-05）。
 
 ## D-M0-4 spike② 的 160 数据口径（计划内动作留痕，非分歧）
 
@@ -62,13 +62,13 @@
 - **问题**：rust facade 对所有页查询无条件做"后过滤+重分页"（`re_paginate` 把 recordCount 重置为当前页行数），
   未过滤场景下 recordCount 恒等于 min(pageSize, 行数)，与 java 五键语义（recordCount=过滤后总数）冲突。
 - **所选项**：仅当请求携带 m_ 过滤时才做 facade 级后过滤+重分页；无过滤时透传仓储五键（仓储层 count 正确）。
-- **状态**：待追认（已实现，rust 偏差以本日志为准）。
+- **状态**：已追认（2026-09-05）；已实现，rust 偏差以本日志为准。
 
 ## D-M3-2 core 排序 wasm 问题绕行（开发期观察，工具链 v0.10.11）
 
 - **问题**：moonc v0.10.11 wasm 目标 `Array::sort/sort_by` 对 String 排序结果错误（compare 直调正常）。开发期实测：`["04-...","01-...","02-..."]` 排序后得 `[01,04,02]`。
 - **所选项**：core/model/util.mbt 自写插入排序 `sort_strings/sort_i64/sort_int`，全仓 sort 使用点（memory sorted_ids/metadata 三处/stats 极值排序/demo seed）全部替换；单测锁定顺序。
-- **状态**：待追认；工具链修复后可整体回退。
+- **状态**：已追认（2026-09-05）；工具链修复后可整体回退。
 
 ## D-M2-1 ITransactionTemplate 不进 Ctx（工程简化）
 
@@ -76,7 +76,7 @@
 - **所选项**：Ctx 不携带事务模板字段；`MysqlTxTemplate`（repository-mysql）作为独立类型提供
   `execute_in_tx(op)` 真事务（环境连接绑定=spec/05 连接级上下文的单线程形态），T1-M4 语义测试直接使用。
 - **理由**：spec/05 本就"事务由业务层持有"；rust demo 同样 transaction_template=None。
-- **状态**：待追认。
+- **状态**：已追认（2026-09-05）。
 
 ## D-M2-2 T1 走 moon run 可执行通道
 
@@ -84,7 +84,7 @@
   （async_driver event_loop 差异；moon run 同目标无此问题）。
 - **所选项**：T1 冒烟为可执行 `repository-mysql/smoke`（`moon run --target wasm`），断言失败 abort→非零退出；
   async test 仅限无 IO 的纯逻辑测试。
-- **状态**：待追认；发版机口径不变（SKIP_MYSQL=1 跳过，连不上=fail）。
+- **状态**：已追认（2026-09-05）；发版机口径不变（SKIP_MYSQL=1 跳过，连不上=fail）。
 
 
 ## D-M5-1 首发版本号 0.1.0（mooncakes 平台强制 0.x，O1 的 1.0.0 暂不可用）
@@ -95,7 +95,7 @@
 - **候选项**：① 首发 0.1.0（平台放开后正常升 1.0.0）；② 等 mooncakes 支持 1.x 再首发（阻塞收口）；③ 跳号直上 1.0.1（被否——违背"不断号"原则）。
 - **所选项**：①。四模块 + demo 首发钉 **0.1.0**；后续 0.1.x/0.2.x 递增；
   **平台放开 1.x 后首个版本即 1.0.0**（semver 标准 0.x→1.0.0 演进，非跳号；rust 断号教训不复发）。
-- **状态**：待追认；本条属平台硬约束下的代决策（用户指示"不断号"精神完全保留）。
+- **状态**：已追认（2026-09-05）；本条属平台硬约束下的代决策（用户指示"不断号"精神完全保留）。
 
 ## D-M5-2 moon demo 容器 seccomp=unconfined（宿主 docker 18.09 默认 profile 拦截现代 syscall）
 
@@ -110,7 +110,7 @@
 - **备选未取**：① 定制 seccomp profile（18.09 default + 现代 syscall 放行）——需维护 vendored
   profile 且被拦 syscall 未能唯一确证，脆弱；② 容器内换 wasm + moonrun（handoff 方案 B）——
   moonrun 同为新 glibc 二进制，同样暴露于老 seccomp，且部署管线重写。
-- **状态**：待追认；宿主机 docker 升级到新版默认 profile 后可回收该参数。
+- **状态**：已追认（2026-09-05）；宿主机 docker 升级到新版默认 profile 后可回收该参数。
 
 ## D-M5-3 入站 JSON 大整数 id 走 repr 精确解析（上线后真回归抓出，本地 T2 假绿教训）
 
@@ -130,7 +130,7 @@
 - **后果与跟进**：mooncakes 四模块 0.1.0 含此缺陷，已随 **0.1.1** 发版修复（2026-09-05，
   checklist 全绿：T0 117 / T1 160 / T2 多轮 / manifest 45 / mooncakes 回拉验证 PASS）；
   工具链暂不钉版本（bug 在本仓未用 repr，非 core 漂移）。
-- **状态**：已随 0.1.1 发版落地，待追认。
+- **状态**：已随 0.1.1 发版落地，已追认（2026-09-05）。
 
 ## D-M5-4 发版 CI 通道恢复（latest 别名 + 版本守卫 + moon update）
 
@@ -143,8 +143,8 @@
 - **所选项**：workflow 改装 latest + `EXPECTED_MOON_VERSION` 守卫（latest 漂移出已验证版本即 fail-fast）+
   `moon update` 前置 + `validate_only` 通道自检入参。自检绿后 tag v0.1.2 实战发版成功
   （run 33951631628，mooncakes 四模块 0.1.2 已生效）——CI 通道恢复。
-- **遗留风险**：latest 未来漂移到坏构建时守卫会拦下；届时本地重验后更新期望版本。
-- **状态**：待追认（0.1.2 已经 CI 通道发布，实战通过）。
+- **遗留风险**：latest 未来漂移到坏构建时守卫会拦下；届时本地重验后更新期望版本。【2026-09-09 失效】版本守卫已按 owner 定调移除（`EXPECTED_MOON_VERSION` 删除，装 latest 直接发版），该风险随之不存在；坏构建风险改由「官方 yank/升版修复」兜底，详见 PUBLISH.md。
+- **状态**：已追认（2026-09-05）。其中版本守卫部分已被 2026-09-09 owner 定调取代（移除守卫、latest-only，见 PUBLISH.md / publish.yml），CI 通道部分仍然有效（0.1.2 已经 CI 通道发布，实战通过）。
 
 ## D-M5-5 stats 口径对齐（group/define 编码口径 + overview 均值）
 

@@ -1,9 +1,9 @@
 # 契约对照（moon ↔ java ↔ 六语言）
 
-> 契约源：`docs/action-manifest.json`（M0 与 java `JeeflowFacade` 实查 45/45 无差集）。
+> 契约源：`docs/action-manifest.json`（M0 与 java `JeeflowFacade` 实查双向无差集，精确计数以 manifest 为准）。
 > 本文件记录 MoonBit 实现的关键契约落点与语言特有注意点。
 
-## 45 action（5 组）
+## 40+ action（5 组）
 
 | 组 | 数量 | 入口方法 |
 |---|---|---|

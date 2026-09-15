@@ -21,7 +21,7 @@ expressions / users / transactions are all SPI.
 let repo = @memory.MemoryRepository::new()
 let ctx  = @spi.Ctx::new(repo, repo)
            .with_user_provider(my_user_provider)     // (String) -> UserInfo? raise
-let facade = @facade.Facade::make(ctx)               // 45-action facade on top
+let facade = @facade.Facade::make(ctx)               // 40+ action facade on top
 ```
 
 ## What's here
