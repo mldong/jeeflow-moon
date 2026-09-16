@@ -8,7 +8,11 @@ JEFFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main   # 默认 memory
 ```
 
 - `demo/cmd/main`：`run_forever` 常驻 HTTP 服务，~40 行完成完整装配（引擎 + 门面 + SPI + 种子）。
-- 存储双模式：`JEEFLOW_DEMO_STORE=memory`（默认，内存仓储 + 15 个共享流程种子）| `mysql`（真库）。
+- 存储双模式：`JEEFLOW_DEMO_STORE=memory`（默认，内存仓储 + 15 个共享流程种子，零前置）| `mysql`（真库）。
+- ⚠️ mysql 模式前提：先建**专用新库**并导入 `repository-mysql/schema/schema-mysql.sql`（连接 env 口径见
+  [getting-started.md](./getting-started.md)「MySQL 仓储」）；且 **demo 不自动种流程**——内存模式的 15 个
+  共享流程不会写入真库，起来后 define 列表为空，需自行 `processDesign/save` → `processDesign/deploy`。
+  只想看效果请用默认 memory 模式。
 - 8 具名用户 SPI（user1=张三 / leader=李四 / manager=王五 …），flows 种子 define id=1..N。
 
 ## 路由契约

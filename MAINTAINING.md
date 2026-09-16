@@ -43,7 +43,7 @@ export PATH="$HOME/.moon/bin:$PATH"
 |---|---|---|
 | 日常开发/单测（全模块含 async） | `--target wasm` | 本机 |
 | 纯计算包快速单测 | native 可直跑 | 本机（不 import async 的包） |
-| MySQL 冒烟（T1） | `--target wasm` | 本机 → 开发服务器 192.168.1.160:3306（vendored 解锁，见 §4 D-M0-2） |
+| MySQL 冒烟（T1） | `--target wasm` | 本机 → 开发服务器 `<DB_HOST>`:3306（vendored 解锁，见 §4 D-M0-2） |
 | 验收正式口径 / demo 生产态 | native | CI（GitHub runner）/ 开发服务器（debian:bookworm + build-essential 独立容器，O4） |
 
 > ⚠️ Windows 上 **native + async 结构性不可编译**（moonbitlang/async 运行时 C 源硬编码
@@ -89,12 +89,15 @@ mysql -h <DB_HOST> -uroot -p -e "CREATE DATABASE IF NOT EXISTS jeeflow CHARACTER
 mysql -h <DB_HOST> -uroot -p jeeflow < repository-mysql/schema/schema-mysql.sql
 
 # 3. 设连接 env 后跑 smoke
-JEFFLOW_DB_HOST=192.168.1.160 JEFFLOW_DB_USER=root JEFFLOW_DB_PWD=... \
+JEFFLOW_DB_HOST=<DB_HOST> JEFFLOW_DB_USER=root JEFFLOW_DB_PWD=... \
   moon run --target wasm repository-mysql/smoke
 ```
 
-- 连接全部走 env：`JEFFLOW_DB_HOST/PORT/USER/PWD/NAME`（默认 `192.168.1.160:3306`、`root`、空密码、`jeeflow`）；
-  `192.168.1.160` 是开发内网口径，按你实际环境覆盖——开发服务器与凭据基准见宿主仓库 jeeflow-hub `AGENTS.md`，凭据本身不入本仓。
+- 连接全部走 env：`JEFFLOW_DB_HOST/PORT/USER/PWD/NAME`——**四个显式给全，别依赖 `from_env()` 的
+  内置默认值**（那是一套开发机兜底，硬编码在 `repository-mysql/repo/conn.mbt`）；库名指向上方前置
+  建的**专用新库**，别指旧库/与其他栈共享的库（静默混表，schema 不齐时表现为莫名的缺列/水化失败，
+  见 getting-started.md「MySQL 仓储」警告）。开发服务器与凭据基准见宿主仓库 jeeflow-hub `AGENTS.md`，
+  凭据本身不入本仓。
 - 覆盖：分页五键 / hydrate 参与人+变量+DATETIME / m_ LIKE 真实走 SQL /
   事务回滚无半完成实例 / 并发办理幂等（§6.2 语义级）。
 - 数据纪律（R6）：define/instance 全走 9xxxxx 段，测前测后自清理；
@@ -195,7 +198,7 @@ mkdir -p /tmp/pull-verify && cd /tmp/pull-verify
 ### 发版前 checklist（缺一不包）
 
 1. `moon test --target wasm` 全绿（本地）
-2. T1 smoke ALL PASS（连 160；`SKIP_MYSQL=1` 仅限无网开发机，发版机 fail）
+2. T1 smoke ALL PASS（连库；`SKIP_MYSQL=1` 仅限无网开发机，发版机 fail）
 3. `bash scripts/smoke_t2.sh` ALL PASS（demo 起着）
 4. `node scripts/check-action-manifest.mjs` PASS
 5. `consistency/moon.json` 与六语言逐字段比对（固定钟确定化）

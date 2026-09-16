@@ -57,6 +57,8 @@ let facade = @facade.Facade::make(ctx_with(repo))
 ```
 
 - 建表 DDL：`repository-mysql/schema/schema-mysql.sql`（编辑源在 jeeflow-java，勿手改）。
+- ⚠️ 给 `JEFFLOW_DB_NAME` 指一个**专用新库**（先建库再导上面的 DDL）：指向旧库或与其他栈共享的库会
+  静默混表——schema 版本不齐时表现为莫名的缺列/水化失败，库内残留数据还会干扰分页/统计类断言。
 - 真事务：`MysqlTxTemplate::from_env().execute_in_tx(op)`——op 内仓储调用共用环境连接，
   回调抛错整体回滚。
 - 首次连库的建库/导入步骤与 env 口径见仓根 `MAINTAINING.md` §2 T1（维护者向，不在本目录）。
@@ -76,5 +78,5 @@ bash scripts/smoke_t2.sh             # T2：发起→待办→办理→完成→
 | 变量 | 说明 |
 |------|------|
 | `JEFFLOW_DB_HOST/PORT/USER/PWD/NAME` | MySQL 连接（凭据不入仓） |
-| `JEEFLOW_DEMO_STORE` | demo 存储模式 memory（默认）/ mysql |
+| `JEEFLOW_DEMO_STORE` | demo 存储模式 memory（默认）/ mysql（mysql 需先建库导 schema 且不自动种子，见 [demo.md](./demo.md)） |
 | `SKIP_MYSQL` | 开发机跳过 T1（发版机连不上 = fail 不是 skip） |

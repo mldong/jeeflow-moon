@@ -40,6 +40,12 @@ moon run --target wasm demo/cmd/main                      # demo on :8092 (memor
 bash scripts/smoke_t2.sh                                  # start → todo → approve → highlight
 ```
 
+> The demo defaults to the in-memory store — zero setup, 15 shared flows preseeded.
+> `JEEFLOW_DEMO_STORE=mysql` expects a **dedicated database** with
+> [`repository-mysql/schema/schema-mysql.sql`](./repository-mysql/schema/schema-mysql.sql) applied
+> first and does **not** auto-seed: the define list starts empty until you `processDesign/save`
+> + `deploy`. See [docs/demo.md](./docs/demo.md).
+
 ## Live demo
 
 Already running against this exact facade (no setup needed):
