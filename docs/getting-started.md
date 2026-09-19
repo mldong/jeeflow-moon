@@ -9,7 +9,7 @@
 | Windows（PowerShell） | `irm https://cli.moonbitlang.com/install/powershell.ps1 \| iex` |
 | Linux / macOS | `curl -fsSL https://cli.moonbitlang.com/install/unix.sh \| bash` |
 
-- 装完先跑一次 `moon update` 刷新 registry 索引——工具链内置索引可能陈旧，不认识 async / moon-mysql 等依赖，缺 `moon update` 时 `moon install` 会失败。
+- 装完先跑一次 `moon update` 刷新 registry 索引——工具链内置索引可能陈旧，不认识 async / moonmysql 等依赖，缺 `moon update` 时 `moon install` 会失败。
 - ⚠️ **Windows 专属坑**：从 32 位父进程链（某些终端启动器）跑安装脚本会误报
   `Install Failed: MoonBit for Windows is currently only available for x86 64-bit...`——
   原因是继承的 `$env:PROCESSOR_ARCHITECTURE` 为 `x86`（系统实际是 `PROCESSOR_ARCHITEW6432=AMD64`）。
@@ -21,8 +21,8 @@
 ## 安装（作为 SDK 依赖）
 
 mooncakes.io 正式版本（0.1.x 线）。核心引擎仅依赖 MoonBit 标准库，按需引入仓储/门面——
-`moon add` 不带版本即拉 latest，自动把解析到的精确版本写进 moon.mod（实测 0.1.5，
-传递依赖 moondb/moon-mysql/async 一并解析，无需手声明）：
+`moon add` 不带版本即拉 latest，自动把解析到的精确版本写进 moon.mod（实测 0.1.6，
+传递依赖 moondb/moonmysql/async 一并解析，无需手声明）：
 
 ```bash
 moon add mldong/jeeflow-core                  # 引擎核心（运行时零 registry 依赖）

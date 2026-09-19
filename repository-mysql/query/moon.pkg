@@ -2,7 +2,7 @@ import {
   "mldong/jeeflow-core/model" @model,
   "mldong/jeeflow-core/json" @json,
   "moonbitlang/core/string" @string,
-  "Lfan-ke/moondb" @moondb,
+  "moonbitstack/moondb" @moondb,
 }
 
 import {

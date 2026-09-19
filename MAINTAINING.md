@@ -52,8 +52,14 @@ export PATH="$HOME/.moon/bin:$PATH"
 ### 依赖版本（registry 包，非工具链）
 
 registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）：
-`Lfan-ke/moondb@0.1.7`、`Lfan-ke/moon-mysql@0.3.1`、`moonbitlang/async@0.20.3`。
+`moonbitstack/moondb@0.1.8`、`moonbitstack/moonmysql@0.4.0`、`moonbitlang/async@0.20.3`。
 这与「工具链 latest-only」是两回事——**依赖包钉版本、编译器不钉**。
+
+> 2026-09-19 坐标迁移：moondb/moonmysql 在 mooncakes 从 `Lfan-ke/` 迁到 `moonbitstack/`
+> （包名同时去连字符：`moon-mysql` → `moonmysql`），旧 `Lfan-ke/*` 停在 0.1.7 / 0.3.1 不再更新。
+> **两者必须成对迁移**——moonmysql 0.4.0 依赖 `moonbitstack/moondb@0.1.8`，若本仓仍钉
+> `Lfan-ke/moondb@0.1.7` 会同时物化两套 moondb，`@moondb.Value`/`Row` 成为不同类型而编译失败。
+> 详见 §4 D-M6-1。
 
 ### 语法口径备忘（moonc 0.10.x 实测，M1 起照此写）
 
@@ -64,7 +70,7 @@ registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）
 - 字符串插值 `"\{expr}"`；闭包调用加括号 `(f)(x)`
 - async test：黑盒 `_test.mbt` + 包 moon.pkg `import { "moonbitlang/async", } for "test"` 即可（白盒 `_wbtest.mbt` 不解锁 async test，须运行时 import——见 §4 D-M0-1）
 - `moon.mod`/`moon.pkg` 为 TOML 风格；workspace 互依赖版本化全名 `"mldong/jeeflow-core@0.1.0"`
-- `moon info` 生成 `.mbti`；包级可 `supported_targets`（moon-mysql client 即用此钉 native，本仓 vendored 解锁）
+- `moon info` 生成 `.mbti`；包级可 `supported_targets`（moonmysql client 即用此钉 native，本仓 vendored 解锁）
 
 ## 2. 测试指南（T0/T1/T2 + 构建目标维度）
 
@@ -121,7 +127,7 @@ jeeflow-ui 联调：`?lang=moon` 分段 / `/moon-api` 代理（apps/demo）。
 3. `Array::sort/sort_by` 对 String 在 wasm 排序结果错误——用 `@model.sort_strings/sort_i64/sort_int`（§4 D-M3-2）。
 4. 断言用 `assert_eq/assert_true`（无裸 `assert`、无 `!` 后缀）。
 
-## 3. mooncakes.io 发版通道（jeeflow-moon，独立 0.x 线，现 0.1.5）
+## 3. mooncakes.io 发版通道（jeeflow-moon，独立 0.x 线，现 0.1.6）
 
 > 原则：**首次发版失败可重试、tag 可删重打，版本号严禁跳号**（0.1.0 起完整递增，不断号）。
 > CI 不跑测试——本地 T0/T1/T2 已验口径不变。
@@ -173,7 +179,7 @@ git tag v0.1.5 && git push origin v0.1.5   # 触发 publish workflow（版本号
     （workflow_dispatch，checkout master HEAD）或把 tag 重指到修复后的 commit 再推。
   - **纯偶发**（网络 / CDN / registry 抖动，代码与 CI 都没动）：直接 Actions 页 Re-run 原 run；
     或删 tag 重打（`git tag -d v0.1.5 && git push origin :refs/tags/v0.1.5 && git tag v0.1.5 && git push origin v0.1.5`）。
-- 版本号不变（moon 走 **0.x 独立线**，现 0.1.5，见 §4 D-M5-1；下方示例的
+- 版本号不变（moon 走 **0.x 独立线**，现 0.1.6，见 §4 D-M5-1；下方示例的
   `1.0.0` 系早期文档残留，实际以仓内 `moon.mod` 当前版本为准），重试 publish 同版本号——mooncakes
   对已存在版本会拒绝，若部分模块已发成功：仅重发失败模块（workflow 幂等按模块步进），**不要 bump
   版本号来绕**。
@@ -359,6 +365,44 @@ mkdir -p /tmp/pull-verify && cd /tmp/pull-verify
 - **同类待办**：java 参考实现 trend started/finished 与 group avgDurationSeconds 返回**字符串**（契约 int）——
   记，六语言待核（本轮不动，涉 §6.8 全覆盖）。
 - **状态**：待追认（随 0.1.2 已发布）。
+
+### D-M6-1 moondb/moonmysql 依赖坐标迁移到 moonbitstack
+
+- **问题**：上游在 mooncakes 把整套 moonorm 生态从个人空间迁到组织空间——`Lfan-ke/moon-mysql`
+  → `moonbitstack/moonmysql`（0.3.1 → 0.4.0）、`Lfan-ke/moondb` → `moonbitstack/moondb`
+  （0.1.7 → 0.1.8），包名同时**去掉连字符**。旧坐标停在迁移前版本不再更新，需决定跟迁范围。
+- **候选项**：
+  1. 只迁 moonmysql，moondb 留 `Lfan-ke/moondb@0.1.7` —— **实测不可行（2026-09-19 两种半迁形态都跑过）**：
+     - 半迁（vendored client 跟新、其余包留旧）：`moon check` 在**构建计划阶段**即拒绝——
+       `Import moonbitstack/moondb@0.1.8 exists in global environment, but its containing module
+       is not imported by mldong/jeeflow-repository-mysql`（模块 `moon.mod` 未声明该模块，其包不可导入）；
+     - 全留旧 moondb（moon.mod + 四个 pkg 一律 `Lfan-ke/moondb@0.1.7`，仅 moonmysql 用新版）：
+       构建计划放行但 **5 个类型不匹配**编译错，两套 moondb 被同时物化、同名类型互为不同类型，如
+       `conn.mbt:438` `@moonmysql.bind_params` `has type Array[@Lfan-ke/moondb.Value] /
+       wanted Array[@moonbitstack/moondb.Value]`，`conn.mbt:495` `@moonmysql.build_text_rows`
+       的 `Row` 同款（`Failed with 506 warnings, 5 errors`）。
+  2. moonmysql + moondb 成对迁到 `moonbitstack/`，vendored client 两文件按 D-M0-2
+     升级策略从 0.4.0 原样重拷
+- **所选项**：2。
+- **理由**：迁移是**纯改名**，无行为变化——逐字节实测：moondb 0.1.7→0.1.8 的 `.mbt` 差异仅
+  注释/README 里的包名拼写；moonmysql 根包 `pkg.generated.mbti` 除包名外**零差异**；
+  client 两文件差异 148 行全部是 `@moon_mysql.` → `@moonmysql.` 别名改名
+  （`sed 's/@moon_mysql\./@moonmysql./g'` 归一后与新版逐字节相同）。
+  而 moonmysql 0.4.0 的公开接口直接在签名上暴露 moondb 类型（`Value`/`Row`/`ExecResult`/`Driver`），
+  消费侧与本仓 vendored client 必须落在**同一个** moondb 实例上——上面两种半迁形态的实测失败即是这条约束的显形。
+- **D-M0-2 仍然成立（复测结论）**：新版 `moonbitstack/moonmysql@0.4.0` 的 `client/moon.pkg`
+  **依旧声明 `supported_targets = "native"`**，wasm 限制没有放开，vendored 解锁不能删。
+  相比 0.3.1 唯一实质变化是 client 包新增了 `pkg.generated.mbti`（接口面固化，
+  `MysqlConn`/`MysqlDriver`/`MysqlRowStream` 签名与旧版一致）。
+- **vendor 面积**：`conn.mbt`/`driver.mbt` 现为上游 0.4.0 **逐字节原样拷贝**（sha256 已核），
+  与上游的唯一偏差仍只在 vendored `moon.pkg`（去掉 `supported_targets` 行）。
+- **状态**：待追认（2026-09-19）。
+- **验证**：T0 `moon test --target wasm` 119/119；T1 `moon run --target wasm
+  repository-mysql/smoke` 专用库 27 断言 ALL PASS（M1 6 + M2 8 + M3 2 + M4 事务回滚 3 +
+  M5 幂等 3 + I110 水合 5）；负向两例——错密码 `ServerError(1045, 28000)`、不存在库 `ServerError(1049, 42000)`，
+  rc 均为 1（也反证 `JEFFLOW_DB_*` env 真实生效，非默认值假绿）；T2 `smoke_t2.sh` ALL PASS +
+  `store=mysql` 模式 demo HTTP 读路径通（`/api/stats`、`todoList` 真 SQL）；
+  `check-action-manifest.mjs` 45/45；`consistency/moon.json` 逐字节未变。
 
 ## 5. 契约对照（moon ↔ java ↔ 六语言）
 

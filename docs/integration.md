@@ -5,7 +5,7 @@
 ## 安装（mooncakes.io）
 
 在宿主模块用 `moon add` 按需引入（不带版本 = 拉 latest，自动写精确版本进 moon.mod；
-repository-mysql 的传递依赖 moondb/moon-mysql/async 一并解析，无需手声明）：
+repository-mysql 的传递依赖 moondb/moonmysql/async 一并解析，无需手声明）：
 
 ```bash
 moon add mldong/jeeflow-core                  # 必需：引擎核心（运行时零依赖）

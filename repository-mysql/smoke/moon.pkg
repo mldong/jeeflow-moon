@@ -9,7 +9,7 @@ import {
   "mldong/jeeflow-core/engine" @engine,
   "mldong/jeeflow-repository-mysql/repo" @repo,
   "mldong/jeeflow-repository-mysql/query" @query,
-  "Lfan-ke/moondb" @moondb,
+  "moonbitstack/moondb" @moondb,
 }
 
 pkgtype(kind: "executable")

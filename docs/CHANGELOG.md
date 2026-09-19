@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## 0.1.6（2026-09-19）
+
+MySQL 依赖坐标迁移到 `moonbitstack/`（`repository-mysql` 模块，引擎核心未动）：
+
+- **上游搬家**：mooncakes 把整套 moonorm 生态从个人空间迁到组织空间，本仓两个直接依赖随之改坐标——
+  `Lfan-ke/moon-mysql@0.3.1` → `moonbitstack/moonmysql@0.4.0`（包名去连字符）、
+  `Lfan-ke/moondb@0.1.7` → `moonbitstack/moondb@0.1.8`。旧坐标停在迁移前版本不再更新。
+- **两者必须成对迁**：moonmysql 0.4.0 的公开签名直接在 `Value`/`Row`/`ExecResult`/`Driver` 上暴露
+  moondb 类型，只迁一半会同时物化两套 moondb——实测两种半迁形态分别死于构建计划拒绝和 5 个
+  类型不匹配编译错（详见 MAINTAINING.md §4 D-M6-1）。
+- **升级性质＝纯改名**：逐字节核对——moondb 0.1.7→0.1.8 的 `.mbt` 差异仅注释里的包名拼写；
+  moonmysql 根包 `pkg.generated.mbti` 除包名外零差异；client 两文件 148 行差异全部是
+  `@moon_mysql.` → `@moonmysql.` 别名改名（归一后与新版逐字节相同）。**零行为变化，无 API 适配**。
+- **vendored 解锁保留**：新版 `client/moon.pkg` 依旧声明 `supported_targets = "native"`，
+  wasm 限制未放开，D-M0-2 的 vendored 解锁不能删；`conn.mbt`/`driver.mbt` 按既定升级策略
+  从 0.4.0 逐字节原样重拷（sha256 已核），与上游的唯一偏差仍只在 vendored `moon.pkg`。
+- **消费面**：`repository-mysql/moon.mod` + `query`/`repo`/`smoke` 三包导入 + vendored `moon.pkg`
+  改坐标；`repo/conn.mbt` 头注释与 `moon.mod` description 同步包名写法。core/persist/facade/demo
+  无 registry 依赖变化，`moon.work` 成员不变。
+- **验证**：T0 `moon test --target wasm` 119/119；T1 `moon run --target wasm repository-mysql/smoke`
+  专用库 27 断言 ALL PASS（M1 分页五键 6 / M2 hydrate+全链 8 / M3 m_ LIKE 2 / M4 事务回滚 3 /
+  M5 办理幂等 3 / I110 find_instance_by_id 水合 5）；负向两例错密码 `ServerError(1045, 28000)`、缺库
+  `ServerError(1049, 42000)` 均 rc=1；T2 `smoke_t2.sh` ALL PASS，另跑 `store=mysql` 模式 demo 的
+  HTTP 真 SQL 读路径（`/api/stats`、`processTask/todoList`）与不存在 define 发起负向；
+  `check-action-manifest.mjs` 45 action 双向无差集；`consistency/moon.json` 逐字节未变。
+
+发版：tag `v0.1.6` → publish.yml CI 发 mooncakes 四模块（core/persist/repository-mysql/facade）。
+
 ## 0.1.5（2026-09-09）
 
 五语言引擎 SQL 仓 `find_instance_by_id` 不装 tasks 修复（`246d1ab`，
