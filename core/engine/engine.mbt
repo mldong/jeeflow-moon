@@ -554,6 +554,26 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::pers
       task.task_id = self.next_id()
     }
     task.process_instance_id = instance.instance_id
+    // issues/121 P1 建单不变量：parent 与行级 isFirstTaskNode 必写。挂在这里是因为本函数
+    // 是全引擎新任务落库唯一收口（7 处建任务路径都汇入 exec.new_tasks）——与下面 116 的委托
+    // 并入口同型，一处即全覆盖。parent＝产生这批新任务的那个刚办结任务；发起 execution 没有
+    // 当前任务 ⇒ 落 0L（对齐 mldong-boot2 Convert.toLong(execution.getProcessTaskId(), 0L)）。
+    match task.parent_task_id {
+      None =>
+        task.parent_task_id = Some(
+          match exec.process_task {
+            Some(t) => t.task_id
+            None => 0L
+          },
+        )
+      _ => ()
+    }
+    // 出口现算版带「仅进行中」判定，已办结的历史行上恒 false，而血缘版回退要读那条历史行
+    // 决定参与者 ⇒ 判据必须建单时落库（沿用 parser 现成的 is_first_task_node，不新造算法）。
+    task.variables.insert(
+      "isFirstTaskNode",
+      @json.bool_of(exec.process_model.is_first_task_node(task.task_name)),
+    )
     // 落库前并入被委托人到**参与者集合本身**（条款 2 ⚠️）：下面 save_task + add_task_actor
     // 带的就是含代理人的集合，不存在"事后补写打在空 taskId 上"的静默无效。
     let _ = self.apply_surrogate(task, process_name)

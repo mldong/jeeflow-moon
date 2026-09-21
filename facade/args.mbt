@@ -30,7 +30,13 @@ pub fn define_row_to_json(r : @model.DefineRow) -> Json {
 pub fn task_row_to_json(r : @model.TaskRow) -> Json {
   let instance_ext = parse_json_map(r.instance_variable)
   let ext = parse_json_map(r.variable)
-  if ext.size() == 0 {
+  // issues/121 P1：引擎建单必写的控制键不算「任务变量非空」，否则新建任务的 ext 从此
+  // 永不再回退实例变量（82-3 既有契约）。
+  let control = match ext.get("isFirstTaskNode") {
+    Some(_) => 1
+    None => 0
+  }
+  if ext.size() - control == 0 {
     for k, v in instance_ext {
       ext[k] = v
     }
