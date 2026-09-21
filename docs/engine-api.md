@@ -26,7 +26,7 @@ let resp = facade.flow("processTask/execute", args)   // {code, msg, data}
 ## 引擎操作（核心语义）
 
 - `start` / `execute` / `jump` / `jump_to_end` / `jump_to_first` / `withdraw`，聚合根从仓储水合是一等步骤。
-- **submitType 全枚举** 0=APPLY / 1=AGREE / 2=REJECT / 3=ROLLBACK / 4=JUMP / 5=RE_APPLY / 6=ROLLBACK_TO_OPERATOR / 20=COUNTERSIGN_DISAGREE。
+- **submitType 全枚举** 0=APPLY / 1=AGREE / 2=REJECT / 3=ROLLBACK（血缘版退回上一步，见规范 04）/ 4=JUMP / 5=RE_APPLY / 6=ROLLBACK_TO_OPERATOR（首任务节点，与 3 不同实现） / 20=COUNTERSIGN_DISAGREE。
 - 状态机：实例 10/20/30/40/45/50/99；任务 10/20/30/40/50/99（全集见 spec/03）。
 
 ## 会签门控
