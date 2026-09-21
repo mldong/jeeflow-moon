@@ -46,7 +46,10 @@ pub fn EnumDictRegistry::new() -> EnumDictRegistry {
     { value: "4", label: "跳转" },
     { value: "5", label: "重新提交" },
     { value: "6", label: "退回发起人" },
-    { value: "20", label: "拒绝申请(会签)" },
+    // issues/115：7 TRANSFER 转办（spec/07 字典行 + spec/06 §2.8）
+    { value: "7", label: "转办" },
+    // 20 的 label 对齐 spec/07（旧值 "拒绝申请(会签)" 与 2 撞文案，前端下拉无法区分）
+    { value: "20", label: "会签拒绝" },
   ]
   dicts["wf_process_task_state"] = [
     { value: "10", label: "进行中" },

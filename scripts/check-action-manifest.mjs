@@ -87,4 +87,4 @@ if (onlyInJava.length || onlyInManifest.length) {
   process.exit(1);
 }
 
-console.log("PASS — 45 action manifest 与 Java 实查双向无差集");
+console.log(`PASS — ${manifestSet.size} action manifest 与 Java 实查双向无差集`);

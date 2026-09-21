@@ -1,4 +1,4 @@
-// JeeflowFacade —— 45 action 统一入口（方案 §3.3；java JeeflowFacade 为契约源）
+// JeeflowFacade —— 46 action 统一入口（方案 §3.3；java JeeflowFacade 为契约源）
 // D-M3-1：页查询仅在有 m_ 过滤时做 facade 级后过滤+重分页（rust 无条件重分页会打折扣
 // 未过滤场景的 recordCount，与 java 五键语义冲突；此处对齐 java）。
 
@@ -69,7 +69,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::disp
     "processInstance/stats/overview" => self.stats_overview(args)
     "processInstance/stats/trend" => self.stats_trend(args)
     "processInstance/stats/group" => self.stats_group(args)
-    // ── 流程任务（9）──
+    // ── 流程任务（10）──
     "processTask/todoList" => self.todo_list(args)
     "processTask/doneList" => self.done_list(args)
     "processTask/execute" => self.execute(args)
@@ -78,6 +78,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::disp
     "processTask/candidatePage" => self.candidate_page(args)
     "processTask/surrogate" => self.task_surrogate(args)
     "processTask/addCandidate" => self.task_surrogate(args)
+    "processTask/transfer" => self.task_transfer(args) // issues/115：摘原人+换新人（非加签的只追加）
     "processTask/latest" => self.task_latest(args)
     // ── 流程设计（9，需扩展仓储）──
     "processDesign/page" => self.design_page(args)

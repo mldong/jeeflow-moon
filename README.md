@@ -35,7 +35,7 @@ flowchart LR
 git clone https://github.com/mldong/jeeflow-moon.git && cd jeeflow-moon
 export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH
 
-moon test --target wasm                                   # T0: 119 tests, all green
+moon test --target wasm                                   # T0: 131 tests, all green
 moon run --target wasm demo/cmd/main                      # demo on :8092 (memory store)
 bash scripts/smoke_t2.sh                                  # start → todo → approve → highlight
 ```
@@ -127,8 +127,9 @@ let resp = facade.flow("processDefine/startAndExecute", args)   // {code:0, msg,
 
 | Tier | Command | Scope |
 |---|---|---|
-| T0 | `moon test --target wasm` | 119 tests: 22 compliance scenarios over the 15 shared flows, submitType matrix, event timing, outbound contracts, persist idempotency/permissions (mutation-verified) |
-| T1 | `JEFFLOW_DB_*=… moon run --target wasm repository-mysql/smoke` | real MySQL: five-key pages, hydrate, `m_` filters over SQL, tx rollback leaves no half instance, double-execute is rejected |
+| T0 | `moon test --target wasm` | 131 tests: 22 compliance scenarios over the 15 shared flows, submitType matrix, event timing, outbound contracts, persist idempotency/permissions (mutation-verified); + facade-level withdraw/transfer three-tier cases (memory repo) |
+| T1 | `JEFFLOW_DB_*=… moon run --target wasm repository-mysql/smoke` | real MySQL: five-key pages, hydrate, `m_` filters over SQL, tx rollback leaves no half instance, double-execute is rejected, `update_user` really in the UPDATE statement |
+| T1-F | `JEFFLOW_DB_*=… moon run --target wasm demo/cmd/t1_mysql` | real MySQL over `JeeflowFacade`: withdraw (operator 硬必填 / 三条归属判据 / state 30 / `update_user` 回写 / 已完成行不改) + transfer (摘原人·加新人·三件留痕·账本只追加·不覆写 `operator` 列·doneList 不污染) |
 | T2 | `bash scripts/smoke_t2.sh` | demo HTTP: start → todo → approve → state 20 → highlight → 99999999 negative |
 
 ## Design notes

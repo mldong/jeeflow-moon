@@ -1,0 +1,14 @@
+import {
+  "mldong/jeeflow-core/json" @json,
+  "mldong/jeeflow-core/model" @model,
+  "mldong/jeeflow-core/spi" @spi,
+  "mldong/jeeflow-facade" @facade,
+  "mldong/jeeflow-repository-mysql/repo" @repo,
+  "moonbitlang/async" @async,
+  "moonbitlang/core/env" @env,
+  "moonbitlang/core/string" @string,
+  "moonbitlang/core/encoding/utf8" @utf8,
+  "moonbitstack/moondb" @moondb,
+}
+
+pkgtype(kind: "executable")

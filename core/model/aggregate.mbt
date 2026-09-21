@@ -121,6 +121,10 @@ pub fn ProcessInstance::create_with_parent(
 
 ///|
 /// 完成任务：finish 任务 + 合并 f_ 变量（rust complete_task）
+/// issues/115 契约第 5 条（spec/06 §transfer-5）：`args` 是「实例变量 ← 任务既有变量 ←
+/// 本次提交参数」的合并结果（由引擎 load_exec_for_task 组装），这里**逐键写入**任务变量
+/// （合并语义、不整体替换），故转办账本 `tf_transferHistory` 能活到办结后，而本次提交的
+/// submitType/表单值又能覆盖转办留下的槽位（反噬方向已被合并序挡住）。
 pub fn ProcessInstance::complete_task(
   self : ProcessInstance,
   task_id : Int64,
@@ -141,6 +145,7 @@ pub fn ProcessInstance::complete_task(
       ) // rust 语义：任务不在聚合内报错；消息对齐 "任务不存在"
   }
   for k, v in args.inner() {
+    task.variables.insert(k, v)
     if k.starts_with("f_") {
       self.variables.insert(k, v)
     }
@@ -231,13 +236,17 @@ pub fn ProcessInstance::pending(self : ProcessInstance) -> Unit {
 
 ///|
 /// 撤回：实例 30 WITHDRAW + 全部 DOING 任务 30（C28：任务 30 非 45）
-pub fn ProcessInstance::withdraw(self : ProcessInstance) -> Unit {
+/// issues/114（spec/06 §withdraw）：`operator` = 真实撤回人，聚合根负责把实例与**被撤的**
+/// 进行中任务的 `update_user` 回写为它；已完成(20)/已终止(40) 任务行不经本方法，天然不被改写。
+pub fn ProcessInstance::withdraw(self : ProcessInstance, operator : String) -> Unit {
   for t in self.tasks {
     if t.task_state == TaskState::Doing.code() {
-      t.withdraw()
+      t.withdraw(operator)
     }
   }
   self.state = InstanceState::Withdraw.code()
+  self.update_user = Some(operator)
+  self.update_time = Some(current_time_str())
 }
 
 ///|
@@ -490,6 +499,8 @@ pub fn ProcessTask::clone(self : ProcessTask) -> ProcessTask {
 
 ///|
 /// 完成（state→FINISHED=20）；守卫：仅 DOING + 处理人可办（并发语义 §6.2）
+/// 任务变量的合并写入在调用方（complete_task / complete_task_in_aggregate），
+/// 本方法只置状态与办理人列 + `update_user`/`update_time` 审计列（对齐 java finish）。
 pub fn ProcessTask::finish(self : ProcessTask, operator : String) -> Unit raise @error.JeeflowError {
   if self.task_state != TaskState::Doing.code() {
     raise @error.InvalidState("Task \{self.task_id} is not in DOING state (current=\{self.task_state})")
@@ -500,6 +511,8 @@ pub fn ProcessTask::finish(self : ProcessTask, operator : String) -> Unit raise 
   self.task_state = TaskState::Finished.code()
   self.actor_id = Some(operator)
   self.finish_time = Some(current_time_str())
+  self.update_user = Some(operator)
+  self.update_time = Some(current_time_str())
 }
 
 ///|
@@ -511,8 +524,11 @@ pub fn ProcessTask::abandon(self : ProcessTask) -> Unit raise @error.JeeflowErro
 }
 
 ///|
-pub fn ProcessTask::withdraw(self : ProcessTask) -> Unit {
+/// 随实例撤回：任务态 30 + `update_user` 回写真实撤回人（issues/114，spec/06 §withdraw）
+pub fn ProcessTask::withdraw(self : ProcessTask, operator : String) -> Unit {
   self.task_state = TaskState::Withdraw.code()
+  self.update_user = Some(operator)
+  self.update_time = Some(current_time_str())
 }
 
 ///|

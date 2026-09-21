@@ -1,4 +1,4 @@
-// facade actions：define(8) + instance(14) + task(9) —— 对齐 java JeeflowFacade 各私有方法
+// facade actions：define(8) + instance(14) + task(10) —— 对齐 java JeeflowFacade 各私有方法
 
 // ═══ 流程定义 ═══
 
@@ -263,25 +263,76 @@ fn bool_of_bool(b : Bool) -> Json {
 }
 
 ///|
+/// 必填字符串参数（剔除首尾空白；缺失/空串 → msg 跨栈统一文案，issues/114/115）
+fn arg_required_str(
+  args : Map[String, Json],
+  key : String,
+  msg : String
+) -> String raise @error.JeeflowError {
+  let v = arg_str(args, key).unwrap_or("").trim(chars=" \t\r\n").to_string()
+  if v.is_empty() {
+    raise @error.Business(msg)
+  }
+  v
+}
+
+///|
+/// flow.auto / flow.admin 放行约定（is_allowed 既有语义，撤回/转办共用；大小写不敏感，对齐 java）
+fn is_privileged_operator(operator : String) -> Bool {
+  let lower = operator.to_lower()
+  lower == "flow.auto" || lower == "flow.admin"
+}
+
+///|
+/// 撤回归属判据（issues/114，spec/06 §withdraw 三条，命中任一放行）：
+/// 1. operator = 实例发起人（wf_process_instance.operator）
+///    ⚠️ 不可复用 ProcessTask::is_allowed——各栈它都只判"任务 actorIds + auto/admin"，不查发起人；
+/// 2. operator 是该实例任一**进行中**任务的参与者（以 wf_process_task_actor 参与者表为准，
+///    不用聚合副本——加签/转办的增量只落参与者表）；
+/// 3. operator ∈ {flow.auto, flow.admin}。
+async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::can_withdraw(
+  self : Facade[R, E],
+  inst : @model.ProcessInstance,
+  operator : String
+) -> Bool raise @error.JeeflowError {
+  if is_privileged_operator(operator) {
+    return true
+  }
+  if operator == inst.operator {
+    return true
+  }
+  for t in (self.repo).find_doing_tasks(inst.instance_id, []) {
+    if ((self.repo).find_task_actors(t.task_id)).contains(operator) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// 撤回（issues/113/114）：operator 硬必填 + 三条归属判据 + 任务态 30 级联 + update_user 回写
 pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::withdraw(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let id = match arg_i64(args, "id") {
     Some(v) => v
     None => raise @error.Business("缺少id参数")
   }
-  let operator = arg_str_or(args, "operator", "user1")
+  // 严禁缺省回落 user1 等固定账号：那会把撤回人静默记成别人，审计链失真且不报错
+  let operator = arg_required_str(args, "operator", "operator 必填")
   let inst = match (self.repo).find_instance_by_id(id) {
     Some(i) => i
     None => raise @error.InstanceNotFound(id)
   }
-  // C28：实例 30 + 任务 30（级联持久化）
-  inst.withdraw()
-  (self.repo).update_instance(inst)
+  if !(self.can_withdraw(inst, operator)) {
+    raise @error.Business("无权限撤回该流程实例")
+  }
+  // C28：实例 30 + 进行中任务 30（级联持久化）；已完成(20)/已终止(40) 行不经聚合根下发，不被改写
+  inst.withdraw(operator)
   for t in inst.tasks {
     if t.task_state == @model.TaskState::Withdraw.code() {
       (self.repo).update_task(t)
     }
   }
-  let _ = operator
+  (self.repo).update_instance(inst)
   @json.null_json()
 }
 
@@ -649,6 +700,94 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     raise @error.Business("processTaskId/actorIds 缺失")
   }
   (self.repo).add_task_actor(task_id, actors)
+  @json.null_json()
+}
+
+///|
+/// 转办末跳可读文案：`A 转办给 B（原因…）`（无原因不带括号；前端审批意见既有读取位）
+fn transfer_text(from_actor : String, to_actor : String, reason : String) -> String {
+  let head = "\{from_actor} \{@model.SubmitType::Transfer.message()}给 \{to_actor}"
+  if reason.is_empty() {
+    head
+  } else {
+    "\{head}（\{reason}）"
+  }
+}
+
+///|
+/// 转办（issues/115，spec/06 §processTask/transfer 七条语义）：
+/// 摘原人 → 加新人 → 同一 taskId 不新建 → 三件留痕（submitType=7 槽位 + tf_transferHistory
+/// 追加式账本 + tf_transferTo/tf_transferReason 便捷键 + 末跳 tf_approvalComment）→
+/// 去重/前置态四类明确报错。区别于 processTask/surrogate 加签的"只追加不动原人"。
+pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::task_transfer(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+  let task_id = match arg_i64(args, "processTaskId") {
+    Some(v) => v
+    None => raise @error.Business("缺少processTaskId参数")
+  }
+  let operator = arg_required_str(args, "operator", "operator 必填")
+  let from_actor = arg_required_str(args, "fromActor", "fromActor 必填")
+  let to_actor = arg_required_str(args, "toActor", "toActor 必填")
+  let task = match (self.repo).find_task_by_id(task_id) {
+    Some(t) => t
+    None => raise @error.TaskNotFound(task_id)
+  }
+  // 归属判据：只能转自己那一条待办（flow.auto/flow.admin 除外），与撤回同口径
+  if !is_privileged_operator(operator) && operator != from_actor {
+    raise @error.Business("无权限转办该任务")
+  }
+  // 前置态：仅进行中（DOING=10）任务可转办
+  if task.task_state != @model.TaskState::Doing.code() {
+    raise @error.Business("任务非进行中，不可转办")
+  }
+  // 以参与者表为判据（聚合副本会滞后于加签/转办的增量写入）
+  let actors = (self.repo).find_task_actors(task_id)
+  if !actors.contains(from_actor) {
+    raise @error.Business("原办理人不是该任务参与人")
+  }
+  if actors.contains(to_actor) {
+    raise @error.Business("目标人已是该任务参与人")
+  }
+  // 语义 1+2+3：只摘 fromActor 一行（会签其余成员不受影响）、toActor 追加、沿用同一 taskId
+  (self.repo).remove_task_actor(task_id, [from_actor])
+  (self.repo).add_task_actor(task_id, [to_actor])
+  // 语义 4 留痕①：跨跳追加式账本 tf_transferHistory——每跳 append，只追加不覆盖
+  let reason = arg_str(args, "reason").unwrap_or("").trim(chars=" \t\r\n").to_string()
+  let history = @json.empty_array()
+  match task.variables.get("tf_transferHistory") {
+    Some(Json::Array(items)) =>
+      for it in items {
+        @json.arr_push(history, it)
+      }
+    _ => ()
+  }
+  // 六键固定 camelCase；reason 无值写 ""；time 一律 yyyy-MM-dd HH:mm:ss（spec §2.4，
+  // 不得用本地 ISO 方言——账本要跨栈同形）
+  @json.arr_push(
+    history,
+    @json.object_of([
+      ("submitType", @json.number_of(@model.SubmitType::Transfer.code())),
+      ("fromActor", @json.string_of(from_actor)),
+      ("toActor", @json.string_of(to_actor)),
+      ("reason", @json.string_of(reason)),
+      ("time", @json.string_of(@model.current_time_str())),
+      ("operator", @json.string_of(operator)),
+    ]),
+  )
+  task.variables.insert("tf_transferHistory", history)
+  // 留痕①当前槽位 + ②单跳便捷键 + ③末跳可读文案（B 办结后槽位由 1/2/20 覆盖，属预期）
+  task.variables.insert_i64("submitType", @model.SubmitType::Transfer.code())
+  task.variables.insert_str("tf_transferTo", to_actor)
+  task.variables.insert_str("tf_transferReason", reason)
+  task.variables.insert_str("tf_approvalComment", transfer_text(from_actor, to_actor, reason))
+  // ⚠️ 契约第 4 条禁写项：**绝不覆写 task.actor_id**（进行中任务该列恒无值是既有不变量；
+  // 把被摘走的人写进去，该单一旦撤回/终止就会凭空出现在他从没办过的 doneList——Node 实测）。
+  // "办理人记谁"由 update_user + tf_transferHistory[].operator 承载。
+  task.update_user = Some(operator)
+  task.update_time = Some(@model.current_time_str())
+  // 参与者表是真相：同步副本后再落库（内存仓 page_todo_tasks 按 actor_ids 过滤，
+  // 不同步则 A 的待办不消失、B 的待办不出现；SQL 仓 update_task 也会按副本覆写）
+  task.actor_ids = (self.repo).find_task_actors(task_id)
+  (self.repo).update_task(task)
   @json.null_json()
 }
 

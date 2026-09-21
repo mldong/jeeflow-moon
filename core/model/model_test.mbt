@@ -64,13 +64,25 @@ test "model: flow.auto bypass" {
 }
 
 ///|
-test "model: instance withdraw → 实例 30 + 任务 30 (C28)" {
+test "model: instance withdraw → 实例 30 + 任务 30 + update_user 回写 (C28 / issues/114)" {
   let define = make_define(1L, "test")
   let inst = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
   let _ = inst.create_task("t", "T", ["user1"], "user1", @model.Major, @model.Normal, None, None)
-  inst.withdraw()
+  let finished = inst.create_task("t2", "T2", ["user1"], "user1", @model.Major, @model.Normal, None, None)
+  try {
+    finished.finish("user1")
+  } catch {
+    e => raise e
+  }
+  inst.withdraw("revoker")
   assert_eq(inst.state, 30)
+  // 任务态是 30 不是 99（99 保留给"废弃"语义）
   assert_eq(inst.tasks[0].task_state, 30)
+  assert_eq(inst.tasks[0].update_user.unwrap(), "revoker")
+  assert_eq(inst.update_user.unwrap(), "revoker")
+  // 已完成(20) 行不得被撤回改写：状态与审计列都保持办结时的值
+  assert_eq(finished.task_state, 20)
+  assert_eq(finished.update_user.unwrap(), "user1")
 }
 
 ///|

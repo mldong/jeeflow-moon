@@ -170,6 +170,7 @@ pub(all) enum SubmitType {
   Jump
   ReApply
   RollbackToOperator
+  Transfer
   CountersignDisagree
 } derive(Eq, Show)
 
@@ -183,7 +184,24 @@ pub fn SubmitType::code(self : SubmitType) -> Int64 {
     Jump => 4L
     ReApply => 5L
     RollbackToOperator => 6L
+    Transfer => 7L // issues/115：转办留痕槽位（不走 execute，processTask/transfer 写）
     CountersignDisagree => 20L
+  }
+}
+
+///|
+/// 中文可读名（spec/07 字典 label 同源；转办文案 "A 转办给 B" 用）
+pub fn SubmitType::message(self : SubmitType) -> String {
+  match self {
+    Apply => "发起申请"
+    Agree => "同意申请"
+    Reject => "拒绝申请"
+    Rollback => "退回上一步"
+    Jump => "跳转"
+    ReApply => "重新提交"
+    RollbackToOperator => "退回发起人"
+    Transfer => "转办"
+    CountersignDisagree => "会签拒绝"
   }
 }
 
@@ -197,6 +215,7 @@ pub fn SubmitType::from_code(code : Int64) -> SubmitType? {
     4L => Some(Jump)
     5L => Some(ReApply)
     6L => Some(RollbackToOperator)
+    7L => Some(Transfer)
     20L => Some(CountersignDisagree)
     _ => None
   }

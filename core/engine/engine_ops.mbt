@@ -80,8 +80,13 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
     None => raise @error.DefineNotFound(instance.define_id)
   }
   let model = @parser.parse_model(define.content)
-  // resume 语义（对齐 Go mergeVars）：实例已持久化变量为底、本次提交覆盖
+  // issues/115 契约第 5 条（spec/06 §transfer-5，八栈同构）：办理提交的变量合并序
+  // 「实例变量为底 ← 任务既有变量 ← 本次提交参数（最高）」。
+  // 缺中间层则转办写在任务变量上的留痕（tf_transferHistory / submitType=7 槽位）
+  // 读不到；把任务变量置于 args 之下，则 B 办结的 1/2/20 能覆盖转办槽位，
+  // 而任务既有变量也不会反噬本次提交（Go 上轮正是把它放在了 args 之上）。
   let full_args = @json.FlowData::from_map(clone_map(instance.variables.inner()))
+  full_args.merge(task.variables)
   full_args.merge(args)
   self.add_user_info(full_args, operator)
   // 权限守卫
@@ -157,6 +162,10 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::complete_t
   match found {
     Some(task) => {
       for k, v in args.inner() {
+        // issues/115 契约第 5 条：args 已是「实例 ← 任务 ← 本次」的合并结果，
+        // 逐键**合并写入**任务变量（等价于 Go/Node 的 task.Variables = vars，
+        // 但取并集而非替换，多一重保险），转办留痕才活得过办结。
+        task.variables.insert(k, v)
         if k.starts_with("f_") {
           instance.variables.insert(k, v)
         }

@@ -179,14 +179,18 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn save_instance(self, 
 }
 
 ///|
+/// 实例更新（issues/114：本语句历史上只写 state/variable/update_time，门面回写的撤回人
+/// 在 SQL 仓里被静默丢弃 → update_user 永不落地（内存仓整行替换不受影响，双仓答案不一致
+/// 即此，本栈独有坑）；补 update_user=? 后由真机 MySQL 断言钉住）
 pub impl @spi.ProcessRepository for MysqlRepository with fn update_instance(self, instance) {
   let var_json = flow_data_to_json(instance.variables)
   let conn = self.open_or_tx()
   let _ = x(conn, 
-    "UPDATE wf_process_instance SET state=?, variable=?, update_time=NOW() WHERE id=?",
+    "UPDATE wf_process_instance SET state=?, variable=?, update_user=?, update_time=NOW() WHERE id=?",
     [
       @moondb.Int(instance.state),
       @moondb.Text(var_json),
+      opt_v(instance.update_user),
       @moondb.Int64(instance.instance_id),
     ],
   )
@@ -290,16 +294,20 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn save_task(self, task
 }
 
 ///|
+/// 任务更新（issues/114/115：与 update_instance 同补 update_user 列——撤回人要落到被撤任务行、
+/// 转办人要落到任务行，否则审计列在 SQL 仓恒 NULL；actor_id→operator 列按契约**不由转办写**，
+/// 但本语句仍负责把副本里的值原样带过去（办结路径写真实办理人））
 pub impl @spi.ProcessRepository for MysqlRepository with fn update_task(self, task) {
   let var_json = flow_data_to_json(task.variables)
   let conn = self.open_or_tx()
   let _ = x(conn, 
-    "UPDATE wf_process_task SET task_state=?, operator=?, finish_time=?, variable=?, update_time=NOW() WHERE id=?",
+    "UPDATE wf_process_task SET task_state=?, operator=?, finish_time=?, variable=?, update_user=?, update_time=NOW() WHERE id=?",
     [
       @moondb.Int(task.task_state),
       opt_v(task.actor_id),
       opt_v(task.finish_time),
       @moondb.Text(var_json),
+      opt_v(task.update_user),
       @moondb.Int64(task.task_id),
     ],
   )

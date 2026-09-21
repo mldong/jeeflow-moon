@@ -2,13 +2,13 @@
   "_meta": {
     "version": "1.0",
     "created": "2026-09-05",
-    "purpose": "jeeflow MoonBit 引擎（第 7 语言）M0 契约固化 —— 45 action 清单（Java 实查 ↔ 规范 ↔ MoonBit 三方核对基准）",
+    "purpose": "jeeflow MoonBit 引擎（第 7 语言）M0 契约固化 —— 46 action 清单（Java 实查 ↔ 规范 ↔ MoonBit 三方核对基准；issues/115 补 processTask/transfer）",
     "sources": {
       "java": "jeeflow-java/jeeflow-core/src/main/java/com/mldong/jeeflow/facade/JeeflowFacade.java flow() switch（L100-L155）",
       "spec": "jeeflow-doc/docs/spec/06-facade.md",
       "plan": "jeeflow-hub/docs/moonbit-engine-implementation-plan.md §0.1/§3.3/§4"
     },
-    "count": 45,
+    "count": 46,
     "baseline": {
       "note": "spec 基线锚定（方案 §5 M0 通过条件）——每阶段收尾复核上游漂移",
       "java_head": "58fd0b3 fix(demo): Dockerfile.demo 先 install -N 装 parent pom",
@@ -279,6 +279,14 @@
           "resp": "同 processTask/surrogate"
         },
         {
+          "action": "processTask/transfer",
+          "method": "taskTransfer",
+          "permission": "wf:processTask:transfer",
+          "note": "issues/115：摘 fromActor 一行 + 追加 toActor（区别于 surrogate 只追加），沿用同一 taskId；⚠️ 不写任务 actor_id/operator 列，办理人由 update_user + tf_transferHistory[].operator 承载",
+          "req": "{processTaskId, operator 必填, fromActor 必填, toActor 必填, reason?无值写 \"\"}",
+          "resp": "ok(data=null)；留痕三件写任务变量：submitType=7 槽位 + tf_transferHistory 追加式账本{submitType,fromActor,toActor,reason,time,operator} + tf_transferTo/tf_transferReason + 末跳 tf_approvalComment；失败 msg 逐字见 spec/06 §processTask/transfer"
+        },
+        {
           "action": "processTask/latest",
           "method": "taskLatest",
           "permission": null,
@@ -409,11 +417,11 @@
     }
   },
   "summary": {
-    "total": 45,
+    "total": 46,
     "byGroup": {
       "processDefine": 8,
       "processInstance": 14,
-      "processTask": 9,
+      "processTask": 10,
       "processDesign": 9,
       "processSurrogate": 5
     },

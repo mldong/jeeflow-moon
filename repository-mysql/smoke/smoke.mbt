@@ -21,6 +21,21 @@ fn check(cond : Bool, label : String) -> Unit {
 ///|
 /// 9xxxxx 段自清理（只动 jeeflow 库 wf_* 表）
 async fn clean_9x(repo : @repo.MysqlRepository) -> Unit raise {
+  // 先按外键清子行：add_task_actor/抄送行的 id 是雪花（不在 9xxxxx 段），
+  // 只有按 process_task_id/process_instance_id 反查才扫得到（issues/115 转办会新增这类行）。
+  // 必须在下面按 id 段删主行**之前**做，否则子查询已经扫不到。
+  let sub_conn = repo.open_raw()
+  let _ = @repo.q(
+    sub_conn,
+    "DELETE FROM wf_process_task_actor WHERE process_task_id IN (SELECT id FROM wf_process_task WHERE id >= 990000 AND id < 1000000)",
+    [],
+  )
+  let _ = @repo.q(
+    sub_conn,
+    "DELETE FROM wf_process_cc_instance WHERE process_instance_id IN (SELECT id FROM wf_process_instance WHERE id >= 990000 AND id < 1000000)",
+    [],
+  )
+  @repo.close_conn(sub_conn)
   let tables = [
     "wf_process_task_actor",
     "wf_process_task",
@@ -269,6 +284,81 @@ async fn t1_i110_hydrate() -> Unit raise {
 }
 
 ///|
+/// NULL 安全单元格读取（<NULL> 与 "" 必须可分辨：审计列断言读的就是这一格）
+fn cell(r : @moondb.Row, col : String) -> String {
+  match r.by_name(col) {
+    None => "<无此列>"
+    Some(v) =>
+      match v {
+        @moondb.Null => "<NULL>"
+        @moondb.Text(s) => s
+        @moondb.Blob(_) => "<BLOB>"
+        @moondb.Int64(n) => n.to_string()
+        @moondb.Int(n) => n.to_string()
+        @moondb.Double(d) => d.to_string()
+        @moondb.Bool(b) => if b { "1" } else { "0" }
+      }
+  }
+}
+
+///|
+/// 库里单列读回（不走仓储水合，直接 SELECT 列名——要钉的就是这一格）
+async fn select_cell(
+  repo : @repo.MysqlRepository,
+  sql : String,
+  params : Array[@moondb.Value],
+  col : String
+) -> String raise {
+  let conn = repo.open_raw()
+  let rows = @repo.q(conn, sql, params)
+  @repo.close_conn(conn)
+  if rows.is_empty() {
+    return "<无行>"
+  }
+  cell(rows[0], col)
+}
+
+///|
+/// T1-I114（仓储级）：update_instance / update_task 必须把 update_user **真写进 SQL**。
+/// 缺陷本体（本栈独有）：两条 UPDATE 语句历史上只有 state/variable/update_time(+operator/
+/// finish_time)，内存仓是整行替换所以门面级测试全绿也照不出来，SQL 仓审计列静默丢失
+/// → 双仓答案不一致。末跳 `update_user=None → 库里 <NULL>` 是对照组，专门证伪
+/// "这列从来没被写过"式的假绿。门面级（鉴权 + 三件留痕 + 出口）真机用例见
+/// demo/cmd/t1_mysql。
+async fn t1_i114_update_user_lands() -> Unit raise {
+  let repo = @repo.MysqlRepository::from_env()
+  clean_9x(repo)
+  save_define_9x(repo, 990401L, "t1-i114", SIMPLE_FLOW)
+  let engine = make_mysql_engine(repo)
+  let inst = engine.start_async(990401L, "user9x", @json.FlowData::new())
+  let tasks = repo.find_doing_tasks(inst.instance_id, [])
+  check(tasks.length() == 1, "I114 发起后 1 个进行中任务")
+  let task = tasks[0]
+  let iid_sql = "SELECT update_user FROM wf_process_instance WHERE id = ?"
+  let tid_sql = "SELECT update_user FROM wf_process_task WHERE id = ?"
+  // 只动审计列，走的就是被修的那两条 UPDATE 语句
+  inst.update_user = Some("i114-revoker")
+  repo.update_instance(inst)
+  check(
+    select_cell(repo, iid_sql, [@moondb.Int64(inst.instance_id)], "update_user") == "i114-revoker",
+    "I114 库里 wf_process_instance.update_user 真被写入（列确在 UPDATE 语句里）",
+  )
+  task.update_user = Some("i114-revoker")
+  repo.update_task(task)
+  check(
+    select_cell(repo, tid_sql, [@moondb.Int64(task.task_id)], "update_user") == "i114-revoker",
+    "I114 库里 wf_process_task.update_user 真被写入",
+  )
+  // 对照组：None 必须落 NULL（否则前面的命中可能是"这列从没被写过 + 哨兵恰好同值"）
+  inst.update_user = None
+  repo.update_instance(inst)
+  check(
+    select_cell(repo, iid_sql, [@moondb.Int64(inst.instance_id)], "update_user") == "<NULL>",
+    "I114 update_user=None 落库 NULL（对照，证伪假绿）",
+  )
+  clean_9x(repo)
+}
+///|
 async fn t1_all() -> Unit raise {
   println("T1-M1 page five keys...")
   t1_m1_page()
@@ -282,7 +372,10 @@ async fn t1_all() -> Unit raise {
   t1_m5_idempotent()
   println("T1-I110 find_instance_by_id hydrate tasks...")
   t1_i110_hydrate()
+  println("T1-I114 update_user 真写进 UPDATE 语句（仓储级）...")
+  t1_i114_update_user_lands()
   println("T1 ALL PASS (wasm → 160)")
+  println("门面级 withdraw/transfer 真机对拍另跑：moon run --target wasm demo/cmd/t1_mysql")
 }
 
 ///|

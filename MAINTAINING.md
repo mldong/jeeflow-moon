@@ -97,8 +97,16 @@ mysql -h <DB_HOST> -uroot -p jeeflow < repository-mysql/schema/schema-mysql.sql
 # 3. 设连接 env 后跑 smoke
 JEFFLOW_DB_HOST=<DB_HOST> JEFFLOW_DB_USER=root JEFFLOW_DB_PWD=... \
   moon run --target wasm repository-mysql/smoke
+
+# 4. 门面级 withdraw/transfer 真机对拍（issues/114/115，断言全部读库里的列）
+JEFFLOW_DB_HOST=<DB_HOST> JEFFLOW_DB_USER=root JEFFLOW_DB_PWD=... \
+  moon run --target wasm demo/cmd/t1_mysql
 ```
 
+- `demo/cmd/t1_mysql` 为什么单开一个可执行而不并进 smoke：本栈发布拓扑序是
+  core → persist → repository-mysql → facade，让 `repository-mysql` 反向依赖 `facade` 会打破
+  `publish.yml` 的按序发版；门面级 SQL 用例因此落在**不发布**的 demo 模块（先例 `demo/cmd/consistency`）。
+  两边共用 9xxxxx 段 + 测前测后自清理（R6），`SKIP_MYSQL=1` 同样生效。
 - 连接全部走 env：`JEFFLOW_DB_HOST/PORT/USER/PWD/NAME`——**四个显式给全，别依赖 `from_env()` 的
   内置默认值**（那是一套开发机兜底，硬编码在 `repository-mysql/repo/conn.mbt`）；库名指向上方前置
   建的**专用新库**，别指旧库/与其他栈共享的库（静默混表，schema 不齐时表现为莫名的缺列/水化失败，
