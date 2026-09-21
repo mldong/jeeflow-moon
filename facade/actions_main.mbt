@@ -245,7 +245,11 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     let vo = task_vo(t)
     let ext = parse_json_map(Some(@json.stringify(t.variables.to_object_json())))
     let doing = t.is_doing()
-    ext["isFirstTaskNode"] = bool_of_bool(doing && t.task_name == first_task.unwrap_or(""))
+    // issues/121 P1：行上值优先（建单已把标记落库），只有存量行没这个键才回退现算。
+    // 现算带"仅进行中"判定 ⇒ 拿它覆写历史行会把 true 洗成 false（P2 回退判参与者正是要避开那套口径）。
+    if ext.get("isFirstTaskNode") == None {
+      ext["isFirstTaskNode"] = bool_of_bool(doing && t.task_name == first_task.unwrap_or(""))
+    }
     @json.obj_set(vo, "ext", obj_json(ext))
     @json.arr_push(tasks, vo)
     if doing {
@@ -505,7 +509,11 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   @json.obj_set(vo, "executable", @json.bool_of(task.is_allowed(operator)))
   // issues/82-5：任务级 ext.isFirstTaskNode（java taskDetail 写 false 兜底 + define 匹配时修正）
   let t_ext = parse_json_map(Some(@json.stringify(task.variables.to_object_json())))
-  t_ext["isFirstTaskNode"] = @json.bool_of(false)
+  // 行上值（P1 起建单必写）；只有存量行没这个键时才走 false 兜底 + define 匹配修正
+  let row_first = t_ext.get("isFirstTaskNode")
+  if row_first == None {
+    t_ext["isFirstTaskNode"] = @json.bool_of(false)
+  }
   let inst = (self.repo).find_task_by_id(id) |> ignore
   let _ = inst
   @json.obj_set(vo, "ext", obj_json(t_ext))
@@ -522,9 +530,12 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
       @json.obj_set(vo, "jsonObject", opt_json_wrap(json_object))
       match define {
         Some(d) => {
-          t_ext["isFirstTaskNode"] = @json.bool_of(
-            doing_task.is_doing() && doing_task.task_name == first_task_node_id(json_object).unwrap_or(""),
-          )
+          if row_first == None {
+            // 存量行才回退现算（仅进行中口径）；新行一律以落库值为准
+            t_ext["isFirstTaskNode"] = @json.bool_of(
+              doing_task.is_doing() && doing_task.task_name == first_task_node_id(json_object).unwrap_or(""),
+            )
+          }
           @json.obj_set(vo, "ext", obj_json(t_ext))
           let model = @parser.parse_model(d.content)
           for node in model.nodes {

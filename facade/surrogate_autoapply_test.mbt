@@ -229,3 +229,38 @@ async test "批次117: 转办→撤回后 fromActor 的已办不含该单（<>10
   }
   // 同一份数据在两个仓储给出同一答案：SQL 仓真机对拍见 demo/cmd/t1_mysql（T1-F117）
 }
+
+// ══════════════════ issues/121 P1 门面出口 ══════════════════
+
+///|
+/// 门面读标记的优先级：行上值 > 现算。现算带"仅进行中"判定，拿它覆写会把已办结的
+/// apply 行洗成 false —— 那正是 P2 血缘回退要避免的口径，也是本用例要钉住的东西。
+async test "批次121: detail 出口的 ext.isFirstTaskNode 以落库值为准（历史行不被现算覆写）" {
+  let repo = @mem.MemoryRepository::new()
+  let facade = sg_facade(repo)
+  let did = sg_define_id(repo, linear_flow_json())
+  let iid = sg_started(facade, did)
+  let env = facade.flow("processInstance/detail", targs([("id", iid.to_string())]))
+  sg_ok(code_of(env) == 0L, "detail 应成功（msg=\{msg_of(env)}）")
+  let rows = match data_of(env).value("tasks") {
+    Some(Json::Array(a)) => a
+    _ => []
+  }
+  let mut saw_apply = false
+  for row in rows {
+    if @json.get_str(row, "taskName") == Some("apply") {
+      saw_apply = true
+      let row_state = @json.get_i64(row, "taskState").unwrap_or(-1L)
+      sg_ok(row_state != 10L, "前置条件：apply 行应已办结（实得 state=\{row_state}）")
+      let flag = match row.value("ext") {
+        Some(ext) => match ext.value("isFirstTaskNode") {
+          Some(v) => @json.as_bool(v).unwrap_or(false)
+          None => false
+        }
+        None => false
+      }
+      sg_ok(flag, "已办结的首任务节点行仍应报 true（被「仅进行中」现算覆写就会变 false）")
+    }
+  }
+  sg_ok(saw_apply, "detail 应回历史行 apply（实得 \{rows.length()} 行）")
+}
