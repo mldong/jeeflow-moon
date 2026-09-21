@@ -297,7 +297,30 @@ async test "i121-P2 rollback negatives: 20010007 no lineage / 20010008 guard" {
   }
   let r07 = try? engine.execute_and_jump_async(apply.task_id, "applicant", @json.FlowData::new(), None)
   match r07 {
-    Ok(ts) => assert_eq(ts.length(), 0)
+    Ok(_) => fail("无血缘（parent=0L）必须报错，不得静默不建单")
+    Err(e) => assert_true(e.message().starts_with("20010007"))
+  }
+
+  // ①′ 老行形状 A：parent 为 None（P1 之前落的数据该列是 NULL）——本栈与 Some(0L) 是两个 match 分支
+  let inst_b = engine.start_async(did, "applicant", @json.FlowData::new())
+  let apply_b = repo.find_doing_tasks(inst_b.instance_id, [])[0]
+  apply_b.parent_task_id = None
+  repo.update_task(apply_b)
+  let r07b = try? engine.execute_and_jump_async(apply_b.task_id, "applicant", @json.FlowData::new(), None)
+  match r07b {
+    Ok(_) => fail("parent=None 的老行必须报错，不得静默不建单")
+    Err(e) => assert_true(e.message().starts_with("20010007"))
+  }
+
+  // ①″ 老行形状 B：parent 非 0 但仓储里查不到行（老数据被清过 / 跨库迁来的样子）
+  //     ⇒ 走「取不到历史行」那条分支，同样必须 20010007
+  let inst_c = engine.start_async(did, "applicant", @json.FlowData::new())
+  let apply_c = repo.find_doing_tasks(inst_c.instance_id, [])[0]
+  apply_c.parent_task_id = Some(9223372036854775807L)
+  repo.update_task(apply_c)
+  let r07c = try? engine.execute_and_jump_async(apply_c.task_id, "applicant", @json.FlowData::new(), None)
+  match r07c {
+    Ok(_) => fail("parent 指不到真实行时必须报错，不得静默不建单")
     Err(e) => assert_true(e.message().starts_with("20010007"))
   }
 
