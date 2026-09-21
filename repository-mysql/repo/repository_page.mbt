@@ -100,39 +100,39 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_todo_tasks(self
 pub impl @spi.ProcessRepository for MysqlRepository with fn page_done_tasks(self, query) {
   let (page_num, page_size, offset) = page_bounds(query)
   let (m_where, m_params) = @query.build_m_where(query.filters())
-  let operator = query.operator()
-  let conn = self.open_or_tx()
-  // doneList「我的」口径对齐 java t.operator EQ（issues/107：不含发起人 create_user）
-  let count_sql = "SELECT COUNT(*) AS cnt FROM wf_process_task t WHERE t.task_state = 20" + m_where + (match operator {
-    Some(_) => " AND t.operator = ?"
+  // issues/117 §3.2（owner 拍板）：operator 为空 ⇒ **空页**。原实现把"没传 operator"
+  // 折叠成"不拼过滤条件"= 返回全库已办（旁路型缺口，比缺过滤器更隐蔽）。
+  // 本轮不把 doneList 的 operator 改成硬必填（前端 + drift_gate 另轮统一收），
+  // 但仓储层必须堵死"空即全量"。内存仓 `core/memory/memory.mbt` 同口径。
+  let operator = match query.operator() {
+    Some(op) => op.trim(chars=" \t\r\n").to_string()
     None => ""
-  })
+  }
+  if operator.is_empty() {
+    return @model.PageResult::new(page_num, page_size, 0L, [])
+  }
+  // issues/117 §3.3（owner 拍板取 `<> 10` 家族）：状态集合 = 「我经手过且不再是我待办」，
+  // 含 20 办结 / 30 撤回 / 40 终止 / 99 废弃；原 `= 20` 让撤回单从待办、已办两头消失
+  // （issues/113 刚把撤回态统一成 30），也掩盖了 issues/114 §6.2「转办覆写 actor_id →
+  // 撤回后冒单」在本栈的复现面。六栈（Java/Go/Python/Node/PHP/C#）本就 `<> 10`，
+  // Rust 与本栈是仅有的 `= 20` 少数派。
+  // doneList「我的」归属列仍是 t.operator EQ（issues/107：不含发起人 create_user）。
+  let state_cond = " WHERE t.task_state <> 10" + m_where + " AND t.operator = ?"
+  let conn = self.open_or_tx()
+  let count_sql = "SELECT COUNT(*) AS cnt FROM wf_process_task t" + state_cond
   let count_params : Array[@moondb.Value] = []
   for p in m_params {
     count_params.push(p)
   }
-  match operator {
-    Some(op) => {
-      count_params.push(@moondb.Text(op))
-    }
-    None => ()
-  }
+  count_params.push(@moondb.Text(operator))
   let count_rows = q(conn, count_sql, count_params)
   let total = if count_rows.is_empty() { 0L } else { row_i64(count_rows[0], "cnt") }
-  let sql = "SELECT t.id, t.process_instance_id, t.task_name, t.display_name, t.task_type, t.perform_type, t.task_state, t.operator, t.finish_time, t.expire_time, t.form_key, t.task_parent_id, t.variable, t.create_time, t.create_user, t.update_time, t.update_user, pi.process_define_id, pi.state AS instance_state, pi.operator AS instance_operator, pi.business_no, pi.variable AS instance_variable, pi.create_time AS instance_create_time, pd.name AS define_name, pd.display_name AS define_display_name, pd.version AS define_version FROM wf_process_task t LEFT JOIN wf_process_instance pi ON pi.id = t.process_instance_id LEFT JOIN wf_process_define pd ON pd.id = pi.process_define_id WHERE t.task_state = 20" + m_where + (match operator {
-      Some(op) => " AND t.operator = ?"
-      None => ""
-    }) + " ORDER BY t.id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()
+  let sql = "SELECT t.id, t.process_instance_id, t.task_name, t.display_name, t.task_type, t.perform_type, t.task_state, t.operator, t.finish_time, t.expire_time, t.form_key, t.task_parent_id, t.variable, t.create_time, t.create_user, t.update_time, t.update_user, pi.process_define_id, pi.state AS instance_state, pi.operator AS instance_operator, pi.business_no, pi.variable AS instance_variable, pi.create_time AS instance_create_time, pd.name AS define_name, pd.display_name AS define_display_name, pd.version AS define_version FROM wf_process_task t LEFT JOIN wf_process_instance pi ON pi.id = t.process_instance_id LEFT JOIN wf_process_define pd ON pd.id = pi.process_define_id" + state_cond + " ORDER BY t.id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()
   let params : Array[@moondb.Value] = []
   for p in m_params {
     params.push(p)
   }
-  match operator {
-    Some(op) => {
-      params.push(@moondb.Text(op))
-    }
-    None => ()
-  }
+  params.push(@moondb.Text(operator))
   let rows = q(conn, sql, params)
   close_conn(conn)
   let out : Array[@model.TaskRow] = []

@@ -68,7 +68,16 @@ pub(all) struct Ctx[R, E] {
   decision_handlers : Map[String, (@exec.Execution) -> String raise @error.JeeflowError]
   // ── 有序集合 ──
   interceptors : Array[InterceptorFn]
+  /// 前置扩展位（issues/116 批次 D）：与 `interceptors` **分开注册、分开触发**。
+  /// 本栈 `InterceptorFn` 只有一个 `run`（无 before/after 之分），若在 `fire_pre_interceptors`
+  /// 里复用同一数组，只在后置注册的既有实现（persist 的 PersistPostInterceptor）会被
+  /// 双触发（归档/SYNC 写两遍）。故 pre 另起一条通道，pre 体系的整体 canonical 形态
+  /// （含第三方自写拦截器的 pre 语义）仍归 issues/104 §P1。
+  pre_interceptors : Array[InterceptorFn]
   event_listeners : Array[((@event.ProcessEvent) -> Unit raise)]
+  /// 委托自动生效开关（issues/116 批次 D / spec 06 §4.5 条款 3）：**默认开启**
+  /// （`Ctx::new` 里给 true，全栈唯一构造入口，不存在"零值即关闭"的旁路）。
+  mut surrogate_auto_apply : Bool
 }
 
 ///|
@@ -87,7 +96,9 @@ pub fn[R, E] Ctx::new(repository : R, ext_repository : E) -> Ctx[R, E] {
     assignment_handlers: Map::new(),
     decision_handlers: Map::new(),
     interceptors: [],
+    pre_interceptors: [],
     event_listeners: [],
+    surrogate_auto_apply: true,
   }
 }
 
@@ -156,6 +167,25 @@ pub fn[R, E] Ctx::with_biz_data_reader(
 ) -> Ctx[R, E] {
   self.biz_data_reader = Some(f)
   self
+}
+
+///|
+/// 委托自动生效开关（issues/116 批次 D / spec 06 §4.5 条款 3）：**默认开启**
+/// （`Ctx::new` 里置 true，本栈 `Ctx` 仅此一个构造函数，无"零值即关闭"旁路）。
+/// 传 `false` 即显式关闭，行为回到"只有 `processSurrogate/*` 台账 CRUD、建单不并入代理人"。
+/// 引擎侧消费点见 `engine/surrogate.mbt` 的 `apply_surrogate`。
+pub fn[R, E] Ctx::with_surrogate_auto_apply(self : Ctx[R, E], on : Bool) -> Ctx[R, E] {
+  self.surrogate_auto_apply = on
+  self
+}
+
+///|
+/// 前置拦截器注册（issues/116 批次 D 补的最小挂点）：与 `register_interceptor`（后置）
+/// 分开的通道，避免把既有只在后置注册的实现变成双触发。
+/// ⚠️ pre 体系的整体 canonical 形态归 issues/104 §P1，本轮只打通"有地方挂"这一步。
+pub fn[R, E] Ctx::register_pre_interceptor(self : Ctx[R, E], i : InterceptorFn) -> Unit {
+  self.pre_interceptors.push(i)
+  self.pre_interceptors.sort_by(fn(a, b) { a.order.compare(b.order) })
 }
 
 ///|

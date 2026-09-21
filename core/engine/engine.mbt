@@ -157,7 +157,11 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
       self.execute_node(exec, next)
     }
   } else if node.node_type is @parser.Task || node.node_type is @parser.Custom {
-    // 任务创建不触发节点拦截器（对齐 Java CreateTaskHandler / Go executeNode）
+    // 任务创建不触发**后置**节点拦截器（对齐 Java CreateTaskHandler / Go executeNode）——保持原样。
+    // 前置侧 issues/116 批次 D 打通了独立通道（ctx.pre_interceptors），"建单那一刻"从此可挂。
+    // ⚠️ 内置委托自动生效**不挂这里**：此刻参与者尚未进聚合、taskId 尚未分配，
+    // 它落在唯一落库收口 `persist_tasks` 的 save_task 之前（见 surrogate.mbt 条款 2 ⚠️）。
+    self.fire_pre_interceptors(exec)
     self.create_task_with_assignment(exec, node)
   } else if node.node_type is @parser.Decision {
     self.fire_pre_interceptors(exec)
@@ -482,9 +486,20 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::resolve_va
 }
 
 ///|
-fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::fire_pre_interceptors(self : Engine[R, E], _exec : @exec.Execution) -> Unit raise @error.JeeflowError {
-  // 预置拦截器保留；persist 后置拦截器只挂 post（rust 同款）
-  let _ = self
+/// 前置拦截器派发（issues/116 批次 D 补的最小挂点）。
+/// 历史：本函数是空实现 ⇒ `Ctx::register_interceptor` 注册的东西只在**后置**跑，
+/// 建单期第三方无处可挂（issues/116 §3、issues/104 §P1）。
+/// 现按 order 遍历 `ctx.pre_interceptors` —— 一条**与后置数组分开**的通道：
+/// `InterceptorFn` 只有一个 `run`（无 before/after 之分），复用后置数组会让
+/// persist 的 PersistPostInterceptor 双触发（归档/SYNC 写两遍），故另起 pre 通道。
+/// 委托自动生效不经本函数（时机对不上，见 `surrogate.mbt` 头部 ①②）。
+fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::fire_pre_interceptors(
+  self : Engine[R, E],
+  exec : @exec.Execution
+) -> Unit raise @error.JeeflowError {
+  for interceptor in self.ctx.pre_interceptors {
+    (interceptor.run)(exec)
+  }
 }
 
 ///|
@@ -522,13 +537,26 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::assign_ids
 }
 
 ///|
-/// 新任务落库（原片赋 id 后 fire TASK_START，issues/13 时机闭环）
-async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::persist_tasks(self : Engine[R, E], instance : @model.ProcessInstance, new_tasks : Array[@model.ProcessTask]) -> Unit raise @error.JeeflowError {
-  for task in new_tasks {
+/// 新任务落库（原片赋 id 后 fire TASK_START，issues/13 时机闭环）。
+/// ⚠️ 本函数是**全引擎新任务落库的唯一收口**：7 处建任务路径（发起 / 带父实例发起 /
+/// 办理推进 / 串行会签每一步 / 会签未合并提前返回 / 表达式会签 / 跳转含回退与退回发起人）
+/// 都走它 —— issues/116 批次 D 的委托自动生效因此只挂这一处即覆盖全部路径。
+/// 入参改收 `exec`（而非 instance+new_tasks）即为了让收口拿得到**流程模型 name**
+/// （spec 06 §4.5 条款 1.1：委托查询以模型 name 为准，未带时回落 define.name）。
+async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::persist_tasks(
+  self : Engine[R, E],
+  exec : @exec.Execution
+) -> Unit raise @error.JeeflowError {
+  let instance = exec.process_instance
+  let process_name = self.surrogate_process_name(exec)
+  for task in exec.new_tasks {
     if task.task_id == 0L {
       task.task_id = self.next_id()
     }
     task.process_instance_id = instance.instance_id
+    // 落库前并入被委托人到**参与者集合本身**（条款 2 ⚠️）：下面 save_task + add_task_actor
+    // 带的就是含代理人的集合，不存在"事后补写打在空 taskId 上"的静默无效。
+    let _ = self.apply_surrogate(task, process_name)
     (self.repo()).save_task(task)
     if !task.actor_ids.is_empty() {
       (self.repo()).add_task_actor(task.task_id, task.actor_ids)

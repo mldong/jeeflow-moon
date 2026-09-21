@@ -15,13 +15,22 @@ fn query_match(q : @model.PageQuery, actor_ids : Array[String]) -> Bool {
 ///|
 /// 已办 operator 过滤：t.operator = 我（对齐 java doneList query.add("t.operator","EQ",userId)）。
 /// moon memory 语义 = 任务办理人 actor_id（finish(operator) 写入），非发起人 create_user。
+/// issues/117 §3.2：operator 缺失/空串 → **不匹配任何行**（原 `None => true` 等于"没传就给我
+/// 全库已办"，是旁路型缺口）；SQL 仓同口径见 repository_page.mbt 的空 operator 短路。
 fn done_operator_match(q : @model.PageQuery, t : @model.ProcessTask) -> Bool {
   match q.operator() {
-    Some(op) => match t.actor_id {
-      Some(a) => a == op
-      None => false
+    Some(op) => {
+      let want = op.trim(chars=" \t\r\n").to_string()
+      if want.is_empty() {
+        false
+      } else {
+        match t.actor_id {
+          Some(a) => a == want
+          None => false
+        }
+      }
     }
-    None => true
+    None => false
   }
 }
 
@@ -366,10 +375,21 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_todo_tasks(sel
 
 ///|
 pub impl @spi.ProcessRepository for MemoryRepository with fn page_done_tasks(self, query) {
+  // issues/117（owner 拍板，与 SQL 仓 repository_page.mbt 的 page_done_tasks 逐条同判据）：
+  // ① 状态集合 `task_state <> 10`（我经手过且不再是我待办：20 办结 / 30 撤回 / 40 终止 /
+  //    99 废弃全含），原 `== 20` 会让撤回单从待办、已办两头消失；
+  // ② operator 为空 ⇒ 空页，不得退化成"无过滤 = 全库已办"。
   let rows : Array[@model.TaskRow] = []
+  let operator = match query.operator() {
+    Some(op) => op.trim(chars=" \t\r\n").to_string()
+    None => ""
+  }
+  if operator.is_empty() {
+    return @model.PageResult::new(query.page_num(), query.page_size(), 0L, [])
+  }
   for tid in sorted_ids(self.tasks) {
     let t = self.tasks[tid]
-    if t.task_state == @model.TaskState::Finished.code() && done_operator_match(query, t) {
+    if t.task_state != @model.TaskState::Doing.code() && done_operator_match(query, t) {
       let inst = self.instances.get(t.process_instance_id)
       let define = match inst {
         Some(i) => self.defines.get(i.define_id)

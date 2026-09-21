@@ -1,4 +1,4 @@
-// issues/114/115 门面级真机对拍（T1-F）：processInstance/withdraw + processTask/transfer
+// issues/114/115/116/117 门面级真机对拍（T1-F）：withdraw / transfer / 委托自动生效 / 我已办判据
 // 走 **JeeflowFacade + MysqlRepository** 全链路，断言一律读**库里的列**或仓储读回值，
 // 不信聚合副本（issues/113 能活五个版本，就是因为全员断"doing 列表为空"这种间接信号）。
 // 为什么单开一个可执行而不并进 repository-mysql/smoke：本栈发布拓扑序是
@@ -561,6 +561,366 @@ async fn t1_f115_transfer() -> Unit raise {
 }
 
 ///|
+/// 委托自动生效用流：发起（apply）→ task1(f116-leader) → task2(f116-zhang) → end
+/// apply 由 startAndExecute 自动办结 ⇒ task1 是"发起路径产的单"、task2 是"推进路径产的单"
+/// ⚠️ 节点 assignee 必须与台账 operator **同名**（f116- 前缀）：委托是按 actor 查台账，
+/// 名字对不上就是零命中，条款 2 的参与者断言会退化成"只有原人"的假绿（本行踩过，已钉死）。
+const SG_FLOW : String =
+  $|{"name": "t1-f116", "displayName": "T1F委托", "type": "approval",
+  $|"nodes": [
+  $|  {"id": "start", "type": "snaker:start", "text": {"value": "S"}},
+  $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"},
+  $|   "properties": {"assignee": "applicant", "taskType": 0, "performType": 0}},
+  $|  {"id": "task1", "type": "snaker:task", "text": {"value": "一审"},
+  $|   "properties": {"assignee": "f116-leader", "taskType": 0, "performType": 0}},
+  $|  {"id": "task2", "type": "snaker:task", "text": {"value": "二审"},
+  $|   "properties": {"assignee": "f116-zhang", "taskType": 0, "performType": 0}},
+  $|  {"id": "end", "type": "snaker:end", "text": {"value": "E"}}
+  $|],
+  $|"edges": [
+  $|  {"id": "e1", "sourceNodeId": "start", "targetNodeId": "apply"},
+  $|  {"id": "e2", "sourceNodeId": "apply", "targetNodeId": "task1"},
+  $|  {"id": "e3", "sourceNodeId": "task1", "targetNodeId": "task2"},
+  $|  {"id": "e4", "sourceNodeId": "task2", "targetNodeId": "end"}
+  $|]}
+
+///|
+/// issues/117 红线用例专用流（不复用 SG_FLOW：那条流的 assignee 带 f116- 前缀，
+/// 而转办的 fromActor 判据读参与者表——非参与人直接 raise "原办理人不是该任务参与人"，
+/// 名字对不上时这条红线压根跑不到断言（与另七栈同尺子的用例必须真转办成功）。
+const F117_FLOW : String =
+  $|{"name": "t1-f117", "displayName": "T1F已办", "type": "approval",
+  $|"nodes": [
+  $|  {"id": "start", "type": "snaker:start", "text": {"value": "S"}},
+  $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"},
+  $|   "properties": {"assignee": "applicant", "taskType": 0, "performType": 0}},
+  $|  {"id": "task1", "type": "snaker:task", "text": {"value": "审批"},
+  $|   "properties": {"assignee": "f117b-leader", "taskType": 0, "performType": 0}},
+  $|  {"id": "end", "type": "snaker:end", "text": {"value": "E"}}
+  $|],
+  $|"edges": [
+  $|  {"id": "e1", "sourceNodeId": "start", "targetNodeId": "apply"},
+  $|  {"id": "e2", "sourceNodeId": "apply", "targetNodeId": "task1"},
+  $|  {"id": "e3", "sourceNodeId": "task1", "targetNodeId": "end"}
+  $|]}
+
+///|
+/// ext 仓储也是真机 MySQL（委托台账真落 wf_process_surrogate）；auto_apply 即条款 3 开关
+fn make_facade_ext(
+  repo : @repo.MysqlRepository,
+  start : Int64,
+  auto_apply~ : Bool = true
+) -> @facade.Facade[@repo.MysqlRepository, @repo.MysqlRepository] {
+  let counter : Ref[Int64] = Ref::new(start)
+  let ctx = @spi.Ctx::new(repo, repo)
+  let ctx2 = ctx.with_id_generator(fn() {
+    let v = counter.val
+    counter.val = v + 1L
+    v
+  })
+  @facade.Facade::make(ctx2.with_surrogate_auto_apply(auto_apply))
+}
+
+///|
+async fn sg_todo(
+  facade : @facade.Facade[@repo.MysqlRepository, @repo.MysqlRepository],
+  operator : String
+) -> Json raise {
+  env_data(
+    facade.flow("processTask/todoList", fa([("operator", operator), ("pageNum", "1"), ("pageSize", "50")])),
+  )
+}
+
+///|
+async fn sg_done(
+  facade : @facade.Facade[@repo.MysqlRepository, @repo.MysqlRepository],
+  operator : String
+) -> Json raise {
+  env_data(
+    facade.flow("processTask/doneList", fa([("operator", operator), ("pageNum", "1"), ("pageSize", "50")])),
+  )
+}
+
+///|
+/// 委托台账写入走门面 action（连 processSurrogate/save 的参数口径一起验）
+async fn sg_save(
+  facade : @facade.Facade[@repo.MysqlRepository, @repo.MysqlRepository],
+  operator : String,
+  agent : String,
+  process_name : String,
+  extra : Array[(String, String)]
+) -> Unit raise {
+  let entries : Array[(String, String)] = [
+    ("operator", operator),
+    ("surrogate", agent),
+    ("processName", process_name),
+    ("enabled", "1"),
+  ]
+  for e in extra {
+    let _ = entries.push(e)
+  }
+  let env = facade.flow("processSurrogate/save", fa(entries))
+  check(env_code(env) == 0L, "\{operator}→\{agent} 委托台账保存 code=0")
+}
+
+///|
+/// 委托台账自清理（R6 补漏）：`processSurrogate/save` 的 id 是**雪花**，不在 clean_9x 的
+/// 9xxxxx 段里 ⇒ 崩一次就在共享库长出一批无人认领的委托行，下一轮（甚至别的栈的同名 actor）
+/// 被反向污染。按 f116- 前缀单独扫，测前测后各一次，幂等。
+async fn clean_sg_ledger(repo : @repo.MysqlRepository) -> Unit raise {
+  set_sql(
+    repo,
+    "DELETE FROM wf_process_surrogate WHERE operator LIKE 'f116-%' OR surrogate LIKE 'f116-%'",
+    [],
+  )
+}
+
+///|
+/// 参与者行直读库（不走仓储水合）——条款 2⚠️ 要钉的就是 wf_process_task_actor 里的行
+async fn actor_rows(repo : @repo.MysqlRepository, tid : Int64) -> Array[String] raise {
+  let conn = repo.open_raw()
+  let rows = @repo.q(
+    conn,
+    "SELECT actor_id FROM wf_process_task_actor WHERE process_task_id = ? ORDER BY actor_id",
+    [@moondb.Int64(tid)],
+  )
+  @repo.close_conn(conn)
+  let out : Array[String] = []
+  for r in rows {
+    let _ = out.push(cell(r, "actor_id"))
+  }
+  out
+}
+
+///|
+/// T1-F116：委托代理自动生效（门面 + 真机 MySQL）——条款 1/2⚠️/3/4/5①/条款 1.1
+async fn t1_f116_surrogate_auto_apply() -> Unit raise {
+  @model.set_clock(Some(fn() { "2026-09-21 10:00:00" }))
+  defer { @model.set_clock(None) }
+  let repo = @repo.MysqlRepository::from_env()
+  clean_9x(repo)
+  clean_sg_ledger(repo)
+  save_define_9x(repo, 990801L, "t1-f116", SG_FLOW)
+  let facade = make_facade_ext(repo, 990810L)
+  // 授权人 f116-leader / f116-zhang 各自委托给不同人（与 SG_FLOW 的 assignee 同名）；
+  // 流程名取**模型 name**（条款 1.1）
+  let _ = sg_save(facade, "f116-leader", "f116-li", "t1-f116", [])
+  let _ = sg_save(facade, "f116-zhang", "f116-li2", "t1-f116", [])
+  let started = facade.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990801"), ("operator", "f116-applicant")]),
+  )
+  check(env_code(started) == 0L, "F116 发起 code=0")
+  let iid = iid_of(started)
+  // ① 发起路径产的 task1：参与者行真落库 = 授权人 + 代理人
+  let t1 = doing_task_id(repo, iid, "task1")
+  check_actors(actor_rows(repo, t1), ["f116-leader", "f116-li"], "F116 条款2⚠️：代理人真落 wf_process_task_actor（非事后补写）")
+  check(page_has(sg_todo(facade, "f116-li"), iid), "F116 代理人 todoList 出现该单（用户视角闭环）")
+  check(page_has(sg_todo(facade, "f116-leader"), iid), "F116 授权人 todoList 仍在（任一可办）")
+  // ② 推进路径产的 task2（只挂发起一处的实现会在这里漏）
+  let exe = facade.flow(
+    "processTask/execute",
+    fa([("processTaskId", t1.to_string()), ("operator", "f116-leader"), ("submitType", "1")]),
+  )
+  check(env_code(exe) == 0L, "F116 leader 办结 task1 code=0")
+  let t2 = doing_task_id(repo, iid, "task2")
+  check_actors(actor_rows(repo, t2), ["f116-li2", "f116-zhang"], "F116 条款1：推进出的新单同样并入代理人")
+  check(task_cell(repo, t2, "task_state") == "10", "F116 推进新单仍在进行中")
+  // ③ 跳转路径：task2 跳回 task1（重建的也是新单）
+  let jm = facade.flow(
+    "processTask/execute",
+    fa([
+      ("processTaskId", t2.to_string()),
+      ("operator", "f116-zhang"),
+      ("submitType", "4"),
+      ("taskName", "task1"),
+    ]),
+  )
+  check(env_code(jm) == 0L, "F116 跳转 code=0")
+  let back_ids : Array[Int64] = []
+  let conn = repo.open_raw()
+  let rows = @repo.q(
+    conn,
+    "SELECT id FROM wf_process_task WHERE process_instance_id = ? AND task_name = 'task1' AND task_state = 10",
+    [@moondb.Int64(iid)],
+  )
+  @repo.close_conn(conn)
+  for r in rows {
+    let _ = back_ids.push(@repo.row_i64(r, "id"))
+  }
+  check(back_ids.length() == 1, "F116 跳转后 task1 重建一行（实际=\{back_ids.length()}）")
+  check_actors(
+    actor_rows(repo, back_ids[0]),
+    ["f116-leader", "f116-li"],
+    "F116 条款1：跳转路径同样并入代理人",
+  )
+  // ④ 显式关闭：同一份台账，新单不再并入代理人（条款 3）
+  let off = make_facade_ext(repo, 990890L, auto_apply=false)
+  let started2 = off.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990801"), ("operator", "f116-applicant")]),
+  )
+  check(env_code(started2) == 0L, "F116 关闭后发起照常 code=0")
+  let iid2 = iid_of(started2)
+  let t1b = doing_task_id(repo, iid2, "task1")
+  check_actors(actor_rows(repo, t1b), ["f116-leader"], "F116 条款3：关闭后回到仅台账（不并入代理人）")
+  check(env_code(off.flow("processSurrogate/page", fa([("pageNum", "1"), ("pageSize", "50")]))) == 0L, "F116 关闭后台账 CRUD 不变")
+  // ⑤ 未配置扩展仓储（NoExtRepository）→ 静默跳过、不打断建单（条款 4）
+  let plain = make_facade(repo, 990860L)
+  let started3 = plain.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990801"), ("operator", "f116-applicant")]),
+  )
+  check(env_code(started3) == 0L, "F116 条款4：无扩展仓储也能发起（不报错）")
+  let iid3 = iid_of(started3)
+  let conn3 = repo.open_raw()
+  let rows3 = @repo.q(
+    conn3,
+    "SELECT actor_id FROM wf_process_task_actor WHERE process_task_id = ?",
+    [@moondb.Int64(doing_task_id(repo, iid3, "task1"))],
+  )
+  @repo.close_conn(conn3)
+  check(rows3.length() == 1, "F116 条款4：无扩展仓储时参与者原样（实际=\{rows3.length()}）")
+  // ⑥ 窗外 / 停用不生效（SQL 侧判据，与内存仓同答案见 T1-I116）
+  let _ = sg_save(facade, "f116-off", "f116-li3", "t1-f116", [("enabled", "0")])
+  let _ = sg_save(facade, "f116-past", "f116-li4", "t1-f116", [("endTime", "2026-09-20 23:59:59")])
+  check(
+    repo.get_surrogate("f116-off", "t1-f116", "2026-09-21 10:00:00") is None,
+    "F116 条款5④：enabled=0 查不到",
+  )
+  check(
+    repo.get_surrogate("f116-past", "t1-f116", "2026-09-21 10:00:00") is None,
+    "F116 条款5②：窗外查不到",
+  )
+  clean_sg_ledger(repo)
+  clean_9x(repo)
+}
+
+///|
+/// T1-F117：我已办状态集合 = task_state <> 10 + 空 operator 空页 + 转办→撤回不冒单（门面级真机）
+async fn t1_f117_done_list() -> Unit raise {
+  @model.set_clock(Some(fn() { "2026-09-21 10:00:00" }))
+  defer { @model.set_clock(None) }
+  let repo = @repo.MysqlRepository::from_env()
+  clean_9x(repo)
+  save_define_9x(repo, 990901L, "t1-f117", F117_FLOW)
+  let conn = repo.open_raw()
+  let _ = @repo.x(
+    conn,
+    "INSERT INTO wf_process_instance (id, process_define_id, state, operator, variable, create_time, create_user) VALUES (990900, 990901, 10, 'f117-applicant', '{}', NOW(), 'f117')",
+    [],
+  )
+  // 四个"离开了待办办理"的态 + 一个 DOING；办理人列同一人
+  let states : Array[Int] = [20, 30, 40, 99, 10]
+  for i in 0..<states.length() {
+    let st = states[i]
+    let op = if st == 10 { None } else { Some("f117-leader") }
+    let _ = @repo.x(
+      conn,
+      "INSERT INTO wf_process_task (id, process_instance_id, task_name, display_name, task_type, perform_type, task_state, operator, variable, create_time, create_user) VALUES (?, 990900, ?, ?, 0, 0, ?, ?, '{}', NOW(), 'f117-applicant')",
+      [
+        @moondb.Int64(990911L + i.to_int64()),
+        @moondb.Text("n\{st}"),
+        @moondb.Text("节点\{st}"),
+        @moondb.Int(st),
+        opt_v_param(op),
+      ],
+    )
+  }
+  @repo.close_conn(conn)
+  let facade = make_facade_ext(repo, 990950L)
+  // 正向：20/30/40/99 四条都在已办，DOING 不在
+  let data = sg_done(facade, "f117-leader")
+  check(rc_of(data) == 4L, "F117 已办返回 4 条（20/30/40/99，实际=\{rc_of(data)}）")
+  for want in ["n20", "n30", "n40", "n99"] {
+    var hit = false
+    for r in rows_of(data) {
+      if @json.get_str(r, "taskName").unwrap_or("") == want {
+        hit = true
+      }
+    }
+    check(hit, "F117 已办含状态行 \{want}")
+  }
+  var has_doing = false
+  for r in rows_of(data) {
+    if @json.get_str(r, "taskName").unwrap_or("") == "n10" {
+      has_doing = true
+    }
+  }
+  check(!has_doing, "F117 DOING(10) 不进已办")
+  // 判据生效自证：裸 SQL 确实有 4 行落在 <>10 候选集里（不是"=20 蓙对"）
+  check_eq(
+    select_cell(
+      repo,
+      "SELECT COUNT(*) AS cnt FROM wf_process_task WHERE process_instance_id = 990900 AND task_state <> 10",
+      [],
+      "cnt",
+    ),
+    "4",
+    "F117 裸 SQL 候选集=4（证 <>10 判据真在筛）",
+  )
+  // 负向：空 operator → 空页（不得返回全库）
+  let blank = env_data(
+    facade.flow("processTask/doneList", fa([("operator", ""), ("pageNum", "1"), ("pageSize", "50")])),
+  )
+  check(rc_of(blank) == 0L, "F117 operator='' → 空页（不得返回全库，实际=\{rc_of(blank)}）")
+  // 负向：发起人（create_user）放行不得出现（契约 §2.5 点名禁止，Rust 那格违约）
+  let creator = sg_done(facade, "f117-applicant")
+  check(rc_of(creator) == 0L, "F117 create_user 不放行（实际=\{rc_of(creator)}）")
+  // 回归红线（与另七栈同尺子，issues/114 §6.2）：转办→撤回后 fromActor 已办不冒单
+  let started = facade.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990901"), ("operator", "f117b-applicant")]),
+  )
+  check(env_code(started) == 0L, "F117 红线用例发起 code=0")
+  let iid = iid_of(started)
+  let tid = doing_task_id(repo, iid, "task1")
+  let tr = facade.flow(
+    "processTask/transfer",
+    fa([
+      ("processTaskId", tid.to_string()),
+      ("operator", "f117b-leader"),
+      ("fromActor", "f117b-leader"),
+      ("toActor", "f117b-lisi"),
+    ]),
+  )
+  check(env_code(tr) == 0L, "F117 转办 code=0")
+  let _ = facade.flow(
+    "processInstance/withdraw",
+    fa([("id", iid.to_string()), ("operator", "f117b-applicant")]),
+  )
+  check_eq(task_cell(repo, tid, "task_state"), "30", "F117 撤回后库里任务态 30")
+  check_eq(task_cell(repo, tid, "operator"), "<NULL>", "F117 红线：转办未覆写办理人列")
+  // 关键：这一行现在**确实落在 <>10 候选集里**，挡住它的是办理人列，不再是状态集合
+  check_eq(
+    select_cell(
+      repo,
+      "SELECT COUNT(*) AS cnt FROM wf_process_task WHERE id = ? AND task_state <> 10",
+      [@moondb.Int64(tid)],
+      "cnt",
+    ),
+    "1",
+    "F117 该撤回行已进入 <>10 候选集（本用例真有牙，不是被 =20 掩掉）",
+  )
+  check(!page_has(sg_done(facade, "f117b-leader"), iid), "F117 被摘走者已办不冒单（转办→撤回）")
+  check(!page_has(sg_done(facade, "f117b-lisi"), iid), "F117 接手未办者已办也不冒单")
+  clean_9x(repo)
+}
+
+///|
+/// 分页出口 recordCount（验收取数字形态，D-M3-3 出口 camel）
+fn rc_of(data : Json) -> Int64 {
+  @json.get_i64(data, "recordCount").unwrap_or(-1L)
+}
+
+///|
+fn opt_v_param(v : String?) -> @moondb.Value {
+  match v {
+    Some(s) => @moondb.Text(s)
+    None => @moondb.Null
+  }
+}
+
 async fn run() -> Unit raise {
   if skip_mysql() {
     println("SKIP_MYSQL=1 → T1-F skipped (开发机口径；发版机连不上=fail)")
@@ -572,6 +932,10 @@ async fn run() -> Unit raise {
   t1_f114_withdraw()
   println("T1-F115 facade transfer → 参与者/三件留痕/红线列真机对拍...")
   t1_f115_transfer()
+  println("T1-F116 facade 委托自动生效 → 参与者行真机对拍...")
+  t1_f116_surrogate_auto_apply()
+  println("T1-F117 facade 已办判据 <>10 + 空 operator 空页 + 转办撤回红线...")
+  t1_f117_done_list()
   println("T1-F ALL PASS (wasm → 真机 MySQL)")
 }
 

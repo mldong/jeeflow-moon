@@ -7,6 +7,7 @@ import {
   "mldong/jeeflow-core/error" @error,
   "mldong/jeeflow-core/spi" @spi,
   "mldong/jeeflow-core/engine" @engine,
+  "mldong/jeeflow-core/memory" @mem,
   "mldong/jeeflow-repository-mysql/repo" @repo,
   "mldong/jeeflow-repository-mysql/query" @query,
   "moonbitstack/moondb" @moondb,

@@ -45,7 +45,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
     None => ()
   }
   // 10. 新任务落库（原片赋 id）
-  self.persist_tasks(exec.process_instance, exec.new_tasks)
+  self.persist_tasks(exec)
   // 11. 回写实例
   (self.repo()).update_instance(exec.process_instance)
   // 12. fire 发起事件
@@ -275,7 +275,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
         for t in new_tasks {
           exec.new_tasks.push(t)
         }
-        self.persist_tasks(exec.process_instance, exec.new_tasks)
+        self.persist_tasks(exec)
         (self.repo()).update_instance(exec.process_instance)
         return exec.new_tasks
       } else {
@@ -304,7 +304,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
           self.abandon_countersign_remaining(exec, node_id)
           exec.is_merged = true
         } else {
-          self.persist_tasks(exec.process_instance, exec.new_tasks)
+          self.persist_tasks(exec)
           (self.repo()).update_instance(exec.process_instance)
           return exec.new_tasks
         }
@@ -314,7 +314,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
           self.abandon_countersign_remaining(exec, node_id)
           exec.is_merged = true
         } else {
-          self.persist_tasks(exec.process_instance, exec.new_tasks)
+          self.persist_tasks(exec)
           (self.repo()).update_instance(exec.process_instance)
           return exec.new_tasks
         }
@@ -349,7 +349,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
     None => ()
   }
   // 12. 落库
-  self.persist_tasks(exec.process_instance, exec.new_tasks)
+  self.persist_tasks(exec)
   (self.repo()).update_instance(exec.process_instance)
   exec.new_tasks
 }
@@ -382,7 +382,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
       }
     }
   }
-  self.persist_tasks(exec.process_instance, exec.new_tasks)
+  self.persist_tasks(exec)
   (self.repo()).update_instance(exec.process_instance)
   exec.new_tasks
 }
@@ -468,7 +468,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
     Some(start) => self.execute_node(exec, start)
     None => ()
   }
-  self.persist_tasks(exec.process_instance, exec.new_tasks)
+  self.persist_tasks(exec)
   (self.repo()).update_instance(exec.process_instance)
   let event = @event.ProcessEvent::make(@event.ProcessInstanceStart, instance.instance_id)
   @event.notify(event, self.ctx.event_listeners())

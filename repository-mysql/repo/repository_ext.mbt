@@ -212,15 +212,61 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn page_surrogates(s
 }
 
 ///|
-pub impl @spi.ProcessExtRepository for MysqlRepository with fn get_surrogate(self, operator, process_name, _time) {
+/// 生效委托查询（issues/116 批次 D / spec 06 §4.5 条款 5 四判据 + 条款 6 双仓同答案）：
+/// ① 空 processName 全流程兜底（先按名精确，未命中再查 process_name IS NULL OR = ''）；
+/// ② 时间窗 start_time <= now <= end_time，NULL 视为该侧不限；
+/// ③ 自委托过滤 surrogate <> operator；
+/// ④ enabled = 1 才生效（0 / NULL / 其它脏值都不算启用）。
+/// 命中多条取 id 最大（ORDER BY id DESC LIMIT 1）。
+/// 原实现只有 `operator = ? AND process_name = ? AND enabled = 1` —— 忽略 `_time` 形参
+/// （SQL 里根本没有窗口条件）、无空名兜底、无自委托过滤，与内存仓对同一份数据结论不同。
+/// ⚠️ 四判据与 `core/memory/memory_ext.mbt` 的 get_surrogate **逐条同构**，改一处必改两处。
+pub impl @spi.ProcessExtRepository for MysqlRepository with fn get_surrogate(self, operator, process_name, time) {
+  let exact = self.query_surrogate(operator, process_name, time, false)
+  match exact {
+    Some(_) => exact
+    None => self.query_surrogate(operator, process_name, time, true)
+  }
+}
+
+///|
+/// 单轮查询：blank_name=false 走 process_name 精确匹配，true 走空名兜底；
+/// time 为空串时两侧窗口谓词整体不拼（与内存仓"空 now = 不限"同口径）。
+async fn MysqlRepository::query_surrogate(
+  self : MysqlRepository,
+  operator : String,
+  process_name : String,
+  time : String,
+  blank_name : Bool
+) -> @model.ProcessSurrogate? raise @error.JeeflowError {
+  let name_cond =
+    if blank_name {
+      " AND (process_name IS NULL OR process_name = '')"
+    } else {
+      " AND process_name = ?"
+    }
+  let now = time.trim(chars=" \t\r\n").to_string()
+  let window_cond =
+    if now.is_empty() {
+      ""
+    } else {
+      " AND (start_time IS NULL OR start_time <= ?) AND (end_time IS NULL OR end_time >= ?)"
+    }
+  let sql = "SELECT id, process_name, operator, surrogate, start_time, end_time, enabled, create_time, create_user, update_time, update_user FROM wf_process_surrogate WHERE operator = ? AND surrogate <> operator AND enabled = 1" + window_cond + name_cond + " ORDER BY id DESC LIMIT 1"
+  let params : Array[@moondb.Value] = [@moondb.Text(operator)]
+  if !now.is_empty() {
+    params.push(@moondb.Text(now))
+    params.push(@moondb.Text(now))
+  }
+  if !blank_name {
+    params.push(@moondb.Text(process_name))
+  }
   let conn = self.open_or_tx()
-  let rows = q(conn, 
-    "SELECT id, process_name, operator, surrogate, start_time, end_time, enabled, create_time, create_user, update_time, update_user FROM wf_process_surrogate WHERE operator = ? AND process_name = ? AND enabled = 1 ORDER BY id DESC LIMIT 1",
-    [@moondb.Text(operator), @moondb.Text(process_name)],
-  )
+  let rows = q(conn, sql, params)
   close_conn(conn)
   if rows.is_empty() {
-    return None
+    None
+  } else {
+    Some(map_surrogate(rows[0]))
   }
-  Some(map_surrogate(rows[0]))
 }

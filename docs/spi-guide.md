@@ -32,6 +32,35 @@ ctx.register_event_listener(my_listener)
 ctx.register_assignment_handler("com.mldong.wf.handler.XxxHandler", my_handler)  // Java FQCN 注册
 ```
 
+## 委托代理自动生效（引擎内置，默认开启）
+
+`wf_process_surrogate` 台账配好之后，**建单那一刻**引擎会自动把被委托人并入该任务的参与者
+（授权人保留、任一可办——委托不是转办，不摘原人），集成方**无需挂任何拦截器**。
+契约见 spec/06 §4.5（条款 1~6）。本栈落点：`core/engine/surrogate.mbt`，挂在
+**新任务落库唯一收口** `Engine::persist_tasks` 的 `save_task` 之前——发起、办理推进、
+串行会签每一步、跳转四类路径共用这一个漏斗，结构上漏不掉。
+
+⚠️ 并入的是**参与者集合本身**（`task.actor_ids`），随任务一起落 `wf_process_task_actor`；
+**不走**"事后再调一次 `add_task_actor` 补写"那条路（Java 首版正是那条路，它在 taskId
+分配前触发、补写打在空 id 上静默无效）。
+
+- **显式关闭**：一行挂在构造链上即可 ——
+  `@spi.Ctx::new(repo, ext_repo).with_surrogate_auto_apply(false)`；
+  已建好的 `ctx` 直接 `ctx.with_surrogate_auto_apply(false)` 亦可（`Ctx` 是引用语义，原地生效）。
+  关闭后回到"仅台账 CRUD"行为：`processSurrogate/*` 五个 action 照常，建单不再并入代理人。
+  本栈 `Ctx` 只有 `Ctx::new` 一个构造入口，默认值即开启，不存在"零值即关闭"的旁路。
+- **未配置扩展仓储 = 静默跳过**：`E = @spi.NoExtRepository`（`get_surrogate` 恒 None）即视为
+  未配置；扩展仓储自身报错也只被吞成 None，绝不打断建单（委托是增强能力）。
+- **`processName` 取值**：流程模型 `name`（对齐内置版 `getProcessModel().getName()` 的迁移基线），
+  模型未带时回落 `wf_process_define.name`。
+- **自建仓储必须满足的四判据**（内存仓与 SQL 仓对同一份数据要给同一答案）：
+  ① 空 processName 全流程兜底（先按名精确、未命中再查 `process_name IS NULL OR = ''`）；
+  ② 时间窗 `start_time <= now <= end_time`，任一侧 NULL/空 = 该侧不限；
+  ③ 自委托过滤 `surrogate <> operator`；④ `enabled` **只认整数 1**（脏值不得当启用）。
+  另：多条同时命中取 **id 最大**（SQL 侧 `ORDER BY id DESC`，内存侧不得取遍历首条）。
+- **前置拦截器**：`ctx.register_pre_interceptor(...)` 走 `fire_pre_interceptors`（建单那一刻同样触发），
+  与后置 `register_interceptor` **分通道**，避免 persist 的 PostInterceptor 被双触发。
+
 ## 内存实现参照
 
 `core/memory`（`MemoryRepository`）是完整参照实现：同行为、零 I/O、行列举按 id 有序（测试确定性）。

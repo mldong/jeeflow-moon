@@ -194,10 +194,82 @@ async test "memory: doneList 解析流程显示名 + operator『我的』过滤 
   let page2 = repo.page_done_tasks(q2)
   assert_eq(page2.record_count(), 1L)
   assert_eq(page2.rows()[0].task_name, "发起申请")
-  // 回归：不带 operator（None）→ 全量 2
+  // issues/117 §3.2（owner 拍板）：不带 operator（None）→ **空页**，不再是"无过滤即全库"。
+  // 契约 spec/06 §2.5 写死 doneList 必须按 operator 过滤，"空即全量"是旁路型缺口。
   let q3 = @model.PageQuery::new(1L, 10L)
   let page3 = repo.page_done_tasks(q3)
-  assert_eq(page3.record_count(), 2L)
+  assert_eq(page3.record_count(), 0L)
+  assert_eq(page3.rows().length(), 0)
+  // 空串同罪（不能靠"列值不可能为空串"侥幸，得判据本身封死）
+  let q4 = @model.PageQuery::new(1L, 10L)
+  q4.set_operator(Some(""))
+  assert_eq(repo.page_done_tasks(q4).record_count(), 0L)
+  // 回归：分页五键在判据收紧后仍成立
+  let q5 = @model.PageQuery::new(1L, 1L)
+  q5.set_operator(Some("leader"))
+  let page5 = repo.page_done_tasks(q5)
+  assert_eq(page5.record_count(), 1L)
+  assert_eq(page5.total_page(), 1L)
+}
+
+///|
+/// issues/117 §3.3（owner 拍板取 `<> 10` 家族）：已办 = 「我经手过且不再是我待办」，
+/// 状态集合含 20 办结 / 30 撤回 / 40 终止 / 99 废弃，仅 10 进行中排除。
+/// 原 `== 20` 让撤回单从待办与已办两头消失（issues/113 刚把撤回态统一成 30）。
+/// SQL 仓同判据真机对拍见 repository-mysql/smoke 的 T1-I117（同数据同答案 = 条款 6 通则）。
+async test "memory: doneList 状态集合 = task_state <> 10（20/30/40/99 四条全进，10 不进）" {
+  let repo = @memory.MemoryRepository::new()
+  let define = make_define_struct()
+  repo.save_define(define)
+  let inst = @model.ProcessInstance::create(define, "boss", @json.FlowData::new())
+  repo.save_instance(inst)
+  let states : Array[Int] = [20, 30, 40, 99, 10]
+  for s in states {
+    let t : @model.ProcessTask = {
+      task_id: 0L,
+      process_instance_id: inst.instance_id,
+      task_name: "n\{s}",
+      display_name: "节点\{s}",
+      task_type: 0,
+      perform_type: 0,
+      task_state: s,
+      actor_id: if s == 10 { None } else { Some("leader") },
+      actor_ids: ["leader"],
+      finish_time: None,
+      expire_time: None,
+      form_key: None,
+      parent_task_id: None,
+      variables: @json.FlowData::new(),
+      create_time: Some("2026-09-01 09:00:00"),
+      // create_user 是发起人：已办不得按它放行（issues/107/Rust 那格违约点）
+      create_user: Some("boss"),
+      update_time: None,
+      update_user: None,
+    }
+    repo.save_task(t)
+  }
+  let q = @model.PageQuery::new(1L, 10L)
+  q.set_operator(Some("leader"))
+  let page = repo.page_done_tasks(q)
+  // 正向：20/30/40/99 四条都在
+  assert_eq(page.record_count(), 4L)
+  // 每个态一行，行名即态：n20 / n30 / n40 / n99 必须都在
+  for want in ["n20", "n30", "n40", "n99"] {
+    assert_true(page.rows().exists(r => r.task_name == want))
+  }
+  // 负向：DOING(10) 不进（它是待办，不是已办）
+  assert_true(!page.rows().exists(r => r.task_name == "n10"))
+  // 归属列仍是办理人：boss（发起人 / create_user）看不到任何一行
+  let q2 = @model.PageQuery::new(1L, 10L)
+  q2.set_operator(Some("boss"))
+  assert_eq(repo.page_done_tasks(q2).record_count(), 0L)
+  // 分页截断仍按 pageSize
+  let q3 = @model.PageQuery::new(1L, 2L)
+  q3.set_operator(Some("leader"))
+  let page3 = repo.page_done_tasks(q3)
+  assert_eq(page3.record_count(), 4L)
+  assert_eq(page3.rows().length(), 2)
+  assert_eq(page3.total_page(), 2L)
 }
 
 ///|

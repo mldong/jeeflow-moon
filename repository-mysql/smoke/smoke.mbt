@@ -359,6 +359,216 @@ async fn t1_i114_update_user_lands() -> Unit raise {
   clean_9x(repo)
 }
 ///|
+/// ── issues/116 批次 D：委托查询四判据 + 双仓同答案（SQL 仓真机）──
+/// 同一份委托台账同时灌进 SQL 仓与内存仓，逐探针比**两侧答案是否相同**（spec 06 §4.5 条款 6）。
+/// 四判据（条款 5）：① 空 processName 全流程兜底（且精确名优先于兜底）、
+/// ② 时间窗 start<=now<=end（NULL=该侧不限，边界含等号）、③ 自委托过滤、④ enabled 只认 1。
+/// 条款 1.4：多条命中取 id 最大 —— SQL 侧 ORDER BY id DESC。
+const I116_NOW : String = "2026-09-21 10:00:00"
+
+///|
+fn sg_row(
+  id : Int64,
+  operator : String,
+  agent : String,
+  process_name : String,
+  start_time : String?,
+  end_time : String?,
+  enabled : Int
+) -> @model.ProcessSurrogate {
+  {
+    id: id,
+    process_name: process_name,
+    operator: operator,
+    surrogate: agent,
+    start_time: start_time,
+    end_time: end_time,
+    enabled: enabled,
+    create_time: None,
+    create_user: Some("i116"),
+    update_time: None,
+    update_user: None,
+  }
+}
+
+///|
+async fn t1_i116_surrogate_query() -> Unit raise {
+  @model.set_clock(Some(fn() { I116_NOW }))
+  defer { @model.set_clock(None) }
+  let repo = @repo.MysqlRepository::from_env()
+  clean_9x(repo)
+  let mem = @mem.MemoryRepository::new()
+  let rows = [
+    sg_row(990501L, "i116-zhang", "i116-li", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
+    sg_row(990502L, "i116-future", "i116-li", "i116-flow", Some("2026-09-25 00:00:00"), None, 1),
+    sg_row(990503L, "i116-past", "i116-li", "i116-flow", None, Some("2026-09-20 23:59:59"), 1),
+    sg_row(990504L, "i116-off", "i116-li", "i116-flow", None, None, 0),
+    sg_row(990505L, "i116-self", "i116-self", "i116-flow", None, None, 1),
+    sg_row(990506L, "i116-blank", "i116-li", "", None, None, 1),
+    sg_row(990507L, "i116-multi", "i116-old", "i116-flow", None, None, 1),
+    sg_row(990508L, "i116-multi", "i116-new", "i116-flow", None, None, 1),
+    sg_row(990509L, "i116-edge", "i116-li", "i116-flow", Some(I116_NOW), Some(I116_NOW), 1),
+    // 精确名行 id 比兜底行**小**：证明两阶段查询，而不是"一次 ORDER BY id DESC 扫全表"
+    sg_row(990510L, "i116-prio", "i116-exact", "i116-flow", None, None, 1),
+    sg_row(990511L, "i116-prio", "i116-blank-hit", "", None, None, 1),
+  ]
+  for r in rows {
+    repo.save_surrogate(r)
+    mem.save_surrogate(r)
+  }
+  let probes : Array[(String, String, String)] = [
+    ("i116-zhang", "i116-flow", "i116-li"),
+    ("i116-future", "i116-flow", "<none>"),
+    ("i116-past", "i116-flow", "<none>"),
+    ("i116-off", "i116-flow", "<none>"),
+    ("i116-self", "i116-flow", "<none>"),
+    ("i116-blank", "any-unlisted-flow", "i116-li"),
+    ("i116-multi", "i116-flow", "i116-new"),
+    ("i116-edge", "i116-flow", "i116-li"),
+    ("i116-nobody", "i116-flow", "<none>"),
+    ("i116-prio", "i116-flow", "i116-exact"),
+    // 负向：带名字的委托**不得跨流程命中**（兜底只属于 process_name 为空的那条台账；
+    // 引擎侧同判据见 core/engine/surrogate_test.mbt "有名字的委托不跨流程命中"）
+    ("i116-zhang", "other-flow", "<none>"),
+  ]
+  for p in probes {
+    let (op, name, want) = p
+    let sql_hit = repo.get_surrogate(op, name, I116_NOW)
+    let mem_hit = mem.get_surrogate(op, name, I116_NOW)
+    let sql_v = match sql_hit {
+      Some(s) => s.surrogate
+      None => "<none>"
+    }
+    let mem_v = match mem_hit {
+      Some(s) => s.surrogate
+      None => "<none>"
+    }
+    check(sql_v == want, "I116 SQL 仓 \{op}@\{name} → \{want}（实际=\{sql_v}）")
+    check(mem_v == want, "I116 内存仓 \{op}@\{name} → \{want}（实际=\{mem_v}）")
+    check(
+      sql_v == mem_v,
+      "I116 条款6 双仓同答案 \{op}@\{name}：SQL=\{sql_v} 内存=\{mem_v}",
+    )
+  }
+  // 兜底不得跨授权人
+  check(repo.get_surrogate("i116-nobody", "any-unlisted-flow", I116_NOW) is None, "I116 兜底仅按授权人")
+  clean_9x(repo)
+}
+
+///|
+/// ── issues/117：我已办状态集合 = task_state <> 10，且空 operator 不得返回全库 ──
+/// 造 20/30/40/99/10 五条行，SQL 仓与内存仓必须给出**同一 id 集合**（条款 6 通则）。
+async fn t1_i117_done_state_set() -> Unit raise {
+  @model.set_clock(Some(fn() { I116_NOW }))
+  defer { @model.set_clock(None) }
+  let repo = @repo.MysqlRepository::from_env()
+  clean_9x(repo)
+  save_define_9x(repo, 990601L, "t1-i117", SIMPLE_FLOW)
+  let conn = repo.open_raw()
+  let _ = @repo.x(
+    conn,
+    "INSERT INTO wf_process_instance (id, process_define_id, state, operator, variable, create_time, create_user) VALUES (990600, 990601, 10, 'i117-applicant', '{}', NOW(), 'i117')",
+    [],
+  )
+  @repo.close_conn(conn)
+  let specs : Array[(Int64, Int, String?)] = [
+    (990611L, 20, Some("i117-leader")),
+    (990612L, 30, Some("i117-leader")),
+    (990613L, 40, Some("i117-leader")),
+    (990614L, 99, Some("i117-leader")),
+    (990615L, 10, None),
+  ]
+  let mem = @mem.MemoryRepository::new()
+  let mem_define : @model.ProcessDefine = {
+    id: 990601L,
+    name: "t1-i117",
+    display_name: "T1I117",
+    define_type: "approval",
+    state: 1,
+    content: SIMPLE_FLOW,
+    version: 1,
+    create_time: None,
+    create_user: None,
+    update_time: None,
+    update_user: None,
+  }
+  mem.save_define(mem_define)
+  for sp in specs {
+    let (tid, state, actor) = sp
+    let t : @model.ProcessTask = {
+      task_id: tid,
+      process_instance_id: 990600L,
+      task_name: "n\{state}",
+      display_name: "节点\{state}",
+      task_type: 0,
+      perform_type: 0,
+      task_state: state,
+      actor_id: actor,
+      actor_ids: ["i117-leader"],
+      finish_time: if state == 20 { Some(I116_NOW) } else { None },
+      expire_time: None,
+      form_key: None,
+      parent_task_id: None,
+      variables: @json.FlowData::new(),
+      create_time: Some(I116_NOW),
+      // create_user 是发起人：已办绝不按它放行（issues/107 / Rust 那格违约点）
+      create_user: Some("i117-applicant"),
+      update_time: None,
+      update_user: None,
+    }
+    repo.save_task(t)
+    mem.save_task(t)
+  }
+  let done_ids = ["990611", "990612", "990613", "990614"]
+  // SQL 仓正向
+  let q = @model.PageQuery::new(1L, 20L)
+  q.set_operator(Some("i117-leader"))
+  let page = repo.page_done_tasks(q)
+  check(page.record_count() == 4L, "I117 SQL 仓已办 4 条（实际=\{page.record_count()}）")
+  for want in done_ids {
+    check(page.rows().exists(r => r.id.to_string() == want), "I117 SQL 仓含任务行 \{want}")
+  }
+  check(!page.rows().exists(r => r.id.to_string() == "990615"), "I117 SQL 仓 DOING(10) 不进已办")
+  // 内存仓同答案
+  let mpage = mem.page_done_tasks(q)
+  check(mpage.record_count() == page.record_count(), "I117 条款6 双仓条数一致")
+  for want in done_ids {
+    check(mpage.rows().exists(r => r.id.to_string() == want), "I117 内存仓含任务行 \{want}")
+  }
+  check(!mpage.rows().exists(r => r.id.to_string() == "990615"), "I117 内存仓 DOING(10) 不进已办")
+  // 判据生效自证：库里 task_state <> 10 确实筛出这 4 行（不是"=20 蓙对"）
+  let cand = select_cell(
+    repo,
+    "SELECT COUNT(*) AS cnt FROM wf_process_task WHERE process_instance_id = 990600 AND task_state <> 10",
+    [],
+    "cnt",
+  )
+  check(cand == "4", "I117 裸 SQL 候选集 = 4（证 <>10 判据真在筛，实际=\{cand}）")
+  // 负向：空 operator 不得返回全库
+  let q_none = @model.PageQuery::new(1L, 20L)
+  check(repo.page_done_tasks(q_none).record_count() == 0L, "I117 SQL 仓无 operator → 空页（不得全库）")
+  check(mem.page_done_tasks(q_none).record_count() == 0L, "I117 内存仓无 operator → 空页（不得全库）")
+  let q_blank = @model.PageQuery::new(1L, 20L)
+  q_blank.set_operator(Some(""))
+  check(repo.page_done_tasks(q_blank).record_count() == 0L, "I117 SQL 仓 operator='' → 空页")
+  check(mem.page_done_tasks(q_blank).record_count() == 0L, "I117 内存仓 operator='' → 空页")
+  // 负向：发起人（create_user）看不到
+  let q_creator = @model.PageQuery::new(1L, 20L)
+  q_creator.set_operator(Some("i117-applicant"))
+  check(repo.page_done_tasks(q_creator).record_count() == 0L, "I117 SQL 仓 create_user 不放行")
+  check(mem.page_done_tasks(q_creator).record_count() == 0L, "I117 内存仓 create_user 不放行")
+  // 回归：分页五键在判据收紧后仍成立
+  let q_page = @model.PageQuery::new(1L, 2L)
+  q_page.set_operator(Some("i117-leader"))
+  let pp = repo.page_done_tasks(q_page)
+  check(
+    pp.record_count() == 4L && pp.total_page() == 2L && pp.rows().length() == 2,
+    "I117 分页五键回归（recordCount=4/totalPage=2/rows=2）",
+  )
+  clean_9x(repo)
+}
+
+///|
 async fn t1_all() -> Unit raise {
   println("T1-M1 page five keys...")
   t1_m1_page()
@@ -374,6 +584,10 @@ async fn t1_all() -> Unit raise {
   t1_i110_hydrate()
   println("T1-I114 update_user 真写进 UPDATE 语句（仓储级）...")
   t1_i114_update_user_lands()
+  println("T1-I116 委托查询四判据 + 双仓同答案...")
+  t1_i116_surrogate_query()
+  println("T1-I117 我已办状态集合 <>10 + 空 operator 空页...")
+  t1_i117_done_state_set()
   println("T1 ALL PASS (wasm → 160)")
   println("门面级 withdraw/transfer 真机对拍另跑：moon run --target wasm demo/cmd/t1_mysql")
 }
