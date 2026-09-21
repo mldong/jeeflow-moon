@@ -93,15 +93,21 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::find
 /// 本栈 `Execution` 同时持有 `process_model` 与 `process_define`，无需查库、也无需缓存。
 /// ⚠️ 本栈解析器对"JSON 里没有 name 键"给的是哨兵值 `"unknown"`（`core/parser/parser.mbt`
 /// 的 `parse_model`），不是空串——故"未带"判据要同时认空串与该哨兵，否则回落分支恒不成立。
+///
+/// 「未带」= 键缺失/哨兵/空串/**仅空白**，一律**先 trim 再判空**，且传给委托查询的必须是
+/// trim 后的值（规范 06 §4.5 条款 1.1，与 Java `isNotBlank`+`trim` 同语义）。
+/// 不 trim 的后果不是显示差异而是**功能分叉**：`name=" 请假 "` 时拿带空白的串去
+/// `wf_process_surrogate.process_name` 做精确匹配必失配，只剩"全流程兜底"行能命中 ⇒
+/// 用户在该流程自己配的委托静默失效；而 name 仅空白时也不会回落定义行。
 fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::surrogate_process_name(
   self : Engine[R, E],
   exec : @exec.Execution
 ) -> String {
   let _ = self
-  let model_name = exec.process_model.name
+  let model_name = exec.process_model.name.trim(chars=" \t\r\n").to_string()
   if !model_name.is_empty() && model_name != "unknown" {
     model_name
   } else {
-    exec.process_define.name
+    exec.process_define.name.trim(chars=" \t\r\n").to_string()
   }
 }

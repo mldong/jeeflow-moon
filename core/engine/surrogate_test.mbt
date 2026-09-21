@@ -315,6 +315,52 @@ async test "批次D 条款1.1: processName 取流程模型 name，未带时回�
 }
 
 ///|
+/// 条款 1.1 的「未带 = 先 trim 再判空」**形态①**（独立审计 P0-1 指出本栈原本漏 trim）。
+/// 漏 trim 不是显示差异而是**功能分叉**：拿带空白的串去 `wf_process_surrogate.process_name`
+/// 做精确匹配必失配，只剩"全流程兜底"行能命中 ⇒ 该流程自己配的委托静默失效。
+async test "批次D 条款1.1 补①: 模型名带前后空白须 trim 后再查委托" {
+  @model.set_clock(Some(fn() { "2026-09-21 10:00:00" }))
+  defer { @model.set_clock(None) }
+  // 台账按**干净名**配置，只有引擎传出 trim 后的值才命中。
+  // define.name 故意另起一个名，兼作"取模型还是取定义"的诱饵。
+  let repo = @mem.MemoryRepository::new()
+  let engine = sg_engine(repo)
+  let padded = sg_flow("sg-model", ["zhang"]).replace(
+    old="\"name\": \"sg-model\"", new="\"name\": \"  sg-padded  \"",
+  )
+  let did = sg_define(repo, "decoy-padded", padded)
+  let _ = sg_put(repo, "zhang", "li_padded", "sg-padded")
+  let inst = engine.start_async(did, "applicant", @json.FlowData::new())
+  sg_has(
+    repo.find_task_actors(sg_task(repo, inst.instance_id, "n1").task_id),
+    "li_padded",
+    "模型名带前后空白须 trim 后再查委托（台账存的是干净名 sg-padded）",
+  )
+}
+
+///|
+/// 条款 1.1「未带 = trim 后判空」**形态②**：模型名仅空白＝未带。
+/// 不 trim 时 `"   "` 既非空串也非哨兵 `"unknown"`，会走"取模型名"分支 → 一条委托都查不到。
+/// 与形态①**分成两条 test**：合在一条里前者 panic 会把这条挡掉，失能时看不出是谁红。
+async test "批次D 条款1.1 补②: 模型名仅空白须回落 wf_process_define.name" {
+  @model.set_clock(Some(fn() { "2026-09-21 10:00:00" }))
+  defer { @model.set_clock(None) }
+  let repo = @mem.MemoryRepository::new()
+  let engine = sg_engine(repo)
+  let blank = sg_flow("sg-model", ["zhang"]).replace(
+    old="\"name\": \"sg-model\"", new="\"name\": \"   \"",
+  )
+  let did = sg_define(repo, "only-blankdef", blank)
+  let _ = sg_put(repo, "zhang", "li_blank", "only-blankdef")
+  let inst = engine.start_async(did, "applicant", @json.FlowData::new())
+  sg_has(
+    repo.find_task_actors(sg_task(repo, inst.instance_id, "n1").task_id),
+    "li_blank",
+    "模型名仅空白须回落 wf_process_define.name 并命中（否则委托静默失效）",
+  )
+}
+
+///|
 async test "批次D 条款1.2: 不级联——A→B 且 B→C 时 C 不收单" {
   @model.set_clock(Some(fn() { "2026-09-21 10:00:00" }))
   defer { @model.set_clock(None) }
