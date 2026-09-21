@@ -94,6 +94,30 @@ pub fn ProcessModel::is_first_task_node(self : ProcessModel, node_id : String) -
   }
 }
 
+/// 能否退回到 parent_id 所在节点——照 mldong-boot2 NodeModel.canRejected 的形状：
+/// 自 current 的入边回溯，命中 parent 放行；入边来源是 fork/join/start 时**跳过该条入边、
+/// 不再深入**（boot2 是 continue，不是穿越），其余来源递归。subprocess 在 boot2 里被注释掉，
+/// 等同普通节点。
+pub fn ProcessModel::can_rejected(
+  self : ProcessModel, current_id : String, parent_id : String
+) -> Bool {
+  for e in self.get_input_edges(current_id) {
+    let source = e.source_node_id
+    if source == parent_id {
+      return true
+    }
+    let skip = match self.get_node(source) {
+      None => true
+      Some(n) =>
+        n.node_type == Fork || n.node_type == Join || n.node_type == Start
+    }
+    if !skip && self.can_rejected(source, parent_id) {
+      return true
+    }
+  }
+  false
+}
+
 ///|
 pub fn ProcessModel::get_end_nodes(self : ProcessModel) -> Array[NodeModel] {
   self.get_nodes_by_type(End)

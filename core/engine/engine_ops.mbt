@@ -356,6 +356,14 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
 
 ///|
 /// 跳转执行（jump / rollback / 退回发起人共用）
+/// 跳转落点的三种语义（issues/121 P2：3「退回上一步」与 6「退回发起人」必须分开）
+priv enum JumpMode {
+  Named(String)
+  FirstNode
+  Rollback
+}
+
+///|
 pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::execute_and_jump_async(
   self : Engine[R, E],
   task_id : Int64,
@@ -363,16 +371,37 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   args : @json.FlowData,
   target_name : String?
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
-  let (_task, _instance, _define, _model, exec, submit_type) = self.load_exec_for_task(task_id, operator, args)
-  // 目标节点：命名跳转 / 回退首任务节点（submitType=3 沿首入边语义由 facade 用 None 表达）
-  let model = exec.process_model
-  let target_node = match target_name {
-    Some(name) => model.get_node(name)
-    None => model.get_first_task_node()
+  match target_name {
+    Some(n) => self.execute_jump_mode_async(task_id, operator, args, Named(n))
+    // issues/121 P2：target 为空＝血缘版"退回上一步"（submitType=3）。
+    // 此前这条与"退回发起人"（6）共用 get_first_task_node()，两语义塌成同值（issues/119）。
+    None => self.execute_jump_mode_async(task_id, operator, args, Rollback)
   }
-  match target_node {
-    Some(node) => self.execute_node(exec, node)
-    None => ()
+}
+
+///|
+async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::execute_jump_mode_async(
+  self : Engine[R, E],
+  task_id : Int64,
+  operator : String,
+  args : @json.FlowData,
+  mode : JumpMode
+) -> Array[@model.ProcessTask] raise @error.JeeflowError {
+  let (_task, _instance, _define, _model, exec, submit_type) = self.load_exec_for_task(task_id, operator, args)
+  // 目标节点：命名跳转 / 6 退回发起人（首任务节点）/ 3 退回上一步（血缘版）
+  let model = exec.process_model
+  match mode {
+    Named(name) =>
+      match model.get_node(name) {
+        Some(node) => self.execute_node(exec, node)
+        None => ()
+      }
+    FirstNode =>
+      match model.get_first_task_node() {
+        Some(node) => self.execute_node(exec, node)
+        None => ()
+      }
+    Rollback => self.rollback_to_parent(exec)
   }
   // 20 注入在 jump 路径同样落任务变量
   if submit_type == Some(20L) {
@@ -428,7 +457,113 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   operator : String,
   args : @json.FlowData
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
-  self.execute_and_jump_async(task_id, operator, args, None)
+  // issues/121 P2：不再借道 execute_and_jump_async(None)——那条现在是血缘回退（3）
+  self.execute_jump_mode_async(task_id, operator, args, FirstNode)
+}
+
+/// 复活行该不该带这个键——控制类残留：上次提交的表单值（tf_）、会签计数簿记（csv_ /
+/// loopCounter / nrOfInstances / operatorList）、当次操作的 submitType 与 taskName。
+/// 留着会让新待办显示"我没提交这个怎么显示了"，或让复活的会签节点从错位的序号继续推进。
+fn is_control_var_key(k : String) -> Bool {
+  if k == "submitType" { true }
+  else if k == "taskName" { true }
+  else if k.starts_with("tf_") { true }
+  else if k.starts_with("csv_") { true }
+  else if k.starts_with("loopCounter") { true }
+  else if k.starts_with("nrOfInstances") { true }
+  else if k.starts_with("operatorList") { true }
+  else { false }
+}
+
+/// 退回上一步（血缘版，规范 04 · 退回上一步）：上一步来源＝当前行的 parent_task_id，
+/// 复活那条历史行；不按模型入边拓扑推。本栈 JeeflowError::code() 恒 99999999，
+/// 故码写在 Business(msg) 前缀（契约只要求"异常与 msg 可区分、HTTP 出口仍 99999999"）。
+fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::rollback_to_parent(
+  self : Engine[R, E], exec : @exec.Execution
+) -> Unit raise @error.JeeflowError {
+  let current = match exec.process_task {
+    None => raise @error.Business("20010007: 上一步任务ID为空，无法驳回至上一步处理")
+    Some(t) => t
+  }
+  let parent_id = match current.parent_task_id {
+    None => raise @error.Business("20010007: 上一步任务ID为空，无法驳回至上一步处理")
+    Some(p) => p
+  }
+  if parent_id == 0L {
+    raise @error.Business("20010007: 上一步任务ID为空，无法驳回至上一步处理")
+  }
+  let instance = exec.process_instance
+  // 本版本 Array 没有 find：显式扫聚合根里的行（含已办结的历史行）
+  let mut hist : @model.ProcessTask? = None
+  for t in instance.tasks {
+    if t.task_id == parent_id {
+      hist = Some(t)
+    }
+  }
+  let history = match hist {
+    None => raise @error.Business("20010007: 上一步任务ID为空，无法驳回至上一步处理")
+    Some(t) => t
+  }
+  if !exec.process_model.can_rejected(current.task_name, history.task_name) {
+    raise @error.Business("20010008: 无法驳回至上一步处理，请确认上一步骤并非fork、join、suprocess以及会签任务")
+  }
+  let src = history.variables
+  let mut is_first = false
+  match src.get("isFirstTaskNode") {
+    Some(v) => is_first = @json.as_bool(v) == Some(true)
+    None => ()
+  }
+  // 首任务节点那条由发起人提交 ⇒ 参与者取该行 u_userId；其余取该行办结人。
+  // 老行没这个键 ⇒ 按 false 处理（宁可派给该行 actor_id，也不用带"仅进行中"判定的现算值）。
+  let mut actor = ""
+  if is_first {
+    match src.get("u_userId") {
+      Some(v) => actor = @json.as_str(v).unwrap_or("")
+      None => ()
+    }
+    if actor == "" { actor = instance.operator }
+  } else {
+    actor = history.actor_id.unwrap_or("")
+  }
+  if actor == "" {
+    raise @error.Business("20010007: 上一步任务ID为空，无法驳回至上一步处理")
+  }
+  // 复活行只带数据类键：tf_*（上次表单提交）与 csv_*/会签簿记都是"上次提交"的残留
+  let vars = @json.FlowData::new()
+  for k, v in src.inner {
+    if is_control_var_key(k) {
+      continue
+    }
+    vars.insert(k, v)
+  }
+  vars.insert("isFirstTaskNode", @json.bool_of(is_first))
+  let carry = match history.parent_task_id {
+    None => 0L
+    Some(p) => p
+  }
+  // 显式构造复活行（不改动历史行本身）：进行中、actor_id 清空、actor_ids＝算出的参与者、
+  // parent 随行拷贝＝"上一步的上一步"（与 mldong-boot2 一致）、变量走净化后的那一份。
+  let nt : @model.ProcessTask = {
+    task_id: 0L,                        // persist_tasks 里统一分配真实 id
+    process_instance_id: instance.instance_id,
+    task_name: history.task_name,
+    display_name: history.display_name,
+    task_type: history.task_type,
+    perform_type: history.perform_type,
+    task_state: @model.TaskState::Doing.code(),
+    actor_id: None,                     // 进行中任务该列恒无值
+    actor_ids: [actor],
+    finish_time: None,
+    expire_time: history.expire_time,
+    form_key: history.form_key,
+    parent_task_id: Some(carry),
+    variables: vars,
+    create_time: history.create_time,
+    create_user: history.create_user,
+    update_time: None,
+    update_user: None,
+  }
+  exec.new_tasks.push(nt)
 }
 
 ///|

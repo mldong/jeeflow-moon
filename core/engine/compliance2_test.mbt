@@ -248,19 +248,99 @@ async test "submitType 2: reject → jump to end, state=45" {
 }
 
 ///|
-async test "submitType 3/6: rollback → first task node re-created for initiator" {
+/// submitType=3「退回上一步」＝血缘版（issues/121 P2）：落点是当前行 parent_task_id 指的那条
+/// 历史行的节点，参与者＝该行办结人。原先这条与 6 共用"跳首任务节点"，两语义塌成同值（issues/119）。
+async test "submitType 3: rollback revives lineage parent row (not first task node)" {
   let (engine, repo) = make_compliance_engine()
   let did = save_flow_define(repo, "st3", load_flow("02-multi-task"))
   let iid = start_and_apply(engine, repo, did)
   let leader = find_doing_for(repo, iid, "leader")
   let _ = engine.execute_task_async(leader.task_id, "leader", new_args())
-  // manager 处 submitType=3 退回上一步（首任务节点 = apply → 重新给 applicant）
   let manager = find_doing_for(repo, iid, "manager")
   let _ = engine.execute_and_jump_async(manager.task_id, "manager", new_args(), None)
   let tasks = repo.find_doing_tasks(iid, [])
-  assert_true(!tasks.is_empty())
+  assert_eq(tasks.length(), 1)
+  // 上一步是 task1（不是首节点 apply）；参与者是 task1 的办结人 leader
+  assert_eq(tasks[0].task_name, "task1")
+  assert_true(tasks[0].actor_ids.contains("leader"))
+  assert_true(!tasks[0].actor_ids.contains("manager"))
+}
+
+///|
+/// submitType=6「退回发起人」：跳 start 直接后继那条节点、参与者＝实例发起人（与 3 已分开）。
+async test "submitType 6: jump to first task node for initiator" {
+  let (engine, repo) = make_compliance_engine()
+  let did = save_flow_define(repo, "st6", load_flow("02-multi-task"))
+  let iid = start_and_apply(engine, repo, did)
+  let leader = find_doing_for(repo, iid, "leader")
+  let _ = engine.execute_task_async(leader.task_id, "leader", new_args())
+  let manager = find_doing_for(repo, iid, "manager")
+  let _ = engine.execute_and_jump_to_first_async(manager.task_id, "manager", new_args())
+  let tasks = repo.find_doing_tasks(iid, [])
+  assert_eq(tasks.length(), 1)
+  assert_eq(tasks[0].task_name, "apply")
   assert_true(tasks[0].actor_ids.contains("applicant"))
 }
+
+///|
+/// issues/121 P2 两格负向：① 无血缘（发起那条 parent=0L）⇒ 20010007，不得静默不建单；
+/// ② 血缘前驱跨不过 fork（boot2 canRejected 遇 fork/join/start 跳过该入边不再深入）⇒ 20010008。
+async test "i121-P2 rollback negatives: 20010007 no lineage / 20010008 guard" {
+  // ① 发起后不办 apply：它是首任务节点行，parent 由 P1 落成 0L ⇒ 退回上一步必须报错
+  let (engine, repo) = make_compliance_engine()
+  let did = save_flow_define(repo, "ln07", load_flow("02-multi-task"))
+  let inst = engine.start_async(did, "applicant", @json.FlowData::new())
+  let apply = repo.find_doing_tasks(inst.instance_id, [])[0]
+  match apply.parent_task_id {
+    Some(0L) => ()
+    other => fail("前置条件：发起那条 parent 应为 0L")
+  }
+  let r07 = try? engine.execute_and_jump_async(apply.task_id, "applicant", @json.FlowData::new(), None)
+  match r07 {
+    Ok(ts) => assert_eq(ts.length(), 0)
+    Err(e) => assert_true(e.message().starts_with("20010007"))
+  }
+
+  // ② fork 分支行的血缘前驱在 fork 之前（apply）⇒ 守卫拦住
+  let (engine2, repo2) = make_compliance_engine()
+  let did2 = save_flow_define(repo2, "ln08", load_flow("04-fork-join"))
+  let inst2 = engine2.start_async(did2, "applicant", @json.FlowData::new())
+  let iid2 = inst2.instance_id
+  let mut branch : @model.ProcessTask? = None
+  let mut round = 0
+  while round < 6 {
+    round = round + 1
+    let doing = repo2.find_doing_tasks(iid2, [])
+    if doing.length() == 0 { break }
+    let mut hit = false
+    for t in doing {
+      if t.task_name == "taskA" {
+        branch = Some(t)
+        hit = true
+      }
+    }
+    if hit { break }
+    let t = doing[0]
+    let who = if t.actor_ids.length() > 0 { t.actor_ids[0] } else { "applicant" }
+    let _ = engine2.execute_task_async(t.task_id, who, @json.FlowData::new())
+  }
+  let br = match branch {
+    Some(t) => t
+    None => fail("前置条件：应推进到 fork 之后的 taskA 分支行")
+  }
+  match br.parent_task_id {
+    Some(p) => assert_true(p != 0L)
+    None => fail("前置条件：分支行 parent 应已由 P1 写入")
+  }
+  let who2 = if br.actor_ids.length() > 0 { br.actor_ids[0] } else { "applicant" }
+  let r08 = try? engine2.execute_and_jump_async(br.task_id, who2, @json.FlowData::new(), None)
+  match r08 {
+    Ok(_) => fail("血缘前驱跨不过 fork 时必须被守卫拦下")
+    Err(e) => assert_true(e.message().starts_with("20010008"))
+  }
+}
+
+
 
 ///|
 async test "submitType 4: jump to named task node" {
