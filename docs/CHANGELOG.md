@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 0.1.8（2026-09-23）
+
+- **121 文案统一**：`JeeflowError::Business` 的两格退回上一步错误删掉码数字前缀（`engine_ops.mbt` 6 处 raise），
+  注释由"码写在 Business(msg) 前缀"更正为"对外 msg 用固定中文文案、不含引擎内部码"；
+  测试断言由 `starts_with("20010007")` 改成**逐字相等**（前缀回到任何位置都会红，已做变异对照）。
+- **发版通道修复（本轮关键）**：`mldong/jeeflow-*` 的依赖 pin 从 `0.1.0` 升到 `0.1.7`。
+  `moon publish` 会把产出的 zip 解包再 `moon check` 一遍，这一步 **vendored 的是 registry 上的依赖源码**；
+  而 `jeeflow-core@0.1.0` 是旧泛型语法 `fn sorted_ids[V](...)`，当前 moonc 只认 `fn[V] name(...)`
+  ⇒ 2 个 Parse error 把 `repository-mysql`/`facade` 的发布卡死（上一轮 4 模块只发出 2 个的原因就在这里，
+  不是我们代码的错）。修复后 `moon publish --dry-run` 服务端回 `202 Accepted`。
+- `docs/getting-started.md` 与 `README.md` 的 `0.1.6` 字面量 → `0.1.8`（文档站 `sync:langs` 才投影对）。
+
+## 0.1.7（2026-09-22）
+
+- issues/121 P1/P2：建单写 `parent_task_id` / `isFirstTaskNode`；`submitType=3` 改血缘版退回上一步
+  （复活血缘前驱行，参与者取该行办结人，首任务节点行取该行 `u_userId`）。
+- **发布状态留痕**：本轮只有 `jeeflow-core` 与 `jeeflow-persist` 的 0.1.7 上了 mooncakes，
+  `jeeflow-repository-mysql` / `jeeflow-facade` 因上述 vendored 语法错未发出（由 0.1.8 补齐）。
+
 ## 0.1.6（2026-09-19）
 
 MySQL 依赖坐标迁移到 `moonbitstack/`（`repository-mysql` 模块，引擎核心未动）：

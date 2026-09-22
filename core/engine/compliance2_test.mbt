@@ -283,9 +283,9 @@ async test "submitType 6: jump to first task node for initiator" {
 }
 
 ///|
-/// issues/121 P2 两格负向：① 无血缘（发起那条 parent=0L）⇒ 20010007，不得静默不建单；
-/// ② 血缘前驱跨不过 fork（boot2 canRejected 遇 fork/join/start 跳过该入边不再深入）⇒ 20010008。
-async test "i121-P2 rollback negatives: 20010007 no lineage / 20010008 guard" {
+/// issues/121 P2 两格负向：① 无血缘（发起那条 parent=0L）⇒ 无血缘文案（引擎内部码 20010007），不得静默不建单；
+/// ② 血缘前驱跨不过 fork（boot2 canRejected 遇 fork/join/start 跳过该入边不再深入）⇒ 守卫文案（20010008）。
+async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前缀" {
   // ① 发起后不办 apply：它是首任务节点行，parent 由 P1 落成 0L ⇒ 退回上一步必须报错
   let (engine, repo) = make_compliance_engine()
   let did = save_flow_define(repo, "ln07", load_flow("02-multi-task"))
@@ -298,7 +298,7 @@ async test "i121-P2 rollback negatives: 20010007 no lineage / 20010008 guard" {
   let r07 = try? engine.execute_and_jump_async(apply.task_id, "applicant", @json.FlowData::new(), None)
   match r07 {
     Ok(_) => fail("无血缘（parent=0L）必须报错，不得静默不建单")
-    Err(e) => assert_true(e.message().starts_with("20010007"))
+    Err(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
   }
 
   // ①′ 老行形状 A：parent 为 None（P1 之前落的数据该列是 NULL）——本栈与 Some(0L) 是两个 match 分支
@@ -309,7 +309,7 @@ async test "i121-P2 rollback negatives: 20010007 no lineage / 20010008 guard" {
   let r07b = try? engine.execute_and_jump_async(apply_b.task_id, "applicant", @json.FlowData::new(), None)
   match r07b {
     Ok(_) => fail("parent=None 的老行必须报错，不得静默不建单")
-    Err(e) => assert_true(e.message().starts_with("20010007"))
+    Err(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
   }
 
   // ①″ 老行形状 B：parent 非 0 但仓储里查不到行（老数据被清过 / 跨库迁来的样子）
@@ -321,7 +321,7 @@ async test "i121-P2 rollback negatives: 20010007 no lineage / 20010008 guard" {
   let r07c = try? engine.execute_and_jump_async(apply_c.task_id, "applicant", @json.FlowData::new(), None)
   match r07c {
     Ok(_) => fail("parent 指不到真实行时必须报错，不得静默不建单")
-    Err(e) => assert_true(e.message().starts_with("20010007"))
+    Err(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
   }
 
   // ② fork 分支行的血缘前驱在 fork 之前（apply）⇒ 守卫拦住
@@ -359,7 +359,7 @@ async test "i121-P2 rollback negatives: 20010007 no lineage / 20010008 guard" {
   let r08 = try? engine2.execute_and_jump_async(br.task_id, who2, @json.FlowData::new(), None)
   match r08 {
     Ok(_) => fail("血缘前驱跨不过 fork 时必须被守卫拦下")
-    Err(e) => assert_true(e.message().starts_with("20010008"))
+    Err(e) => assert_true(e.message() == "无法驳回至上一步处理，请确认上一步骤并非fork、join、suprocess以及会签任务")
   }
 }
 

@@ -477,20 +477,20 @@ fn is_control_var_key(k : String) -> Bool {
 
 /// 退回上一步（血缘版，规范 04 · 退回上一步）：上一步来源＝当前行的 parent_task_id，
 /// 复活那条历史行；不按模型入边拓扑推。本栈 JeeflowError::code() 恒 99999999，
-/// 故码写在 Business(msg) 前缀（契约只要求"异常与 msg 可区分、HTTP 出口仍 99999999"）。
+/// 对外 msg 用固定中文文案、不含引擎内部码（两格语义由文案区分，HTTP 出口仍 99999999）。
 fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::rollback_to_parent(
   self : Engine[R, E], exec : @exec.Execution
 ) -> Unit raise @error.JeeflowError {
   let current = match exec.process_task {
-    None => raise @error.Business("20010007: 上一步任务ID为空，无法驳回至上一步处理")
+    None => raise @error.Business("上一步任务ID为空，无法驳回至上一步处理")
     Some(t) => t
   }
   let parent_id = match current.parent_task_id {
-    None => raise @error.Business("20010007: 上一步任务ID为空，无法驳回至上一步处理")
+    None => raise @error.Business("上一步任务ID为空，无法驳回至上一步处理")
     Some(p) => p
   }
   if parent_id == 0L {
-    raise @error.Business("20010007: 上一步任务ID为空，无法驳回至上一步处理")
+    raise @error.Business("上一步任务ID为空，无法驳回至上一步处理")
   }
   let instance = exec.process_instance
   // 本版本 Array 没有 find：显式扫聚合根里的行（含已办结的历史行）
@@ -501,11 +501,11 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::rollback_t
     }
   }
   let history = match hist {
-    None => raise @error.Business("20010007: 上一步任务ID为空，无法驳回至上一步处理")
+    None => raise @error.Business("上一步任务ID为空，无法驳回至上一步处理")
     Some(t) => t
   }
   if !exec.process_model.can_rejected(current.task_name, history.task_name) {
-    raise @error.Business("20010008: 无法驳回至上一步处理，请确认上一步骤并非fork、join、suprocess以及会签任务")
+    raise @error.Business("无法驳回至上一步处理，请确认上一步骤并非fork、join、suprocess以及会签任务")
   }
   let src = history.variables
   let mut is_first = false
@@ -526,7 +526,7 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::rollback_t
     actor = history.actor_id.unwrap_or("")
   }
   if actor == "" {
-    raise @error.Business("20010007: 上一步任务ID为空，无法驳回至上一步处理")
+    raise @error.Business("上一步任务ID为空，无法驳回至上一步处理")
   }
   // 复活行只带数据类键：tf_*（上次表单提交）与 csv_*/会签簿记都是"上次提交"的残留
   let vars = @json.FlowData::new()
