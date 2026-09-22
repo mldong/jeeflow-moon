@@ -411,6 +411,24 @@ async fn t1_i116_surrogate_query() -> Unit raise {
     // 精确名行 id 比兜底行**小**：证明两阶段查询，而不是"一次 ORDER BY id DESC 扫全表"
     sg_row(990510L, "i116-prio", "i116-exact", "i116-flow", None, None, 1),
     sg_row(990511L, "i116-prio", "i116-blank-hit", "", None, None, 1),
+    // ── issues/123 条款 1.4：同作用域「旧记录有效 + 新记录不生效」四格 ──
+    // 新记录 id 必须更大（ORDER BY id DESC 才落到它）。四格期望 **<none>**：
+    // "先滤生效、剩下的才取最新"的旧形状会跳过新的那条、复活旧的那条 ⇒ 这四格是杀手。
+    sg_row(990512L, "i123-out", "i123-old-valid", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
+    sg_row(990513L, "i123-out", "i123-new-agent", "i116-flow", Some("2026-09-25 00:00:00"), None, 1),
+    sg_row(990514L, "i123-off", "i123-old-valid", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
+    sg_row(990515L, "i123-off", "i123-new-agent", "i116-flow", None, None, 0),
+    sg_row(990516L, "i123-dirty", "i123-old-valid", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
+    // 脏值经 sg_row **直落仓储**（不经门面，门面对非 0/1 是判错口径，见 facade 用例）
+    sg_row(990517L, "i123-dirty", "i123-new-agent", "i116-flow", None, None, 2),
+    sg_row(990518L, "i123-self", "i123-old-valid", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
+    sg_row(990519L, "i123-self", "i123-self", "i116-flow", None, None, 1),
+    // 最新一条有效 ⇒ 照常取它（证明四格的红不是"委托整体失效"）
+    sg_row(990520L, "i123-ok", "i123-old-off", "i116-flow", None, None, 0),
+    sg_row(990521L, "i123-ok", "i123-new-valid", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
+    // 精确作用域最新一条已过期 ⇒ 判否后**仍**回落全流程作用域那条（Java testSurrogateCrudAndGet 同形）
+    sg_row(990522L, "i123-fb", "i123-global", "", None, None, 1),
+    sg_row(990523L, "i123-fb", "i123-exact-expired", "i116-flow", None, Some("2026-09-20 23:59:59"), 1),
   ]
   for r in rows {
     repo.save_surrogate(r)
@@ -430,6 +448,13 @@ async fn t1_i116_surrogate_query() -> Unit raise {
     // 负向：带名字的委托**不得跨流程命中**（兜底只属于 process_name 为空的那条台账；
     // 引擎侧同判据见 core/engine/surrogate_test.mbt "有名字的委托不跨流程命中"）
     ("i116-zhang", "other-flow", "<none>"),
+    // ── issues/123 条款 1.4：各作用域先取**最新一条**再由四判据裁决；旧记录不得复活 ──
+    ("i123-out", "i116-flow", "<none>"), // 最新一条窗外
+    ("i123-off", "i116-flow", "<none>"), // 最新一条 enabled=0
+    ("i123-dirty", "i116-flow", "<none>"), // 最新一条 enabled=2 脏值（只认 1）
+    ("i123-self", "i116-flow", "<none>"), // 最新一条自委托
+    ("i123-ok", "i116-flow", "i123-new-valid"), // 正向：最新一条有效 ⇒ 取它，旧的停用那条不算
+    ("i123-fb", "i116-flow", "i123-global"), // 精确作用域判否后仍回落全流程作用域
   ]
   for p in probes {
     let (op, name, want) = p

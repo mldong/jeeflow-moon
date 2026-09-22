@@ -66,9 +66,11 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::appl
 
 ///|
 /// 查一条生效委托；**仓储报错一律吞成 None**（条款 4：委托是增强能力，不得因它丢任务或
-/// 打断建单）。四判据（空 processName 兜底 / 时间窗 NULL 不限 / 自委托过滤 / enabled 只认 1，
-/// 多条命中取 id 最大）在两个仓储各自实现且必须同答案（条款 5/6）——
-/// 内存仓 `core/memory/memory_ext.mbt`、SQL 仓 `repository-mysql/repo/repository_ext.mbt`。
+/// 打断建单）。四判据（空 processName 兜底 / 时间窗 NULL 不限 / 自委托过滤 / enabled 只认 1）
+/// 收口成**单条裁决** `@model.ProcessSurrogate::is_effective`，取数顺序是条款 1.4
+/// 「各作用域先按 id 取最新一条、再交裁决」（issues/123）——两个仓储各自实现且必须同答案
+/// （条款 5/6）：内存仓 `core/memory/memory_ext.mbt`、SQL 仓 `repository-mysql/repo/repository_ext.mbt`。
+/// 判定全在**读回侧**，引擎这里只负责"并入、原人保留"。
 async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::find_effective_surrogate(
   self : Engine[R, E],
   actor : String,

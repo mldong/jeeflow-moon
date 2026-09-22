@@ -1,6 +1,7 @@
 // issues/116 批次 D：委托代理运行期自动生效的**引擎级**用例（内存仓通道）。
 // 覆盖 spec/06 §4.5 条款 1（全部建任务路径）、1.1（processName 口径）、1.2（不级联）、
-// 1.3（串行/并行会签）、1.4（多条命中取 id 最大）、2⚠️（并入参与者集合本身并落库）、
+// 1.3（串行/并行会签）、1.4（多条并存时由「最新一条」裁决 —— 取数顺序见 issues/123 那段）、
+// 2⚠️（并入参与者集合本身并落库）、
 // 3（默认开启 + 可显式关闭）、4（缺仓储 / 仓储报错都不打断建单）、5①②③④（四判据）。
 // 断言一律落**读回值**（仓储 find_task_actors / find_history_tasks），不断内存聚合副本。
 // 门面出口级用例见 facade/surrogate_autoapply_test.mbt；SQL 仓真机对拍见
@@ -457,6 +458,126 @@ async test "批次D 条款5/6: 引擎建单同样不吃窗外与停用委托" {
     let actors = repo.find_task_actors(sg_task(repo, inst.instance_id, "n1").task_id)
     sg_check(actors == ["zhang"], "\{label}委托不得并入（实际=\{actors.join("|")}）")
   }
+}
+
+// ══════════════════ issues/123 · 条款 1.4：多条并存时由「最新一条」裁决 ══════════════════
+// 缺这几格，把实现改回"先按四判据过滤、剩下的才取最新"也不会红——而那个写法正是
+// 13 栈 L2-17/L2-18 恒并入的根因（上一条窗内委托会把用户后续改停用/改到未来的设置永久盖掉）。
+// 形状照 Java `SurrogateAutoApplyTest#assertNewestInvalidBeatsOlderValid`（commit 6feeae6）。
+
+///|
+/// 同作用域先插「窗内 + enabled=1」的**旧**记录，再插一条「更新但不生效」的记录 ⇒
+/// 仓储层与引擎层都必须判否，**旧记录不得复活**。四种不生效形状各一格。
+/// 逐格独立成 test（与条款 1.1 的两条同理）：合在一条里前者 panic 会把后面的挡掉，失能时看不出是谁红。
+async fn sg_newest_invalid(
+  label : String,
+  newest_start~ : String? = None,
+  newest_end~ : String? = None,
+  newest_agent~ : String = "li_new",
+  newest_enabled~ : Int = 1
+) -> Unit raise {
+  @model.set_clock(Some(fn() { "2026-09-21 10:00:00" }))
+  defer { @model.set_clock(None) }
+  let repo = @mem.MemoryRepository::new()
+  let engine = sg_engine(repo)
+  let did = sg_define(repo, "sg-123", sg_flow("sg-123", ["zhang"]))
+  // 旧：窗内 + enabled=1（"先滤后取"的写法下它就是剩下唯一的候选）
+  let _ = sg_put(
+    repo,
+    "zhang",
+    "li_valid_old",
+    "sg-123",
+    start_time=Some("2026-09-20 00:00:00"),
+    end_time=Some("2026-09-22 00:00:00"),
+  )
+  // 新：id 更大那条，由它裁决
+  let newer_id = sg_put(
+    repo,
+    "zhang",
+    newest_agent,
+    "sg-123",
+    start_time=newest_start,
+    end_time=newest_end,
+    enabled=newest_enabled,
+  )
+  sg_check(newer_id > 0L, "用例前提：最新一条已入库")
+  sg_check(
+    repo.get_surrogate("zhang", "sg-123", "2026-09-21 10:00:00") is None,
+    "\{label}：仓储层最新一条判否 ⇒ 旧记录不得顶上来",
+  )
+  let inst = engine.start_async(did, "applicant", @json.FlowData::new())
+  let actors = repo.find_task_actors(sg_task(repo, inst.instance_id, "n1").task_id)
+  sg_check(actors == ["zhang"], "\{label} ⇒ 引擎不得并入（实际=\{actors.join("|")}）")
+}
+
+///|
+async test "批次123 最新一条窗外: 旧的窗内有效记录不得复活" {
+  sg_newest_invalid("窗外", newest_start=Some("2026-09-25 00:00:00"))
+}
+
+///|
+async test "批次123 最新一条 enabled=0: 旧的窗内有效记录不得复活" {
+  sg_newest_invalid("enabled=0", newest_enabled=0)
+}
+
+///|
+async test "批次123 最新一条 enabled 脏值 2: 契约只认 1，旧记录不得复活" {
+  sg_newest_invalid("脏值 enabled=2", newest_enabled=2)
+}
+
+///|
+async test "批次123 最新一条自委托: 旧的窗内有效记录不得复活" {
+  sg_newest_invalid("自己委托给自己", newest_agent="zhang")
+}
+
+///|
+/// 反向对照（正格）：最新一条**有效**时照常并入、原人保留，旧的那条停用也不拖累。
+/// 有这一格在，上面四格的红才不是"委托整体失效"造成的假绿——变异对照要求改回旧形状时
+/// 恰好只有那四格红、这一格仍绿。
+async test "批次123 正向: 最新一条窗内且 enabled=1 ⇒ 并入代理人且原人保留" {
+  @model.set_clock(Some(fn() { "2026-09-21 10:00:00" }))
+  defer { @model.set_clock(None) }
+  let repo = @mem.MemoryRepository::new()
+  let engine = sg_engine(repo)
+  let did = sg_define(repo, "sg-123-ok", sg_flow("sg-123-ok", ["zhang"]))
+  let _ = sg_put(repo, "zhang", "li_stale", "sg-123-ok", enabled=0) // 旧：停用
+  let _ = sg_put(repo, "zhang", "li_new", "sg-123-ok") // 新：enabled=1 + 两侧不限 = 窗内
+  let inst = engine.start_async(did, "applicant", @json.FlowData::new())
+  let actors = repo.find_task_actors(sg_task(repo, inst.instance_id, "n1").task_id)
+  sg_has(actors, "zhang", "授权人保留（委托不是转办）")
+  sg_has(actors, "li_new", "最新一条有效 ⇒ 并入其代理人")
+  sg_absent(actors, "li_stale", "停用的旧记录不得并入")
+}
+
+///|
+/// 条款 1.4 的作用域回落：精确作用域那条**判否**后仍要看全流程作用域自己那条最新的
+/// （Java `JdbcProcessExtRepositoryTest#testSurrogateCrudAndGet` 钉的同形：精确已过期 → 兜底全流程）。
+/// 这一格钉住的是"实现写成'精确作用域有记录就直接返回、判否也不看全流程'"那种过修。
+async test "批次123 兜底: 精确作用域判否后仍回落全流程作用域的最新一条" {
+  @model.set_clock(Some(fn() { "2026-09-21 10:00:00" }))
+  defer { @model.set_clock(None) }
+  let repo = @mem.MemoryRepository::new()
+  let engine = sg_engine(repo)
+  let did = sg_define(repo, "sg-123-fb", sg_flow("sg-123-fb", ["zhang"]))
+  let _ = sg_put(repo, "zhang", "li_global", "") // 全流程作用域：窗内有效
+  let _ = sg_put(
+    repo,
+    "zhang",
+    "li_exact",
+    "sg-123-fb",
+    end_time=Some("2026-09-20 23:59:59"),
+  ) // 精确作用域：id 更大但已过期
+  match repo.get_surrogate("zhang", "sg-123-fb", "2026-09-21 10:00:00") {
+    Some(sg) => sg_check(
+      sg.surrogate == "li_global",
+      "精确作用域判否后须回落全流程作用域（实得代理人=\{sg.surrogate}）",
+    )
+    None => abort("精确作用域判否后仍应命中全流程那条")
+  }
+  let inst = engine.start_async(did, "applicant", @json.FlowData::new())
+  let actors = repo.find_task_actors(sg_task(repo, inst.instance_id, "n1").task_id)
+  sg_has(actors, "li_global", "引擎同样吃到全流程兜底")
+  sg_absent(actors, "li_exact", "判否的精确作用域记录不得并入")
 }
 
 // ══════════════════ 条款 3 / 4：开关与缺仓储 ══════════════════

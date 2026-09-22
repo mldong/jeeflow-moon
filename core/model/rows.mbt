@@ -55,6 +55,74 @@ pub fn ProcessSurrogate::clone(self : ProcessSurrogate) -> ProcessSurrogate {
 }
 
 ///|
+/// 四判据单条裁决（规范 06 §4.5 条款 3/4 + 条款 1.4 / issues/123 §1）：
+/// **本条**委托此刻对该授权人是否生效。
+///
+/// 调用方必须先按主键 id 在各作用域内选出「最新一条」再问本方法——本方法只裁决单条，
+/// 不做多条择优。反过来写（先按判据过滤、剩下的才取最新）等价于"历史上出现过一条窗内
+/// 委托就永久生效"：用户随后改停用 / 改到未来 / 改成自委托都不算数，
+/// 这正是 issues/123 里 13 栈 `L2-17`/`L2-18` "窗外 / enabled=0 / 脏值一律并入"的成因。
+/// SQL 仓与内存仓必须走同一份判据（条款 6 双仓同答案）。
+///
+/// - `enabled` **严格等于整数 1** 才生效：0 / 脏值 2 / 一切非 1 都不算（本栈 `enabled`
+///   字段为非可空 `Int`，SQL 侧的 NULL 由 `map_surrogate` 折成 0，见该处注释）；
+/// - 被委托人须**非空且非授权人本人**（自委托不新增、不重复）；
+/// - `time` 为空串 ⇒ **不做窗口比较**（对齐 Java 的 `time == null`；本栈 SPI 形参是
+///   非可空 `String`，"没有判定时刻"就用空串表达。引擎建单路径恒传 `current_time_str()`）；
+/// - 窗口须覆盖判定时刻：`start_time > time` 或 `end_time < time` ⇒ 不生效，
+///   起止为 `None`/空串 = 该侧不限。
+///
+/// 时间两侧写入前都归一成 `yyyy-MM-dd HH:mm:ss`（见 facade 的 `parse_surrogate_time`），
+/// 故**文本序即时间序**，直接串比；基准为本栈 `@model.current_time_str()` 的 UTC
+/// （issues/120 已拍定「MoonBit 暂不注入时钟基准、对拍对 MoonBit 豁免」，非本轮缺陷）。
+pub fn ProcessSurrogate::is_effective(self : ProcessSurrogate, operator : String, time : String) -> Bool {
+  if self.enabled != 1 {
+    return false
+  }
+  // 与 Java 同形：只 trim 被委托人一侧（`surrogate` 是台账里的自由输入）
+  let agent = self.surrogate.trim(chars=" \t\r\n").to_string()
+  if agent.is_empty() {
+    return false
+  }
+  if agent == operator {
+    return false
+  }
+  let now = time.trim(chars=" \t\r\n").to_string()
+  if now.is_empty() {
+    return true
+  }
+  match self.start_time {
+    Some(s) => {
+      let v = s.trim(chars=" \t\r\n").to_string()
+      if !v.is_empty() && v.compare(now) > 0 {
+        return false
+      }
+    }
+    None => ()
+  }
+  match self.end_time {
+    Some(s) => {
+      let v = s.trim(chars=" \t\r\n").to_string()
+      if !v.is_empty() && v.compare(now) < 0 {
+        return false
+      }
+    }
+    None => ()
+  }
+  true
+}
+
+///|
+/// 作用域「最新一条」的裁决包装：该作用域没有记录 = 未命中。
+/// 内存仓与 SQL 仓共用，保证两仓对同一份数据给出同一答案（条款 6）。
+pub fn surrogate_scope_hit(sg : ProcessSurrogate?, operator : String, time : String) -> Bool {
+  match sg {
+    Some(s) => s.is_effective(operator, time)
+    None => false
+  }
+}
+
+///|
 pub(all) struct CcInstance {
   mut id : Int64
   mut process_instance_id : Int64

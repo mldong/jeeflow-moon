@@ -310,7 +310,14 @@ fn map_surrogate(r : @moondb.Row) -> @model.ProcessSurrogate {
     surrogate: row_text(r, "surrogate", ""),
     start_time: row_opt_datetime(r, "start_time"),
     end_time: row_opt_datetime(r, "end_time"),
-    enabled: row_int(r, "enabled", 1),
+    // 本栈 `enabled` 字段是非可空 Int，表达不了 SQL 的 NULL ⇒ 折成 **0**（不生效），
+    // 不是 1。四判据条款 4 要的是「只认整数 1，NULL 一律不算」（对齐 Java 的
+    // `Integer.valueOf(1).equals(null) == false`）。issues/123 之前 SQL 里带
+    // `AND enabled = 1`，NULL 行根本取不到，这个缺省值不会被读到；撤掉谓词后
+    // 「取最新一条再裁决」会真读到 NULL 行 ⇒ 缺省必须落在不生效一侧，
+    // 否则本轮修复会让存量 NULL 委托反向变成"启用"。schema 是 `INT NULL DEFAULT 1`
+    // 且门面写入恒带显式值，故仅对存量/手工插 NULL 的行生效。
+    enabled: row_int(r, "enabled", 0),
     create_time: row_opt_datetime(r, "create_time"),
     create_user: row_opt_text(r, "create_user"),
     update_time: row_opt_datetime(r, "update_time"),

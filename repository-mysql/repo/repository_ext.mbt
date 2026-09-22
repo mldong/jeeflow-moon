@@ -217,48 +217,51 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn page_surrogates(s
 /// ② 时间窗 start_time <= now <= end_time，NULL 视为该侧不限；
 /// ③ 自委托过滤 surrogate <> operator；
 /// ④ enabled = 1 才生效（0 / NULL / 其它脏值都不算启用）。
-/// 命中多条取 id 最大（ORDER BY id DESC LIMIT 1）。
-/// 原实现只有 `operator = ? AND process_name = ? AND enabled = 1` —— 忽略 `_time` 形参
-/// （SQL 里根本没有窗口条件）、无空名兜底、无自委托过滤，与内存仓对同一份数据结论不同。
+///
+/// ⚠️ **条款 1.4 的取数顺序（issues/123）**：SQL **不带**任何生效判据（既没有
+/// `enabled = 1`、也没有 `surrogate <> operator`、也没有窗口谓词），只有
+/// `WHERE operator = ? [AND 作用域] ORDER BY id DESC LIMIT 1` —— 取该作用域**最新一条**，
+/// 再交 `@model.ProcessSurrogate::is_effective` 裁决；精确作用域判否后**仍要看**全流程作用域
+/// 的最新一条。反过来"先滤生效、剩下的才取最新"= "上一条窗内委托把用户后续改停用 /
+/// 改到未来 / 改自委托永久盖掉"，正是 issues/123 里 13 栈 `L2-17`/`L2-18` 恒并入的成因。
+/// 原实现更早的版本只有 `operator = ? AND process_name = ? AND enabled = 1`，
+/// 连窗口/自委托/空名兜底都没有，与内存仓对同一份数据结论不同。
 /// ⚠️ 四判据与 `core/memory/memory_ext.mbt` 的 get_surrogate **逐条同构**，改一处必改两处。
 pub impl @spi.ProcessExtRepository for MysqlRepository with fn get_surrogate(self, operator, process_name, time) {
-  let exact = self.query_surrogate(operator, process_name, time, false)
-  match exact {
-    Some(_) => exact
-    None => self.query_surrogate(operator, process_name, time, true)
+  let exact = self.newest_surrogate(operator, process_name, false)
+  if @model.surrogate_scope_hit(exact, operator, time) {
+    exact
+  } else {
+    // 精确作用域没有 / 有但判否，都仍要看全流程作用域自己那条最新的
+    let global = self.newest_surrogate(operator, process_name, true)
+    if @model.surrogate_scope_hit(global, operator, time) { global } else { None }
   }
 }
 
 ///|
-/// 单轮查询：blank_name=false 走 process_name 精确匹配，true 走空名兜底；
-/// time 为空串时两侧窗口谓词整体不拼（与内存仓"空 now = 不限"同口径）。
-async fn MysqlRepository::query_surrogate(
+/// 取该授权人指定流程作用域内 **最新的一条**（`ORDER BY id DESC LIMIT 1`）；
+/// scope_global=true ⇒ 全流程作用域（process_name IS NULL OR = ''）。
+/// 不带生效判据，见上面 get_surrogate 的 ⚠️ 条款。
+async fn MysqlRepository::newest_surrogate(
   self : MysqlRepository,
   operator : String,
   process_name : String,
-  time : String,
-  blank_name : Bool
+  scope_global : Bool
 ) -> @model.ProcessSurrogate? raise @error.JeeflowError {
+  // 空 processName 时"精确作用域"无定义（能匹配的只有 process_name 为空的行，
+  // 那正是全流程作用域）——直接判无命中，交给调用方的第二轮兜底，少一次往返。
+  if !scope_global && process_name.is_empty() {
+    return None
+  }
   let name_cond =
-    if blank_name {
+    if scope_global {
       " AND (process_name IS NULL OR process_name = '')"
     } else {
       " AND process_name = ?"
     }
-  let now = time.trim(chars=" \t\r\n").to_string()
-  let window_cond =
-    if now.is_empty() {
-      ""
-    } else {
-      " AND (start_time IS NULL OR start_time <= ?) AND (end_time IS NULL OR end_time >= ?)"
-    }
-  let sql = "SELECT id, process_name, operator, surrogate, start_time, end_time, enabled, create_time, create_user, update_time, update_user FROM wf_process_surrogate WHERE operator = ? AND surrogate <> operator AND enabled = 1" + window_cond + name_cond + " ORDER BY id DESC LIMIT 1"
+  let sql = "SELECT id, process_name, operator, surrogate, start_time, end_time, enabled, create_time, create_user, update_time, update_user FROM wf_process_surrogate WHERE operator = ?" + name_cond + " ORDER BY id DESC LIMIT 1"
   let params : Array[@moondb.Value] = [@moondb.Text(operator)]
-  if !now.is_empty() {
-    params.push(@moondb.Text(now))
-    params.push(@moondb.Text(now))
-  }
-  if !blank_name {
+  if !scope_global {
     params.push(@moondb.Text(process_name))
   }
   let conn = self.open_or_tx()

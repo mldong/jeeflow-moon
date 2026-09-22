@@ -98,77 +98,57 @@ pub impl @spi.ProcessExtRepository for MemoryRepository with fn page_surrogates(
 /// 与 SQL 仓 `repository-mysql/repo/repository_ext.mbt` 的 get_surrogate 逐条同构：
 /// ① 空 processName 全流程兜底：先按当前流程名精确查，未命中再查 process_name 为 NULL/''；
 /// ② 时间窗 start_time <= now <= end_time，任一侧 NULL/空 = 该侧不限；
-///    （两侧写入前都归一成 yyyy-MM-dd HH:mm:ss，见 facade 的 parse_surrogate_time，
-///     故**文本序即时间序**，可直接串比）
 /// ③ 自委托过滤 surrogate <> operator；
 /// ④ enabled **只认整数 1**（0/脏值/NULL 一律不生效）。
-/// 多条同时命中取 **id 最大**（对齐 SQL 侧 ORDER BY id DESC LIMIT 1）。
-/// 原实现三处缺口：忽略 `_time`（无窗口条件）、无空 processName 兜底、无自委托过滤，
-/// 且"取遍历到的首条"= Map 插入序=最早一条 —— 与 SQL 仓对同一份数据给出相反结论，
-/// 正是 issues/116 §5 点名的同栈双仓分叉。
+///
+/// ⚠️ **条款 1.4 的取数顺序（issues/123）：各作用域先按 id 取「最新一条」，再交
+/// `@model.ProcessSurrogate::is_effective` 裁决这一条**；精确作用域那条判否后**仍要看**
+/// 全流程作用域的最新一条。反过来写（先按 ②③④ 过滤、剩下的才取最新）等价于
+/// "上一条窗内委托把用户后续改停用/改到未来/改自委托永久盖掉"——那正是 13 栈
+/// `L2-17`/`L2-18` 恒并入的根因。两种写法只在"旧记录有效 + 新记录无效"这一形状上分叉，
+/// 而它恰是用户真实操作序列 ⇒ `core/engine/surrogate_test.mbt` 的 4 格负向用例钉的就是它。
 pub impl @spi.ProcessExtRepository for MemoryRepository with fn get_surrogate(self, operator, process_name, time) {
-  // 判据 ①：精确名 → 空名兜底，两轮共用同一套窗口/自委托/enabled 谓词
-  let exact = self.pick_surrogate(operator, time, fn(sg) {
-    !process_name.is_empty() && sg.process_name == process_name
-  })
-  match exact {
-    Some(_) => exact
-    None => self.pick_surrogate(operator, time, fn(sg) { sg.process_name.is_empty() })
+  let exact = self.newest_surrogate(operator, process_name, false)
+  if @model.surrogate_scope_hit(exact, operator, time) {
+    exact
+  } else {
+    // 判据①：精确作用域没有 / 有但判否，都仍要看全流程作用域自己那条最新的
+    let global = self.newest_surrogate(operator, process_name, true)
+    if @model.surrogate_scope_hit(global, operator, time) { global } else { None }
   }
 }
 
 ///|
-/// 按四判据筛，返回 id 最大的一条（无命中 None）。name_match 只判"这一轮用哪种流程名口径"。
-fn MemoryRepository::pick_surrogate(
+/// 取该授权人在指定流程作用域内 **id 最大（最新）的一条**；scope_global=true ⇒ 全流程作用域
+/// （process_name 为空）。**不带任何生效判据过滤**——四判据由调用方交 `is_effective` 裁决
+/// （对齐 SQL 侧 `ORDER BY id DESC LIMIT 1` 不带 WHERE 判据）。
+fn MemoryRepository::newest_surrogate(
   self : MemoryRepository,
   operator : String,
-  time : String,
-  name_match : (@model.ProcessSurrogate) -> Bool
+  process_name : String,
+  scope_global : Bool
 ) -> @model.ProcessSurrogate? {
   let mut best : @model.ProcessSurrogate? = None
-  let mut best_id = 0L
   for _, sg in self.surrogates {
-    if sg.operator != operator || sg.surrogate == operator {
+    if sg.operator != operator {
       continue
     }
-    if sg.enabled != 1 {
+    let in_scope = if scope_global {
+      sg.process_name.is_empty()
+    } else {
+      !process_name.is_empty() && sg.process_name == process_name
+    }
+    if !in_scope {
       continue
     }
-    if !surrogate_window_hit(sg.start_time, sg.end_time, time) {
-      continue
-    }
-    if !name_match(sg) {
-      continue
-    }
-    if sg.id > best_id {
-      best = Some(sg.clone())
-      best_id = sg.id
+    match best {
+      Some(b) => {
+        if sg.id > b.id {
+          best = Some(sg.clone())
+        }
+      }
+      None => best = Some(sg.clone())
     }
   }
   best
-}
-
-///|
-/// 时间窗判定（判据②）：NULL/空 = 该侧不限；否则按归一后的 'yyyy-MM-dd HH:mm:ss' 串比。
-fn surrogate_window_hit(start_time : String?, end_time : String?, time : String) -> Bool {
-  let now = time.trim(chars=" \t\r\n").to_string()
-  match start_time {
-    Some(s) => {
-      let v = s.trim(chars=" \t\r\n").to_string()
-      if !v.is_empty() && !now.is_empty() && v.compare(now) > 0 {
-        return false
-      }
-    }
-    None => ()
-  }
-  match end_time {
-    Some(s) => {
-      let v = s.trim(chars=" \t\r\n").to_string()
-      if !v.is_empty() && !now.is_empty() && v.compare(now) < 0 {
-        return false
-      }
-    }
-    None => ()
-  }
-  true
 }
