@@ -225,7 +225,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   @json.obj_set(o, "parentNodeName", opt_json(inst.parent_node_name))
   @json.obj_set(o, "businessNo", opt_json(inst.business_no))
   @json.obj_set(o, "operator", @json.string_of(inst.operator))
-  @json.obj_set(o, "variables", flow_data_to_object(inst.variables))
+  @json.obj_set(o, "ext", flow_data_to_object(inst.variables)) // issues/124：变量唯一对外出口（ext 豁免 camel，键保持下划线）
   @json.obj_set(o, "formData", form_data_of_flow(inst.variables, "f_"))
   @json.obj_set(o, "createTime", opt_json(inst.create_time))
   @json.obj_set(o, "createUser", opt_json(inst.create_user))
@@ -357,8 +357,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     @json.obj_set(vo, "taskState", num_json(t.task_state))
     @json.obj_set(vo, "operator", opt_json(t.actor_id))
     @json.obj_set(vo, "finishTime", opt_json(t.finish_time))
-    @json.obj_set(vo, "variable", t.variables.to_object_json())
-    @json.obj_set(vo, "ext", t.variables.to_object_json())
+    @json.obj_set(vo, "ext", t.variables.to_object_json()) // issues/124：variable 原串出口下线
     @json.arr_push(rows, vo)
   }
   rows
