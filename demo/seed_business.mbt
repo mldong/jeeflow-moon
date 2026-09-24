@@ -2,6 +2,9 @@
 // 矩阵 = 八语言共用 canonical（day-shift 已在 Rust demo 实测全绿，照 rust seed_business.rs 移植）：
 // 16 进行中(state=10) + 9 已完成(advance 推到 state=20) + 8 委托。
 // 8 用户 × 5 菜单（待办/已办/发起/抄送/委托）全覆盖。App::memory_only()/App::reset() 复跑。
+// 表单种子：发起带 f_*（form_by_define）、办理带 tf_*（tf_by_form）——八栈同表同值同序，
+// 前端「申请信息」「办理表单」开箱可回显。规则：f_* 先铺 extra 后铺；日期写死字面量；
+// 字段名严禁裸 amount/finalAmount（决策表达式判定变量）。
 
 ///|
 /// 种业务数据；失败逐条打日志不抛异常（demo 启动不被单条卡死）。
@@ -24,6 +27,7 @@ pub async fn seed_business(
                 ex["processTaskId"] = sb_field(t, "id")
                 ex["operator"] = @json.string_of(actor)
                 ex["submitType"] = @json.number_of(1L)
+                with_task_form(ex, task_form_key(t))
                 let _ = facade.flow("processTask/execute", ex)
               }
               None => println("[seed] I14 todoRow actor=\{actor} 未找到")
@@ -130,6 +134,211 @@ fn surrogates() -> Array[Array[String]] {
 }
 
 ///|
+/// canonical FORM_BY_DEFINE：defineId → 发起表单字段（13 无 apply 节点故不列）。
+/// 八栈同表同值同序；日期写死字面量不按当前时钟算；f_days / f_budget 是数字，其余字符串。
+fn form_by_define() -> Map[Int64, Map[String, Json]] {
+  let t : Map[Int64, Map[String, Json]] = Map::new()
+  t[1L] = sb_extra([
+    ("f_reason", @json.string_of("家中有事需请假")),
+    ("f_days", @json.number_of(3L)),
+    ("f_leaveType", @json.string_of("annual")),
+    ("f_startDate", @json.string_of("2026-09-01")),
+    ("f_endDate", @json.string_of("2026-09-03")),
+  ])
+  t[2L] = sb_extra([
+    ("f_reason", @json.string_of("项目上线后调休")),
+    ("f_days", @json.number_of(2L)),
+    ("f_leaveType", @json.string_of("annual")),
+    ("f_startDate", @json.string_of("2026-09-07")),
+    ("f_endDate", @json.string_of("2026-09-08")),
+  ])
+  t[3L] = sb_extra([
+    ("f_reason", @json.string_of("出差报销申请")),
+    ("f_days", @json.number_of(1L)),
+    ("f_leaveType", @json.string_of("personal")),
+    ("f_startDate", @json.string_of("2026-09-10")),
+    ("f_endDate", @json.string_of("2026-09-10")),
+  ])
+  t[4L] = sb_extra([
+    ("f_reason", @json.string_of("培训进修请假")),
+    ("f_days", @json.number_of(5L)),
+    ("f_leaveType", @json.string_of("sick")),
+    ("f_startDate", @json.string_of("2026-09-14")),
+    ("f_endDate", @json.string_of("2026-09-18")),
+  ])
+  t[5L] = sb_extra([
+    ("f_reason", @json.string_of("年假出行")),
+    ("f_days", @json.number_of(4L)),
+    ("f_leaveType", @json.string_of("annual")),
+    ("f_startDate", @json.string_of("2026-09-21")),
+    ("f_endDate", @json.string_of("2026-09-24")),
+  ])
+  t[6L] = sb_extra([
+    ("f_reason", @json.string_of("婚假申请")),
+    ("f_days", @json.number_of(10L)),
+    ("f_leaveType", @json.string_of("personal")),
+    ("f_startDate", @json.string_of("2026-09-28")),
+    ("f_endDate", @json.string_of("2026-10-07")),
+  ])
+  t[7L] = sb_extra([
+    ("f_reason", @json.string_of("病假休养")),
+    ("f_days", @json.number_of(6L)),
+    ("f_leaveType", @json.string_of("sick")),
+    ("f_startDate", @json.string_of("2026-10-12")),
+    ("f_endDate", @json.string_of("2026-10-17")),
+  ])
+  t[8L] = sb_extra([
+    ("f_reason", @json.string_of("产检假")),
+    ("f_days", @json.number_of(3L)),
+    ("f_leaveType", @json.string_of("sick")),
+    ("f_startDate", @json.string_of("2026-10-19")),
+    ("f_endDate", @json.string_of("2026-10-21")),
+  ])
+  t[9L] = sb_extra([
+    ("f_reason", @json.string_of("陪产假")),
+    ("f_days", @json.number_of(5L)),
+    ("f_leaveType", @json.string_of("personal")),
+    ("f_startDate", @json.string_of("2026-10-26")),
+    ("f_endDate", @json.string_of("2026-10-30")),
+  ])
+  t[10L] = sb_extra([
+    ("f_reason", @json.string_of("事假处理家务")),
+    ("f_days", @json.number_of(2L)),
+    ("f_leaveType", @json.string_of("personal")),
+    ("f_startDate", @json.string_of("2026-11-02")),
+    ("f_endDate", @json.string_of("2026-11-03")),
+  ])
+  t[11L] = sb_extra([
+    ("f_bizType", @json.string_of("purchase")),
+    ("f_budget", @json.number_of(12000L)),
+    ("f_urgency", @json.string_of("normal")),
+    ("f_desc", @json.string_of("采购一批开发板与传感器")),
+  ])
+  t[12L] = sb_extra([
+    ("f_reason", @json.string_of("部门例行调休")),
+    ("f_days", @json.number_of(1L)),
+    ("f_leaveType", @json.string_of("annual")),
+    ("f_startDate", @json.string_of("2026-11-09")),
+    ("f_endDate", @json.string_of("2026-11-09")),
+  ])
+  t[14L] = sb_extra([
+    ("f_reason", @json.string_of("外派学习请假")),
+    ("f_days", @json.number_of(7L)),
+    ("f_leaveType", @json.string_of("annual")),
+    ("f_startDate", @json.string_of("2026-11-16")),
+    ("f_endDate", @json.string_of("2026-11-22")),
+  ])
+  t[15L] = sb_extra([
+    ("f_reason", @json.string_of("丧假")),
+    ("f_days", @json.number_of(3L)),
+    ("f_leaveType", @json.string_of("personal")),
+    ("f_startDate", @json.string_of("2026-11-23")),
+    ("f_endDate", @json.string_of("2026-11-25")),
+  ])
+  t
+}
+
+///|
+/// canonical TF_BY_FORM：审批节点 formKey → 任务表单字段。表里没有的 formKey
+/// （如 apply-form / expense-form / mix-form）只落通用审批意见，不臆造字段。
+fn tf_by_form() -> Map[String, Map[String, Json]] {
+  let t : Map[String, Map[String, Json]] = Map::new()
+  t["leave-form"] = sb_extra([
+    ("tf_approvedDays", @json.number_of(3L)),
+    ("tf_needExtra", @json.string_of("no")),
+    ("tf_remark", @json.string_of("按项目排期核准，注意工作交接")),
+  ])
+  t["review-form"] = sb_extra([
+    ("tf_riskLevel", @json.string_of("low")),
+    ("tf_needLegalDoc", @json.string_of("no")),
+    ("tf_reviewOpinion", @json.string_of("条款与预算均无风险")),
+  ])
+  t["boss-form"] = sb_extra([
+    ("tf_finalDecision", @json.string_of("agree")),
+    ("tf_finalAmount", @json.number_of(8000L)),
+    ("tf_bossNote", @json.string_of("同意，走年度预算")),
+  ])
+  t["check-form"] = sb_extra([
+    ("tf_invoiceOk", @json.string_of("yes")),
+    ("tf_amountChecked", @json.number_of(8000L)),
+    ("tf_checkNote", @json.string_of("票据齐全，计入差旅科目")),
+  ])
+  t["countersign-form"] = sb_extra([
+    ("tf_signVote", @json.string_of("support")),
+    ("tf_signAmount", @json.number_of(5000L)),
+    ("tf_signOpinion", @json.string_of("本条线无异议")),
+  ])
+  t["seq-form"] = sb_extra([
+    ("tf_seqStage", @json.string_of("first")),
+    ("tf_seqVote", @json.string_of("pass")),
+    ("tf_seqOpinion", @json.string_of("初审通过，转下一人")),
+  ])
+  t["approve-form"] = sb_extra([
+    ("tf_approveResult", @json.string_of("ok")),
+    ("tf_approveAmount", @json.number_of(8000L)),
+    ("tf_approveNote", @json.string_of("审批通过")),
+  ])
+  t["ratio-form"] = sb_extra([
+    ("tf_ratioVote", @json.string_of("agree")),
+    ("tf_ratioOpinion", @json.string_of("达到比例即可通过")),
+  ])
+  t["veto-form"] = sb_extra([
+    ("tf_vetoResult", @json.string_of("pass")),
+    ("tf_vetoReason", @json.string_of("无异议")),
+  ])
+  t["form-a"] = sb_extra([
+    ("tf_branchA", @json.string_of("a1")),
+    ("tf_branchANote", @json.string_of("A 分支选方案 A1")),
+  ])
+  t["form-b"] = sb_extra([
+    ("tf_branchB", @json.string_of("b1")),
+    ("tf_branchBNote", @json.string_of("B 分支选方案 B1")),
+  ])
+  t["field-form"] = sb_extra([
+    ("tf_ownerName", @json.string_of("张三")),
+    ("tf_field", @json.string_of("tech")),
+    ("tf_fieldNote", @json.string_of("技术域评估通过")),
+  ])
+  t["operator-form"] = sb_extra([
+    ("tf_selfCheck", @json.string_of("done")),
+    ("tf_operatorNote", @json.string_of("发起人自查无误")),
+  ])
+  t["dept-form"] = sb_extra([
+    ("tf_deptAgree", @json.string_of("yes")),
+    ("tf_deptQuota", @json.number_of(8000L)),
+    ("tf_deptNote", @json.string_of("同意占用本部门额度")),
+  ])
+  t["role-form"] = sb_extra([
+    ("tf_roleResult", @json.string_of("pass")),
+    ("tf_roleNote", @json.string_of("角色审批通过")),
+  ])
+  t
+}
+
+///|
+/// canonical 规则 5：每个 processTask/execute 调用点都走这里——通用审批意见必带，
+/// 再按该任务行的 formKey 并任务表单字段（in-place 改 ex）。
+fn with_task_form(ex : Map[String, Json], form_key : String) -> Unit {
+  ex["tf_approvalComment"] = @json.string_of("同意，情况已核实")
+  match tf_by_form().get(form_key) {
+    Some(fields) => for k, v in fields {
+      ex[k] = v
+    }
+    None => ()
+  }
+}
+
+///|
+/// 任务行的 formKey（facade 出口 to_camel 后统一是 camelCase 键；无/为 null → ""，
+/// 只落通用意见）
+fn task_form_key(t : Json) -> String {
+  match t.value("formKey") {
+    Some(v) => @json.as_str(v).unwrap_or("")
+    None => ""
+  }
+}
+
+///|
 fn sb_extra(pairs : Array[(String, Json)]) -> Map[String, Json] {
   let m : Map[String, Json] = Map::new()
   for p in pairs {
@@ -147,6 +356,13 @@ fn row_args(
   let args : Map[String, Json] = Map::new()
   args["processDefineId"] = @json.number_of(define_id)
   args["operator"] = @json.string_of(op)
+  // canonical 规则 4：f_* 先铺、extra 后铺（amount / deptLeader 等流程变量优先，不被表单值盖掉）
+  match form_by_define().get(define_id) {
+    Some(fields) => for k, v in fields {
+      args[k] = v
+    }
+    None => ()
+  }
   for k, v in extra {
     args[k] = v
   }
@@ -255,6 +471,7 @@ async fn sb_advance(
                 ex["processTaskId"] = sb_field(t, "id")
                 ex["operator"] = @json.string_of(actor)
                 ex["submitType"] = @json.number_of(1L)
+                with_task_form(ex, task_form_key(t))
                 let r = facade.flow("processTask/execute", ex)
                 if sb_code(r) == 0L {
                   progress = true
