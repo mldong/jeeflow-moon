@@ -186,11 +186,12 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn update_instance(self
   let var_json = flow_data_to_json(instance.variables)
   let conn = self.open_or_tx()
   let _ = x(conn, 
-    "UPDATE wf_process_instance SET state=?, variable=?, update_user=?, update_time=NOW() WHERE id=?",
+    "UPDATE wf_process_instance SET state=?, variable=?, update_user=?, update_time=? WHERE id=?",
     [
       @moondb.Int(instance.state),
       @moondb.Text(var_json),
       opt_v(instance.update_user),
+      now_v(),
       @moondb.Int64(instance.instance_id),
     ],
   )
@@ -301,13 +302,14 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn update_task(self, ta
   let var_json = flow_data_to_json(task.variables)
   let conn = self.open_or_tx()
   let _ = x(conn, 
-    "UPDATE wf_process_task SET task_state=?, operator=?, finish_time=?, variable=?, update_user=?, update_time=NOW() WHERE id=?",
+    "UPDATE wf_process_task SET task_state=?, operator=?, finish_time=?, variable=?, update_user=?, update_time=? WHERE id=?",
     [
       @moondb.Int(task.task_state),
       opt_v(task.actor_id),
       opt_v(task.finish_time),
       @moondb.Text(var_json),
       opt_v(task.update_user),
+      now_v(),
       @moondb.Int64(task.task_id),
     ],
   )
@@ -401,8 +403,13 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn add_task_actor(self,
     )
     if exists.is_empty() {
       let _ = x(conn, 
-        "INSERT INTO wf_process_task_actor (id, process_task_id, actor_id, create_time, create_user) VALUES (?, ?, ?, NOW(), 'system')",
-        [@moondb.Int64(next_snowflake_id()), @moondb.Int64(task_id), @moondb.Text(actor)],
+        "INSERT INTO wf_process_task_actor (id, process_task_id, actor_id, create_time, create_user) VALUES (?, ?, ?, ?, 'system')",
+        [
+          @moondb.Int64(next_snowflake_id()),
+          @moondb.Int64(task_id),
+          @moondb.Text(actor),
+          now_v(),
+        ],
       )
     }
   }
@@ -426,11 +433,12 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn create_cc_instance(s
   let conn = self.open_or_tx()
   for actor_id in actor_ids {
     let _ = x(conn, 
-      "INSERT INTO wf_process_cc_instance (id, process_instance_id, actor_id, state, create_time, create_user) VALUES (?, ?, ?, 0, NOW(), ?)",
+      "INSERT INTO wf_process_cc_instance (id, process_instance_id, actor_id, state, create_time, create_user) VALUES (?, ?, ?, 0, ?, ?)",
       [
         @moondb.Int64(next_snowflake_id()),
         @moondb.Int64(instance_id),
         @moondb.Text(actor_id),
+        now_v(),
         @moondb.Text(creator),
       ],
     )

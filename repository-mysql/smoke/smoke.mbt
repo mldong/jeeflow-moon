@@ -358,6 +358,161 @@ async fn t1_i114_update_user_lands() -> Unit raise {
   )
   clean_9x(repo)
 }
+
+///|
+/// 库里单列读回（时间列版）。老 `cell()` 对 `@moondb.Blob` 回 "<BLOB>"——
+/// MySQL 结果集把 `DATETIME(3)` 投成 Blob，而 I120 要比的正是那一串时间，
+/// 故按库内 `value_to_text` 的同规则解码（旁挂新函数，不动既有 `cell()` 的三档标记语义）。
+async fn select_cell_dt(
+  repo : @repo.MysqlRepository,
+  sql : String,
+  params : Array[@moondb.Value],
+  col : String
+) -> String raise {
+  let conn = repo.open_raw()
+  let rows = @repo.q(conn, sql, params)
+  @repo.close_conn(conn)
+  if rows.is_empty() {
+    return "<无行>"
+  }
+  match rows[0].by_name(col) {
+    None => "<无此列>"
+    Some(v) =>
+      match v {
+        @moondb.Null => "<NULL>"
+        @moondb.Text(s) => s
+        @moondb.Blob(b) => @utf8.decode_lossy(b[:])
+        _ => "<非文本值>"
+      }
+  }
+}
+
+///|
+/// DATETIME(3) 文本比较取前 19 位（列带 `.000` 尾巴时不影响判据；C7 同口径）
+fn head19(s : String) -> String {
+  if s.length() >= 19 { s.substring(start=0, end=19).to_string() } else { s }
+}
+
+///|
+/// T1-I120（仓储级）：本栈六条写路径的时间列必须由**引擎钟**供给，SQL 侧不许有 `NOW()`。
+///
+/// 缺陷本体：`update_instance`/`update_task`/`add_task_actor`/`create_cc_instance`/
+/// `update_design`/`update_surrogate` 历史上写 `update_time=NOW()` / `create_time=NOW()`，
+/// 取的是**数据库会话时区**的墙钟；开发服务器 160 实测 `@@session.time_zone=+08:00`
+/// （`NOW()` 比 `UTC_TIMESTAMP()` 晚 8 小时），而引擎写出的 `create_time`/`finish_time`
+/// 走它自己那把钟（未注入时 UTC）⇒ 同一行两个基准差 8 小时。外溢到读侧的不是只有审计列：
+/// `wf_process_cc_instance.create_time` 会被 `page_cc_instances` SELECT 回并投影给前端，
+/// 「抄送我的」列表那一格用的就是 DB 那把钟。
+///
+/// 夹具设计：注入钟 = 真实 UTC − 12h ⇒ 「引擎钟(注入)」「真实 UTC」「DB +08:00」三方互不相同，
+/// 库里读到哪一把当场可分辨；末跳摘掉注入再写一次作**对照组**，读回值必须换成真实 UTC
+/// （≠ 注入串），用以证伪"这列根本没被写 / 被写成了常量"式的假绿。
+async fn t1_i120_engine_clock_lands() -> Unit raise {
+  let repo = @repo.MysqlRepository::from_env()
+  clean_9x(repo)
+  save_define_9x(repo, 990501L, "t1-i120", SIMPLE_FLOW)
+  let injected = @model.format_unix_utc(@model.epoch_secs() - 43200L)
+  @model.set_clock(Some(fn() { injected }))
+
+  let engine = make_mysql_engine(repo)
+  let inst = engine.start_async(990501L, "user9x", @json.FlowData::new())
+  let tasks = repo.find_doing_tasks(inst.instance_id, [])
+  check(tasks.length() == 1, "I120 发起后 1 个进行中任务")
+  let task = tasks[0]
+
+  inst.update_user = Some("i120")
+  repo.update_instance(inst)
+  let inst_upd = head19(select_cell_dt(repo, "SELECT update_time FROM wf_process_instance WHERE id = ?", [
+    @moondb.Int64(inst.instance_id)
+  ], "update_time"))
+  check(
+    inst_upd == injected,
+    "I120 库里 wf_process_instance.update_time = 注入的引擎钟（实际=\{inst_upd}，注入串=\{injected}）",
+  )
+  task.update_user = Some("i120")
+  repo.update_task(task)
+  let task_upd = head19(select_cell_dt(repo, "SELECT update_time FROM wf_process_task WHERE id = ?", [
+    @moondb.Int64(task.task_id)
+  ], "update_time"))
+  check(
+    task_upd == injected,
+    "I120 库里 wf_process_task.update_time = 注入的引擎钟（实际=\{task_upd}，同行 finish_time 同基准）",
+  )
+  repo.add_task_actor(task.task_id, ["i120-extra"])
+  let actor_ct = head19(select_cell_dt(repo, "SELECT create_time FROM wf_process_task_actor WHERE process_task_id = ? AND actor_id = ?", [
+    @moondb.Int64(task.task_id), @moondb.Text("i120-extra")
+  ], "create_time"))
+  check(
+    actor_ct == injected,
+    "I120 库里 wf_process_task_actor.create_time = 注入的引擎钟（实际=\{actor_ct}）",
+  )
+  repo.create_cc_instance(inst.instance_id, "user9x", ["i120-cc"])
+  let cc_ct = head19(select_cell_dt(repo, "SELECT create_time FROM wf_process_cc_instance WHERE process_instance_id = ? AND actor_id = ?", [
+    @moondb.Int64(inst.instance_id), @moondb.Text("i120-cc")
+  ], "create_time"))
+  check(
+    cc_ct == injected,
+    "I120 抄送行 create_time = 注入的引擎钟（实际=\{cc_ct}；该列会被 page_cc_instances 回读投影给前端）",
+  )
+  let design : @model.ProcessDesign = {
+    id: 990502L,
+    name: "t1-i120-design",
+    display_name: "I120 设计",
+    design_type: "approval",
+    icon: None,
+    is_deployed: 0,
+    remark: None,
+    create_time: None,
+    create_user: Some("user9x"),
+    update_time: None,
+    update_user: None,
+  }
+  repo.save_design(design)
+  repo.update_design(design)
+  let design_upd = head19(select_cell_dt(repo, "SELECT update_time FROM wf_process_design WHERE id = ?", [
+    @moondb.Int64(990502L)
+  ], "update_time"))
+  check(
+    design_upd == injected,
+    "I120 库里 wf_process_design.update_time = 注入的引擎钟（实际=\{design_upd}）",
+  )
+  let sg : @model.ProcessSurrogate = {
+    id: 990503L,
+    process_name: "t1-i120",
+    operator: "user9x",
+    surrogate: "userB",
+    start_time: None,
+    end_time: None,
+    enabled: 1,
+    create_time: None,
+    create_user: Some("user9x"),
+    update_time: None,
+    update_user: None,
+  }
+  repo.save_surrogate(sg)
+  repo.update_surrogate(sg)
+  let sg_upd = head19(select_cell_dt(repo, "SELECT update_time FROM wf_process_surrogate WHERE id = ?", [
+    @moondb.Int64(990503L)
+  ], "update_time"))
+  check(
+    sg_upd == injected,
+    "I120 库里 wf_process_surrogate.update_time = 注入的引擎钟（实际=\{sg_upd}）",
+  )
+
+  // 对照组：摘掉注入 ⇒ 同一列必须换成真实 UTC（不再等于注入串），
+  // 否则上面的命中可能只是"常量/从没被写过"。
+  @model.set_clock(None)
+  repo.update_instance(inst)
+  let after_default = head19(select_cell_dt(repo, "SELECT update_time FROM wf_process_instance WHERE id = ?", [
+    @moondb.Int64(inst.instance_id)
+  ], "update_time"))
+  check(
+    after_default != injected && after_default.length() >= 19,
+    "I120 摘掉注入后 update_time 跟随默认臂真实 UTC（实际=\{after_default}，注入串=\{injected}）",
+  )
+  clean_9x(repo)
+}
+
 ///|
 /// ── issues/116 批次 D：委托查询四判据 + 双仓同答案（SQL 仓真机）──
 /// 同一份委托台账同时灌进 SQL 仓与内存仓，逐探针比**两侧答案是否相同**（spec 06 §4.5 条款 6）。
@@ -609,6 +764,8 @@ async fn t1_all() -> Unit raise {
   t1_i110_hydrate()
   println("T1-I114 update_user 真写进 UPDATE 语句（仓储级）...")
   t1_i114_update_user_lands()
+  println("T1-I120 六条写路径时间列 = 引擎钟，SQL 侧无 NOW()（仓储级）...")
+  t1_i120_engine_clock_lands()
   println("T1-I116 委托查询四判据 + 双仓同答案...")
   t1_i116_surrogate_query()
   println("T1-I117 我已办状态集合 <>10 + 空 operator 空页...")

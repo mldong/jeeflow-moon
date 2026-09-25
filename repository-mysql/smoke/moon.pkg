@@ -2,6 +2,7 @@ import {
   "moonbitlang/async" @async,
   "moonbitlang/core/env" @env,
   "moonbitlang/core/string" @string,
+  "moonbitlang/core/encoding/utf8" @utf8,
   "mldong/jeeflow-core/model" @model,
   "mldong/jeeflow-core/json" @json,
   "mldong/jeeflow-core/error" @error,

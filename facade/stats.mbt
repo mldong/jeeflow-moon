@@ -164,14 +164,22 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   let tasks = (self.repo).get_all_tasks()
   var pending = 0L
   var overdue = 0L
-  let today_secs = @model.epoch_secs()
+  // issues/120 附证：本栈只有**一把钟**——`current_time_str()`（可被宿主 `set_clock` 注入）。
+  // 这里原先读裸 `@model.epoch_secs()`，于是同一段统计里 `todayNew` 跟注入钟、逾期数不跟，
+  // 宿主注入后（Rust 侧 120 §9/§10 已按此形状收口）两数会互相矛盾。
+  // 未注入时 `current_time_str()` == `format_unix_utc(epoch_secs())`，parse 回来即原值 ⇒ 默认臂不变；
+  // 兜底那臂只在宿主注入了不合 `yyyy-MM-dd HH:mm:ss` 的串时才走（宁缺判据不整块报错）。
+  let now_secs = match parse_epoch_secs(@model.current_time_str()) {
+    Some(s) => s
+    None => @model.epoch_secs()
+  }
   for t in tasks {
     if t.task_state == 10 {
       pending = pending + 1L
       match t.expire_time {
         Some(et) =>
           match parse_epoch_secs(et) {
-            Some(exp) => if exp < today_secs { overdue = overdue + 1L }
+            Some(exp) => if exp < now_secs { overdue = overdue + 1L }
             None => ()
           }
         None => ()

@@ -45,13 +45,14 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn save_design(self,
 pub impl @spi.ProcessExtRepository for MysqlRepository with fn update_design(self, design) {
   let conn = self.open_or_tx()
   let _ = x(conn, 
-    "UPDATE wf_process_design SET display_name=?, type=?, icon=?, is_deployed=?, remark=?, update_time=NOW(), update_user=? WHERE id=?",
+    "UPDATE wf_process_design SET display_name=?, type=?, icon=?, is_deployed=?, remark=?, update_time=?, update_user=? WHERE id=?",
     [
       @moondb.Text(design.display_name),
       @moondb.Text(design.design_type),
       opt_v(design.icon),
       @moondb.Int(design.is_deployed),
       opt_v(design.remark),
+      now_v(),
       opt_v(design.update_user),
       @moondb.Int64(design.id),
     ],
@@ -171,7 +172,7 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn save_surrogate(se
 pub impl @spi.ProcessExtRepository for MysqlRepository with fn update_surrogate(self, surrogate) {
   let conn = self.open_or_tx()
   let _ = x(conn, 
-    "UPDATE wf_process_surrogate SET process_name=?, operator=?, surrogate=?, start_time=?, end_time=?, enabled=?, update_time=NOW(), update_user=? WHERE id=?",
+    "UPDATE wf_process_surrogate SET process_name=?, operator=?, surrogate=?, start_time=?, end_time=?, enabled=?, update_time=?, update_user=? WHERE id=?",
     [
       @moondb.Text(surrogate.process_name),
       @moondb.Text(surrogate.operator),
@@ -179,6 +180,7 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn update_surrogate(
       opt_v(surrogate.start_time),
       opt_v(surrogate.end_time),
       @moondb.Int(surrogate.enabled),
+      now_v(),
       opt_v(surrogate.update_user),
       @moondb.Int64(surrogate.id),
     ],

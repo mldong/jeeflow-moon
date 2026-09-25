@@ -262,6 +262,19 @@ pub fn opt_v(s : String?) -> @moondb.Value {
 }
 
 ///|
+/// 引擎钟的绑定值（issues/120 附证：SQL 侧不许出现 `NOW()`）。
+///
+/// `NOW()` 取的是**数据库会话时区**的墙钟，而本栈引擎写出的时间列是 `current_time_str()`
+/// 那把钟（未注入时 UTC）。开发服务器 160 的 MySQL 实测 `@@session.time_zone=+08:00`
+/// （`NOW()` 与 `UTC_TIMESTAMP()` 差 8 小时），于是同一行 `create_time`(引擎) 与
+/// `update_time`(DB) 差 8 小时、`wf_process_task` 一行里 `finish_time` 与 `update_time`
+/// 两个基准——正是 issues/120 要消掉的那类"同栈两把钟"，只是换了位置。
+/// 改绑引擎钟后：语义仍是"当次写库的 now"，只是与全站同一把尺子，且随宿主注入而整体收敛。
+pub fn now_v() -> @moondb.Value {
+  @moondb.Text(@model.current_time_str())
+}
+
+///|
 /// 分页边界（C22）
 fn page_bounds(query : @model.PageQuery) -> (Int64, Int64, Int64) {
   let page_num = if query.page_num() < 1L { 1L } else { query.page_num() }
