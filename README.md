@@ -60,7 +60,7 @@ Consume from your own module — `moon add` pulls the latest release, no version
 ```bash
 moon add mldong/jeeflow-core     # engine core — zero runtime registry deps
 moon add mldong/jeeflow-facade   # 40+ action unified facade
-# each add resolves the latest version (e.g. 0.1.8) and writes it into your moon.mod
+# each add resolves the latest version (e.g. 0.1.12) and writes it into your moon.mod
 ```
 
 ```moonbit
