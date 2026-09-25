@@ -326,7 +326,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_doing_tasks(sel
   let mut sql = "SELECT " + task_columns + " FROM wf_process_task WHERE process_instance_id = ? AND task_state = 10"
   let params : Array[@moondb.Value] = [@moondb.Int64(instance_id)]
   if !task_names.is_empty() {
-    let b = StringBuilder::new()
+    let b = StringBuilder()
     for i, _ in task_names {
       b.write_string(if i > 0 { "," } else { " AND task_name IN (" })
       b.write_string("?")
@@ -349,7 +349,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_done_tasks(self
   let mut sql = "SELECT " + task_columns + " FROM wf_process_task WHERE process_instance_id = ? AND task_state = 20"
   let params : Array[@moondb.Value] = [@moondb.Int64(instance_id)]
   if !task_names.is_empty() {
-    let b = StringBuilder::new()
+    let b = StringBuilder()
     for i, _ in task_names {
       b.write_string(if i > 0 { "," } else { " AND task_name IN (" })
       b.write_string("?")

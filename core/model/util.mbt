@@ -16,7 +16,7 @@ pub fn format_time(s : String) -> String {
 ///|
 /// snake_case → camelCase
 pub fn to_camel_case(s : String) -> String {
-  let b = StringBuilder::new()
+  let b = StringBuilder()
   let mut upper_next = false
   for ch in s {
     if ch == '_' {

@@ -106,7 +106,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::disp
 pub fn facade_parse_m_filters(args : Map[String, Json]) -> Array[@model.QueryFilter] {
   let filters : Array[@model.QueryFilter] = []
   for key, value in args {
-    if !key.starts_with("m_") {
+    if !key.has_prefix("m_") {
       continue
     }
     let val_str = match value {
@@ -139,7 +139,7 @@ pub fn facade_parse_m_filters(args : Map[String, Json]) -> Array[@model.QueryFil
 ///|
 fn split_char(s : String, sep : Char) -> Array[String] {
   let out : Array[String] = []
-  let b = StringBuilder::new()
+  let b = StringBuilder()
   for ch in s {
     if ch == sep {
       out.push(b.to_string())
@@ -154,7 +154,7 @@ fn split_char(s : String, sep : Char) -> Array[String] {
 
 ///|
 fn join_char(parts : Array[String], sep : Char, from : Int) -> String {
-  let b = StringBuilder::new()
+  let b = StringBuilder()
   for i in from..<parts.length() {
     if i > from {
       b.write_char(sep)
@@ -166,7 +166,7 @@ fn join_char(parts : Array[String], sep : Char, from : Int) -> String {
 
 ///|
 fn camel_to_snake(s : String) -> String {
-  let b = StringBuilder::new()
+  let b = StringBuilder()
   for ch in s {
     let c = ch.to_int()
     if c >= 65 && c <= 90 {
@@ -250,7 +250,7 @@ fn matches_filter(row : Json, f : @model.QueryFilter) -> Bool {
 /// 过滤列 → 行键：先 camelCase（行键已 camel），失败退原 snake
 fn camel_to_snake_inverse_for(f : @model.QueryFilter) -> String {
   // column 本身是 snake_case（facade_parse_m_filters 已转），行键为 camelCase
-  let b = StringBuilder::new()
+  let b = StringBuilder()
   let mut upper_next = true // 别名拼接后的首字母大写由 to_camel 统一处理，这里列名整体 camel
   let _ = upper_next
   for ch in f.column() {

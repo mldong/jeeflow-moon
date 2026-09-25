@@ -4,7 +4,7 @@
 ///|
 async fn handle(app : @demo.App, req : @http.Request, body : &@io.Reader, conn : @http.ServerConnection) -> Unit {
   // 读 body
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   while body.read_some() is Some(data) {
     buf.write_string(@utf8.decode_lossy(data))
   }

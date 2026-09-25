@@ -4,3 +4,4 @@ target/
 *.core
 *.wasm
 _build/
+moon_diag_sites.tsv

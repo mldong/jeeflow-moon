@@ -110,13 +110,13 @@ async fn sg_put(
 ///|
 /// 通用流程图：start → 若干 task 节点 → end（assignees 按序给每个节点的 assignee）
 fn sg_flow(name : String, assignees : Array[String]) -> String {
-  let nodes = StringBuilder::new()
+  let nodes = StringBuilder()
   nodes.write_string("{\"id\": \"start\", \"type\": \"snaker:start\", \"text\": {\"value\": \"S\"}}")
   for i in 0..<assignees.length() {
     nodes.write_string(", {\"id\": \"n\{(i + 1)}\", \"type\": \"snaker:task\", \"text\": {\"value\": \"节点\{(i + 1)}\"}, \"properties\": {\"assignee\": \"\{assignees[i]}\", \"taskType\": 0, \"performType\": 0}}")
   }
   nodes.write_string(", {\"id\": \"end\", \"type\": \"snaker:end\", \"text\": {\"value\": \"E\"}}")
-  let edges = StringBuilder::new()
+  let edges = StringBuilder()
   let total = assignees.length() + 2
   for i in 0..<(total - 1) {
     let src = if i == 0 { "start" } else { "n\{i}" }

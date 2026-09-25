@@ -70,7 +70,7 @@ pub(all) struct InMemoryMetaProvider {
 
 ///|
 pub fn InMemoryMetaProvider::new() -> InMemoryMetaProvider {
-  { tables: Map::new() }
+  { tables: Map([]) }
 }
 
 ///|
@@ -115,7 +115,7 @@ pub fn is_table_name_safe(name : String) -> Bool {
   }
   let lower = name.to_lower()
   for prefix in reserved_prefixes {
-    if lower.starts_with(prefix) {
+    if lower.has_prefix(prefix) {
       return false
     }
   }

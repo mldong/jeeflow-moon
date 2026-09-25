@@ -5,7 +5,7 @@
 
 ///|
 /// 环境事务连接（None = 非事务态，各方法独立连接）
-let tx_conn : Ref[(@client.MysqlConn?)] = Ref::new(None)
+let tx_conn : Ref[(@client.MysqlConn?)] = Ref(None)
 
 ///|
 /// 事务内取当前连接（测试/工具用；非事务态 None）

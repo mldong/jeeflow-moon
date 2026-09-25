@@ -168,13 +168,13 @@ async fn stats_seed(repo : @memory.MemoryRepository) -> Unit raise {
 
 ///|
 fn stats_args0() -> Map[String, Json] {
-  let m : Map[String, Json] = Map::new()
+  let m : Map[String, Json] = Map([])
   m
 }
 
 ///|
 fn stats_args_state_in_10() -> Map[String, Json] {
-  let m : Map[String, Json] = Map::new()
+  let m : Map[String, Json] = Map([])
   m["stateIn"] = @json.array_of([@json.number_of(10L)])
   m
 }
@@ -185,7 +185,7 @@ fn stats_args_trend(
   end : String,
   granularity : String
 ) -> Map[String, Json] {
-  let m : Map[String, Json] = Map::new()
+  let m : Map[String, Json] = Map([])
   m["start"] = @json.string_of(start)
   m["end"] = @json.string_of(end)
   m["granularity"] = @json.string_of(granularity)
@@ -194,7 +194,7 @@ fn stats_args_trend(
 
 ///|
 fn stats_args_group(dimension : String) -> Map[String, Json] {
-  let m : Map[String, Json] = Map::new()
+  let m : Map[String, Json] = Map([])
   m["dimension"] = @json.string_of(dimension)
   m
 }

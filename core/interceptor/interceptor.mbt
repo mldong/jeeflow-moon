@@ -134,7 +134,7 @@ pub fn filter_fields_by_permission(
 ) -> @json.FlowData {
   let filtered = @json.FlowData::new()
   for key, value in args.inner() {
-    if key.starts_with("f_") {
+    if key.has_prefix("f_") {
       let perm_key = "PERMISSION_\{key}"
       let perm_key_no_prefix = "PERMISSION_\{key.substring(start=2)}"
       let perm = match permissions.get(perm_key) {
@@ -150,7 +150,7 @@ pub fn filter_fields_by_permission(
         3 => () // 隐藏——丢弃
         _ => filtered.insert(key, value)
       }
-    } else if key.starts_with("tf_") {
+    } else if key.has_prefix("tf_") {
       filtered.insert(key, value)
     } else {
       filtered.insert(key, value)

@@ -23,7 +23,7 @@ pub async fn seed_business(
           for actor in ["leader", "manager"] {
             match sb_todo_row(facade, actor, iid) {
               Some(t) => {
-                let ex : Map[String, Json] = Map::new()
+                let ex : Map[String, Json] = Map([])
                 ex["processTaskId"] = sb_field(t, "id")
                 ex["operator"] = @json.string_of(actor)
                 ex["submitType"] = @json.number_of(1L)
@@ -35,7 +35,7 @@ pub async fn seed_business(
           }
         }
         if row.3.length() > 0 {
-          let cc : Map[String, Json] = Map::new()
+          let cc : Map[String, Json] = Map([])
           cc["processInstanceId"] = iid
           cc["operator"] = @json.string_of(row.1)
           cc["actorIds"] = str_array_json(row.3)
@@ -55,7 +55,7 @@ pub async fn seed_business(
           println("[seed] FIN define=\{row.0} op=\{row.1} 终态=\{state}（期望 20）")
         }
         if row.3.length() > 0 {
-          let cc : Map[String, Json] = Map::new()
+          let cc : Map[String, Json] = Map([])
           cc["processInstanceId"] = iid
           cc["operator"] = @json.string_of(row.1)
           cc["actorIds"] = str_array_json(row.3)
@@ -67,7 +67,7 @@ pub async fn seed_business(
     }
   }
   for s in surrogates() {
-    let args : Map[String, Json] = Map::new()
+    let args : Map[String, Json] = Map([])
     args["operator"] = @json.string_of(s[0])
     args["surrogate"] = @json.string_of(s[1])
     args["processName"] = @json.string_of("")
@@ -88,22 +88,22 @@ pub async fn seed_business(
 fn in_progress_rows()
   -> Array[(Int64, String, Map[String, Json], Array[String])] {
   let rows : Array[(Int64, String, Map[String, Json], Array[String])] = []
-  rows.push((1L, "user1", Map::new(), ["userA", "userB"]))
-  rows.push((2L, "user1", Map::new(), []))
+  rows.push((1L, "user1", Map([]), ["userA", "userB"]))
+  rows.push((2L, "user1", Map([]), []))
   rows.push((3L, "userA", sb_extra([("amount", @json.number_of(500L))]), []))
-  rows.push((4L, "manager", Map::new(), ["userC", "leader"]))
-  rows.push((5L, "userB", Map::new(), []))
-  rows.push((6L, "director", Map::new(), ["manager", "boss"]))
-  rows.push((7L, "userC", Map::new(), ["user1"]))
-  rows.push((1L, "boss", Map::new(), []))
+  rows.push((4L, "manager", Map([]), ["userC", "leader"]))
+  rows.push((5L, "userB", Map([]), []))
+  rows.push((6L, "director", Map([]), ["manager", "boss"]))
+  rows.push((7L, "userC", Map([]), ["user1"]))
+  rows.push((1L, "boss", Map([]), []))
   rows.push((12L, "user1", sb_extra([("deptLeader", @json.string_of("manager"))]), []))
   rows.push((12L, "userC", sb_extra([("deptLeader", @json.string_of("director"))]), []))
   rows.push((12L, "userB", sb_extra([("deptLeader", @json.string_of("user1"))]), []))
-  rows.push((15L, "userA", Map::new(), ["boss"]))
-  rows.push((14L, "leader", Map::new(), ["director", "userC"]))
-  rows.push((2L, "userA", Map::new(), []))
-  rows.push((10L, "userB", Map::new(), []))
-  rows.push((8L, "user1", Map::new(), []))
+  rows.push((15L, "userA", Map([]), ["boss"]))
+  rows.push((14L, "leader", Map([]), ["director", "userC"]))
+  rows.push((2L, "userA", Map([]), []))
+  rows.push((10L, "userB", Map([]), []))
+  rows.push((8L, "user1", Map([]), []))
   rows
 }
 
@@ -112,13 +112,13 @@ fn in_progress_rows()
 fn finished_rows()
   -> Array[(Int64, String, Map[String, Json], Array[String])] {
   let rows : Array[(Int64, String, Map[String, Json], Array[String])] = []
-  rows.push((1L, "userA", Map::new(), ["user1", "director"]))
-  rows.push((8L, "userB", Map::new(), ["boss", "manager"]))
-  rows.push((2L, "manager", Map::new(), ["boss"]))
-  rows.push((10L, "director", Map::new(), []))
+  rows.push((1L, "userA", Map([]), ["user1", "director"]))
+  rows.push((8L, "userB", Map([]), ["boss", "manager"]))
+  rows.push((2L, "manager", Map([]), ["boss"]))
+  rows.push((10L, "director", Map([]), []))
   rows.push((12L, "userC", sb_extra([("deptLeader", @json.string_of("leader"))]), []))
-  rows.push((1L, "director", Map::new(), []))
-  rows.push((5L, "manager", Map::new(), []))
+  rows.push((1L, "director", Map([]), []))
+  rows.push((5L, "manager", Map([]), []))
   rows.push((12L, "userA", sb_extra([("deptLeader", @json.string_of("director"))]), []))
   rows.push((12L, "userB", sb_extra([("deptLeader", @json.string_of("user1"))]), []))
   rows
@@ -137,7 +137,7 @@ fn surrogates() -> Array[Array[String]] {
 /// canonical FORM_BY_DEFINE：defineId → 发起表单字段（13 无 apply 节点故不列）。
 /// 八栈同表同值同序；日期写死字面量不按当前时钟算；f_days / f_budget 是数字，其余字符串。
 fn form_by_define() -> Map[Int64, Map[String, Json]] {
-  let t : Map[Int64, Map[String, Json]] = Map::new()
+  let t : Map[Int64, Map[String, Json]] = Map([])
   t[1L] = sb_extra([
     ("f_reason", @json.string_of("家中有事需请假")),
     ("f_days", @json.number_of(3L)),
@@ -242,7 +242,7 @@ fn form_by_define() -> Map[Int64, Map[String, Json]] {
 /// canonical TF_BY_FORM：审批节点 formKey → 任务表单字段。表里没有的 formKey
 /// （如 apply-form / expense-form / mix-form）只落通用审批意见，不臆造字段。
 fn tf_by_form() -> Map[String, Map[String, Json]] {
-  let t : Map[String, Map[String, Json]] = Map::new()
+  let t : Map[String, Map[String, Json]] = Map([])
   t["leave-form"] = sb_extra([
     ("tf_approvedDays", @json.number_of(3L)),
     ("tf_needExtra", @json.string_of("no")),
@@ -340,7 +340,7 @@ fn task_form_key(t : Json) -> String {
 
 ///|
 fn sb_extra(pairs : Array[(String, Json)]) -> Map[String, Json] {
-  let m : Map[String, Json] = Map::new()
+  let m : Map[String, Json] = Map([])
   for p in pairs {
     m[p.0] = p.1
   }
@@ -353,7 +353,7 @@ fn row_args(
   op : String,
   extra : Map[String, Json]
 ) -> Map[String, Json] {
-  let args : Map[String, Json] = Map::new()
+  let args : Map[String, Json] = Map([])
   args["processDefineId"] = @json.number_of(define_id)
   args["operator"] = @json.string_of(op)
   // canonical 规则 4：f_* 先铺、extra 后铺（amount / deptLeader 等流程变量优先，不被表单值盖掉）
@@ -449,7 +449,7 @@ async fn sb_advance(
   iid : Json
 ) -> Int64 raise {
   for _i in 0..<30 {
-    let detail : Map[String, Json] = Map::new()
+    let detail : Map[String, Json] = Map([])
     detail["id"] = iid
     let resp = facade.flow("processInstance/detail", detail)
     let data = match resp.value("data") {
@@ -467,7 +467,7 @@ async fn sb_advance(
           if sb_num_of(t.value("taskState"), 0L) == 10L {
             match sb_actor(t) {
               Some(actor) => {
-                let ex : Map[String, Json] = Map::new()
+                let ex : Map[String, Json] = Map([])
                 ex["processTaskId"] = sb_field(t, "id")
                 ex["operator"] = @json.string_of(actor)
                 ex["submitType"] = @json.number_of(1L)
@@ -485,7 +485,7 @@ async fn sb_advance(
       }
       None => ()
     }
-    if not(progress) {
+    if !(progress) {
       return state
     }
   }
@@ -499,7 +499,7 @@ async fn sb_todo_row(
   op : String,
   iid : Json
 ) -> Json? raise {
-  let args : Map[String, Json] = Map::new()
+  let args : Map[String, Json] = Map([])
   args["operator"] = @json.string_of(op)
   args["pageNum"] = @json.number_of(1L)
   args["pageSize"] = @json.number_of(200L)

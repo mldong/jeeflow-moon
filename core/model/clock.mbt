@@ -2,7 +2,7 @@
 // MoonBit 单线程事件循环，全局 Ref 安全（无并发竞争）。
 
 ///|
-let clock_ref : Ref[((() -> String))?] = Ref::new(None)
+let clock_ref : Ref[((() -> String))?] = Ref(None)
 
 ///|
 pub fn set_clock(f : (() -> String)?) -> Unit {
@@ -48,7 +48,7 @@ pub fn format_unix_utc(secs : Int64) -> String {
   let ss = tod % 60
   let pad = (n : Int, w : Int) => {
     let s = n.to_string()
-    let b = StringBuilder::new()
+    let b = StringBuilder()
     for _ in 0..<(w - s.length()) {
       b.write_char('0')
     }

@@ -12,7 +12,7 @@
 
 ///|
 fn sc_args(entries : Array[(String, String)]) -> Map[String, Json] {
-  let args : Map[String, Json] = Map::new()
+  let args : Map[String, Json] = Map([])
   for (k, v) in entries {
     args[k] = @json.string_of(v)
   }

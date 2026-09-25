@@ -3,7 +3,7 @@
 ///|
 /// camelCase → snake_case
 pub fn to_underscore(camel : String) -> String {
-  let b = StringBuilder::new()
+  let b = StringBuilder()
   for ch in camel {
     let code = ch.to_int()
     if code >= 65 && code <= 90 {
@@ -24,7 +24,7 @@ pub fn to_underscore(camel : String) -> String {
 pub fn parse_m_params(args : Map[String, Json]) -> Array[@model.QueryFilter] {
   let filters : Array[@model.QueryFilter] = []
   for key, value in args {
-    if !key.starts_with("m_") {
+    if !key.has_prefix("m_") {
       continue
     }
     if is_empty_value(value) {
@@ -51,7 +51,7 @@ pub fn parse_m_params(args : Map[String, Json]) -> Array[@model.QueryFilter] {
 ///|
 fn split_underscore(s : String) -> Array[String] {
   let out : Array[String] = []
-  let b = StringBuilder::new()
+  let b = StringBuilder()
   for ch in s {
     if ch == '_' {
       out.push(b.to_string())
@@ -102,7 +102,7 @@ fn value_to_string(v : Json) -> String {
 /// WHERE 条件片段 + 绑定值组装（LIMIT/OFFSET 内联非负整数，C21）
 /// 返回 (where_sql_fragment, params)
 pub fn build_m_where(filters : Array[@model.QueryFilter]) -> (String, Array[@moondb.Value]) {
-  let b = StringBuilder::new()
+  let b = StringBuilder()
   let params : Array[@moondb.Value] = []
   for f in filters {
     let col = f.alias() + "." + f.column()

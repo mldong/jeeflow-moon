@@ -90,7 +90,7 @@ pub fn next_snowflake_id() -> Int64 {
 }
 
 ///|
-let snowflake_singleton : Ref[(() -> Int64)] = Ref::new(fn() -> Int64 {
+let snowflake_singleton : Ref[(() -> Int64)] = Ref(fn() -> Int64 {
   let gen = @id_gen.DefaultIdGenerator::new(1L)
   gen.next_id()
 })
@@ -287,7 +287,7 @@ fn page_bounds(query : @model.PageQuery) -> (Int64, Int64, Int64) {
 /// LIMIT/OFFSET 内联非负整数（C21：占位符在 MySQL prepare 文本协议路径不可靠）
 fn sql_escape_text(s : String) -> String {
   // 文本协议 + 绑定参数下仅防御性转义反斜杠/引号（id 列内联已保证为整数）
-  let b = StringBuilder::new()
+  let b = StringBuilder()
   for ch in s {
     if ch == '\\' || ch == '\'' || ch == '"' {
       b.write_char('\\')

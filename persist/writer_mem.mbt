@@ -8,7 +8,7 @@ pub(all) struct InMemoryTableWriter {
 
 ///|
 pub fn InMemoryTableWriter::new() -> InMemoryTableWriter {
-  { id_counter: 1L, tables: Map::new() }
+  { id_counter: 1L, tables: Map([]) }
 }
 
 ///|
@@ -66,7 +66,7 @@ pub impl DynamicTableWriter for InMemoryTableWriter with fn insert(self, table_n
   }
   let id = self.id_counter
   self.id_counter = id + 1L
-  let row : Map[String, Json] = Map::new()
+  let row : Map[String, Json] = Map([])
   for k, v in data {
     row[k] = v
   }
@@ -74,7 +74,7 @@ pub impl DynamicTableWriter for InMemoryTableWriter with fn insert(self, table_n
   match self.tables.get(table_name) {
     Some(t) => t[id] = row
     None => {
-      let t : Map[Int64, Map[String, Json]] = Map::new()
+      let t : Map[Int64, Map[String, Json]] = Map([])
       t[id] = row
       self.tables[table_name] = t
     }
