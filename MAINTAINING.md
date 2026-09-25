@@ -72,6 +72,51 @@ registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）
 - `moon.mod`/`moon.pkg` 为 TOML 风格；workspace 互依赖版本化全名 `"mldong/jeeflow-core@0.1.0"`
 - `moon info` 生成 `.mbti`；包级可 `supported_targets`（moonmysql client 即用此钉 native，本仓 vendored 解锁）
 
+## 1.1 工具链版本与本机口径（2026-09-26 升到 latest）
+
+- 本机：**moon 0.1.20260920 / moonc v0.10.14 / core bundle 0.10.14+7d59c7ec9**
+  （此前 0.1.20260904 / v0.10.12 / core 0.10.12）。与 CI（`Dockerfile.demo`、`publish.yml`
+  装 latest）终于同一把尺子——**此前本机旧、CI 新**，本机绿不等于 CI 绿。
+  回滚点：`G:/dev-tools/moon.bak-20260904`（整目录 341M 快照，16 秒可回）。
+- 升级姿势：`moon upgrade` 在无 tty 的 shell 里必挂（`IO error: not a terminal`，
+  `--force` 与 winpty 都不行）⇒ 用官方 installer，且**必须先把 `$MOON_HOMEin` 预注入
+  `$env:Path`**，否则脚本会把自己的路径写进用户级 PATH。
+- **诊断渲染器 bug**：本版本 `moon check` / `moon test` 的人读输出会随机 panic
+  （`ariadne-0.5.1: Label start is after its end`），且崩在编译成功之后，看起来像构建失败。
+  ⇒ 本机所有编译/测试判定一律加 `--output-json`，成败看 `Finished. moon: ran N tasks` 与退出码。
+- 新工具链下 `moonbitlang/async` 可升到 **0.22.4**（干净重建 49 tasks / 0 error / test 通过）；
+  旧 core（0.10.12）没有 `eprintln` 才被迫钉 0.20.3，该偏斜已不存在。
+
+### 1.2 零警告施工台账（进行中，431 条待清）与一条拦路发现
+
+已完成（每步都 `moon check` 0 error + `moon test` 全通过）：机械改名归一 96 行、
+`Map::new()`→`Map([])` 89 站点、保留词 `define`→`define_info` / `alias`→`table_alias` 165 行、
+`derive(Eq, Show)`→Debug 13 处、测试限定名 20 处。629→431。
+工具：`scripts/moon_diag_inventory.py`（吃 `--output-json`）、`scripts/moon_migrate_w{1,2,3}.py`、
+`scripts/moon_try_fix.py`、`scripts/moon_patch.py`（本仓部分 .mbt 的 blob 带 `
+`，
+普通多行字符串匹配会落空，补丁必须容忍式并断言恰好命中 1 次）。
+
+踩过的两个坑（都靠"编译器当裁判"兜住）：
+1. 照 `moon check` 的 `unused_package` 删 import 会**删过头**——该诊断不含测试编译通道，
+   把 `_test.mbt` / `for "test"` 要用的 `id_gen`/`@json`/`async` 判成未用（一次 38 个 error）。
+   正确口径：check 与 test **两个通道都报未用**才删。
+2. `try?` 迁移（77 处）不是纯语法活：真实牵出 63 个 error 站点，根因是
+   **`repository-mysql` 的 DB 层错误处理建在被废弃的"效应推断"上**——
+   vendored `moon_mysql_client.MysqlConn::connect` 的签名是 `-> MysqlConn`
+   （既不返 `Result` 也不标 `raise`，靠体内 `@socket` 调用被旧编译器推断出错误效应），
+   而 `repo/conn.mbt`/`tx.mbt` 写的是 `let outcome = try? connect(...)` + `match outcome { Ok/Err }`。
+   旧 `try?` 在这里的语义是"物化成 Result"，新编译器弃办该写法且不再做效应推断 ⇒
+   要改就得给 vendored 的 `connect/query/execute/begin/commit` **补 `raise` 标注**，
+   而 vendored 的纪律是"逐字节原样拷贝（sha256 已核）"（D-M6-1）——
+   这是一次策略决定，不是体力活，等 owner 拍：
+   A) vendored 允许"仅加效应标注"的最小偏离并重核 sha 基线；
+   B) 等上游 moonmysql/moondb 自己补标注（不可控）；
+   C) 对该文件 `#make-silent` 静音 `try?` 弃办，先保住 vendored 的逐字一致。
+   其余站点（SPI 闭包、`@string.parse_*`、`@json.parse_json`、`@cjson.parse`）性质清楚，
+   塌成 `try CALL catch { 失败臂 } noraise { 成功臂 }` 即可，试算过：改写形状正确、
+   负向断言强度不降（从"判 `Err(_)`"变成"确实 raise 才算过"）。
+
 ## 2. 测试指南（T0/T1/T2 + 构建目标维度）
 
 ### T0 仓内快测（必绿门槛）
