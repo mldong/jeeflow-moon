@@ -412,6 +412,55 @@ mkdir -p /tmp/pull-verify && cd /tmp/pull-verify
   `store=mysql` 模式 demo HTTP 读路径通（`/api/stats`、`todoList` 真 SQL）；
   `check-action-manifest.mjs` 45/45；`consistency/moon.json` 逐字节未变。
 
+### D-M6-2 时间基准：SQL 侧摘 `NOW()`，demo 由 `JEEFLOW_TZ_OFFSET` 注入东八
+
+- **问题**（issues/120 的两处残留 + 一个产品诉求）：
+  1. `repository-mysql` 六条写路径的时间列写 SQL `NOW()`，取的是**数据库会话时区**，
+     而引擎写出的列是它自己那把钟。开发服务器 160 实测 `@@session.time_zone=+08:00`
+     （`NOW()=2026-09-26 01:45:30` 对 `UTC_TIMESTAMP()=2026-09-25 17:45:30`）⇒ 同一行
+     `create_time`(引擎) 与 `update_time`(DB) 差 8 小时；最实的一格是「抄送我的」列表——
+     `wf_process_cc_instance.create_time` 会被 `page_cc_instances` SELECT 回并投影给前端。
+  2. `facade/stats.mbt` 的逾期判据读裸 `@model.epoch_secs()`（`@env.now()`，**注入不了**），
+     而同段的 `todayNew` 读 `current_time_str()` ⇒ 宿主一旦注入，两个数互相矛盾。
+  3. 本栈无集成壳 ⇒ demo 就是宿主，owner 要 demo 站显示本地时间。
+- **候选项**（先找库、再定路）：
+  1. 零依赖：demo 读 env 偏移，`set_clock(format_unix_utc(epoch_secs + offset))`。
+  2. 引 `caijiewei295/tzif-engine@0.1.0`：真 TZif，DST 精确。
+  3. 引官方 `moonbitlang/x` 的 `x/time`：`fixed_zone` / `Zone::from_tzif2`。
+  4. 引 `iceBear67/time@0.1.2`：js 臂 `Intl` 自动取系统区、native 臂 `localtime`。
+  5. demo 从 wasm 换 js target（为了让 4 的 `Intl` 生效）。
+- **实测读数**（全部在 wasm 通道上跑——本机 native 不可构建，见 D-M2-2/issues/118 §2.2）：
+  - `moonbitlang/x/time@0.5.5`：`fixed_zone("Asia/Shanghai", 28800)` ✅
+    出 `2026-09-26 05:58:18 / offset=+08:00`；但 `Zone::from_tzif2` 喂真实
+    `/usr/share/zoneinfo/Asia/Shanghai`（393 字节，TZif v2）**不报错、三个时点全给 `Z`**
+    （`1990-05-13T12:00Z` 那格本该 `+09:00`）⇒ 官方 tzif 路径当前不可信，
+    而它相对"零依赖 + 固定偏移"并无增量 ⇒ **排除 3**。
+  - `caijiewei295/tzif-engine@0.1.0` 吃**同一份字节** ✅：`29 transitions`，
+    1990-05-13 → `21:00:00 utoff=32400 dst=true CDT`、2026-09-26 → `08:00:00 utoff=28800 CST`
+    ⇒ DST 精确这条路目前只有它可用；代价是引一个只有单一版本的社区依赖 + 内联 tzif 字节。
+    **留作升级路径**（真要面向多时区受众时启用），本轮不引。
+  - `iceBear67/time@0.1.2`：按 target 分臂，**wasm 臂 `wasm_ffi.mbt` 是桩**——时区直接返回
+    `"UTC"`，`current_date/current_time/epoch_seconds` 一律返回 `0`（比我们的默认臂更弱）
+    ⇒ **排除 4**；要用它就得走 5（换 target，牵动 Dockerfile/部署链），一并排除。
+  - **关键事实**：wasm 上没有任何库能"自动知道"机器在哪个时区，库只做换算——
+    区名/偏移必须有人给。这与 120 §9「基准由宿主注入，引擎不自取」同形，不是妥协。
+- **所选项**：1（demo 层 env 偏移）；2 挂为将来升级路径并在此留档实测结论。
+  同时把 (1)(2) 两处**引擎侧不同基准**按"单一钟"收口——这部分与产品诉求无关，本来就该修。
+- **附带新坑（务必别再踩）**：moondb 把 `DATETIME(3)` 结果列投成 **`@moondb.Blob`**，
+  本仓 `smoke.cell()` 对 Blob 回 `<BLOB>` ⇒ 按文本比时间会**恒红**（本轮先撞上再绕开）。
+  处理：旁挂 `select_cell_dt()` 按库内 `value_to_text` 同规则 `@utf8.decode_lossy` 解码，
+  **不动**老 `cell()` 的 `<NULL>`/`<无此列>` 三档标记语义（其它判据依赖它）。
+- **状态**：已实施（2026-09-26），待 owner 追认。
+- **验证**：T0 `moon test` **168/168**（162 基线 + `facade/stats_clock_test.mbt` 3 +
+  `demo/clock_test.mbt` 3）；T1 仓储级 `repository-mysql/smoke` **111 PASS / exit 0**，
+  含新增 T1-I120 七格（六列 + 摘掉注入的对照组，实测「库里读回值 == 注入串」逐字相等）；
+  T1-F 门面级 `demo/cmd/t1_mysql` ALL PASS；T2 本机 demo 三分支实测——
+  配 `JEEFLOW_TZ_OFFSET=8` ⇒ 实例 `createTime=2026-09-26 06:11:08`（真实 UTC `22:11:08` + 8h），
+  未配 ⇒ `2026-09-25 22:11:24`（UTC）且启动行打印"未配"，非法值 `abc` ⇒ UTC 且打印"解析失败"
+  （**不静默猜区**）。变异对照在副本 `G:/dev-tools/tmp/moon-mut-i120` 做（主树未碰）：
+  把 `now_v()` 换成模拟 DB `+08:00` ⇒ `FAIL 实际=2026-09-26 01:59:18，注入串=2026-09-25 05:59:17`，
+  证明判据真能分辨"库里用的是哪把钟"。
+
 ## 5. 契约对照（moon ↔ java ↔ 六语言）
 
 > 契约源：`scripts/action-manifest.json`（M0 与 java `JeeflowFacade` 实查双向无差集，精确计数以 manifest 为准）。

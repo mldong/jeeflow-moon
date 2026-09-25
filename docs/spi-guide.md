@@ -77,5 +77,10 @@ ctx.register_assignment_handler("com.mldong.wf.handler.XxxHandler", my_handler) 
 4. **records 引用语义**：mut 字段原地共享，需要隔离时显式 `clone()`。
 5. **async 无 await 关键字**：async 调用自动挂起；`moon test` 的 wasm 运行器 Windows 下
    socket/fs 会挂死——IO 验证写 `moon run` 可执行，不放 `_test.mbt`（D-M2-2）。
+6. **时间只有一把钟**：全栈的"现在"都出自 `@model.current_time_str()`（`core/model/clock.mbt`），
+   宿主用 `@model.set_clock(...)` 注入；未注入时默认 **UTC**（MoonBit 标准库只有 `@env.now()`
+   epoch 毫秒，无时区包，且明确不造 `@extern` FFI 偏门）。写测试要固定时刻就注入、`defer` 复原；
+   **SQL 里不许出现 `NOW()`**（那会把数据库会话时区当成第二把钟）。详见 `integration.md`
+   「时钟基准（宿主注入）」与 MAINTAINING.md D-M6-2。
 
 完整坑位与决策依据见仓根 `MAINTAINING.md`（§2 已知坑、§4 代决策 D-M0~D-M5、§5 契约 C1–C28 → 实现落点映射；维护者向，不在本目录）。

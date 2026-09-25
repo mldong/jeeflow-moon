@@ -1,5 +1,46 @@
 # CHANGELOG
 
+## 0.1.12（2026-09-26）
+
+- **时间只有引擎一把钟（issues/120 附证）**：
+  - `repository-mysql` 六条写路径的 SQL `NOW()` 全部改绑引擎钟（新增 `repo.now_v()`）——
+    instance/task/design/surrogate 的 `update_time`、task_actor/cc_instance 的 `create_time`。
+    `NOW()` 取的是**数据库会话时区**，而引擎写出的列是它自己那把钟；开发服务器 160 实测
+    `@@session.time_zone=+08:00`（`NOW()` 比 `UTC_TIMESTAMP()` 晚 8 小时）⇒ 同一行
+    `create_time`(引擎) 与 `update_time`(DB) 差 8 小时，`wf_process_task` 一行里
+    `finish_time` 与 `update_time` 两个基准。外溢到读侧最实的一格是「抄送我的」列表：
+    `wf_process_cc_instance.create_time` 会被 `page_cc_instances` SELECT 回并投影给前端。
+  - `facade/stats.mbt` 的逾期判据基准由裸 `@model.epoch_secs()`（注入不了）改走
+    `current_time_str()`（可注入），与同段的 `todayNew`、与写库列、与委托生效窗同一把钟。
+  - **新增判据**：`facade/stats_clock_test.mbt` 3 格（注入钟 = 真实 UTC − 12h 铺 ±1h 真窗，
+    使「读注入钟」与「读裸墙钟」给出不同答案，当场可分辨；每格都带阳性对照）；
+    `repository-mysql/smoke` 新增 T1-I120 七格（六列 + 摘掉注入的对照组）。
+    变异对照在副本做：把那一步换成模拟 DB +08:00 ⇒ `FAIL 实际=2026-09-26 01:59:18，注入串=2026-09-25 05:59:17`。
+- **demo 时钟基准由环境变量注入（issues/120 §9 落地形状）**：`JEEFLOW_TZ_OFFSET`
+  （东为正小时，支持 `8`/`+8`/`-5`/`5.5`/`+05:30`，上限 UTC+14；未配或非法 ⇒ 保持 UTC 并打印所选基准）。
+  线上 demo 部署已带 `-e JEEFLOW_TZ_OFFSET=8`。本机 wasm 通道实测：配 `8` ⇒ 实例 `createTime`
+  = `2026-09-26 06:11:08`（真实 UTC `2026-09-25 22:11:08` + 8h），未配/非法 ⇒ UTC。
+- 顺带记三处读码/探针所得（详见 MAINTAINING.md D-M6-2）：官方 `moonbitlang/x/time` 的
+  `Zone::from_tzif2` 吃真实 tzdata **不报错但静默给 `Z`**；`iceBear67/time` 的 wasm 臂是桩
+  （时区返回 `"UTC"`、`current_date/time/epoch` 返回 0）；moondb 把 `DATETIME(3)` 投成 **Blob**，
+  按文本比较读回会得 `<BLOB>`。
+
+## 0.1.11（2026-09-24，补记）
+
+- `1f23565` issues/124：变量出口统一到 `ext`——detail 加 `ext`（`ext` 豁免 camel，键保持下划线），
+  同批摘掉出口 `variables`/`variable`；rust/moon 那格「行 ext 下划线、detail.variables 驼峰」的
+  自相矛盾随 `variables` 下线消除。`240bf85` demo 种子带上业务/办理表单字段（`f_*`/`tf_*`）。
+
+## 0.1.10（2026-09-23，补记）
+
+- `ef53f64` 四模块 0.1.10；同仓依赖 pin 指向**已发布的 0.1.9**——`moon publish` 会把产出 zip
+  解包再 `moon check`，这一步 vendored 的是 registry 上的依赖源码，pin 到未发布版本会在服务端
+  4021（上一轮 4 模块只发出 2 个的原因）。
+
+## 0.1.9（2026-09-23，补记）
+
+- `fe2a61d` issues/123：委托四判据改由「作用域内最新一条」裁决（精确判否仍兜底全流程，对齐 Java `6feeae6`）。
+
 ## 0.1.8（2026-09-23）
 
 - **121 文案统一**：`JeeflowError::Business` 的两格退回上一步错误删掉码数字前缀（`engine_ops.mbt` 6 处 raise），
