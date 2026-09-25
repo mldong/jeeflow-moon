@@ -5,7 +5,7 @@
 pub(all) enum DefineState {
   Disable
   Enable
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn DefineState::code(self : DefineState) -> Int {
@@ -33,7 +33,7 @@ pub(all) enum InstanceState {
   Reject
   Pending
   Abandon
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn InstanceState::code(self : InstanceState) -> Int {
@@ -70,7 +70,7 @@ pub(all) enum TaskState {
   Interrupt
   Pending
   Abandon
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn TaskState::code(self : TaskState) -> Int {
@@ -102,7 +102,7 @@ pub(all) enum TaskType {
   Major
   Assistant
   Record
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn TaskType::code(self : TaskType) -> Int {
@@ -126,7 +126,7 @@ pub fn TaskType::from_code(code : Int) -> TaskType {
 pub(all) enum PerformType {
   Normal
   Countersign
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn PerformType::code(self : PerformType) -> Int {
@@ -149,7 +149,7 @@ pub fn PerformType::from_code(code : Int) -> PerformType {
 pub(all) enum CountersignType {
   Parallel
   Sequential
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn CountersignType::from_str_name(s : String) -> CountersignType {
@@ -172,7 +172,7 @@ pub(all) enum SubmitType {
   RollbackToOperator
   Transfer
   CountersignDisagree
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn SubmitType::code(self : SubmitType) -> Int64 {
@@ -234,7 +234,7 @@ pub(all) enum FilterOp {
   In
   Nin
   Bt
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn FilterOp::from_str(s : String) -> FilterOp? {

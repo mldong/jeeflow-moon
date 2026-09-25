@@ -19,8 +19,8 @@ fn make_define(id : Int64, name : String) -> @model.ProcessDefine {
 
 ///|
 test "model: instance create" {
-  let define = make_define(1L, "test")
-  let inst = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let define_info = make_define(1L, "test")
+  let inst = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   assert_eq(inst.state, @model.InstanceState::Doing.code())
   assert_eq(inst.operator, "user1")
   assert_eq(inst.define_id, 1L)
@@ -28,8 +28,8 @@ test "model: instance create" {
 
 ///|
 test "model: task lifecycle and permission" {
-  let define = make_define(1L, "test")
-  let inst = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let define_info = make_define(1L, "test")
+  let inst = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   let task = inst.create_task("task1", "Task 1", ["user1"], "user1", @model.Major, @model.Normal, None, None)
   task.task_id = 100L
   assert_true(task.is_doing())
@@ -46,8 +46,8 @@ test "model: task lifecycle and permission" {
 
 ///|
 test "model: finish wrong actor and double finish (负向)" {
-  let define = make_define(1L, "test")
-  let inst = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let define_info = make_define(1L, "test")
+  let inst = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   let task = inst.create_task("task1", "Task 1", ["user1"], "user1", @model.Major, @model.Normal, None, None)
   assert_true((try? task.finish("user2")) is Err(_))
   let _ = task.finish("user1")
@@ -56,8 +56,8 @@ test "model: finish wrong actor and double finish (负向)" {
 
 ///|
 test "model: flow.auto bypass" {
-  let define = make_define(1L, "test")
-  let inst = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let define_info = make_define(1L, "test")
+  let inst = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   let task = inst.create_task("t", "T", ["user1"], "user1", @model.Major, @model.Normal, None, None)
   assert_true(task.is_allowed("flow.auto"))
   assert_true(task.is_allowed("flow.admin"))
@@ -65,8 +65,8 @@ test "model: flow.auto bypass" {
 
 ///|
 test "model: instance withdraw → 实例 30 + 任务 30 + update_user 回写 (C28 / issues/114)" {
-  let define = make_define(1L, "test")
-  let inst = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let define_info = make_define(1L, "test")
+  let inst = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   let _ = inst.create_task("t", "T", ["user1"], "user1", @model.Major, @model.Normal, None, None)
   let finished = inst.create_task("t2", "T2", ["user1"], "user1", @model.Major, @model.Normal, None, None)
   try {
@@ -143,8 +143,8 @@ test "model: time format (Clock 注入固定钟 D-M0-3)" {
 
 ///|
 test "model: create_history_task" {
-  let define = make_define(1L, "test")
-  let inst = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let define_info = make_define(1L, "test")
+  let inst = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   let task = inst.create_history_task("auto", "自动节点", "flow.auto", @model.Major)
   assert_eq(task.task_state, 20)
   assert_eq(task.actor_id.unwrap(), "flow.auto")

@@ -7,7 +7,7 @@ pub(all) enum ProcessEventType {
   ProcessInstanceEnd
   ProcessTaskStart
   CcCreate
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn ProcessEventType::code(self : ProcessEventType) -> Int {

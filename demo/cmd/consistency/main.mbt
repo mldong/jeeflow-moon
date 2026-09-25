@@ -53,7 +53,7 @@ fn stats_inst(
     create_user: Some(op),
     update_time: None,
     update_user: None,
-    define: None,
+    define_info: None,
   }
 }
 

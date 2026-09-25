@@ -284,8 +284,8 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     self.save_deployed_define(model, content)
   } else {
     let last = page.rows()[0]
-    let define = (self.repo).find_define_by_id(last.id).unwrap()
-    let updated : @model.ProcessDefine = { ..define,
+    let define_info = (self.repo).find_define_by_id(last.id).unwrap()
+    let updated : @model.ProcessDefine = { ..define_info,
       name: model.name,
       display_name: model.display_name,
       define_type: model.model_type,
@@ -316,7 +316,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::save
   } else {
     page.rows()[0].version + 1
   }
-  let define : @model.ProcessDefine = {
+  let define_info : @model.ProcessDefine = {
     id: 0L,
     name: model.name,
     display_name: model.display_name,
@@ -329,8 +329,8 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::save
     update_time: None,
     update_user: None,
   }
-  (self.repo).save_define(define)
-  define.id
+  (self.repo).save_define(define_info)
+  define_info.id
 }
 
 ///|
@@ -536,12 +536,12 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     Some(i) => i
     None => raise @error.InstanceNotFound(instance_id)
   }
-  let define = match (self.repo).find_define_by_id(inst.define_id) {
+  let define_info = match (self.repo).find_define_by_id(inst.define_id) {
     Some(d) => d
     None => raise @error.DefineNotFound(inst.define_id)
   }
   // relTableName 从 content 顶层解析（回落 name）
-  let table = match rel_table_name_of(define.content) {
+  let table = match rel_table_name_of(define_info.content) {
     Some(t) => t
     None => raise @error.Business("流程定义未配置 relTableName")
   }
@@ -607,10 +607,10 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
       history_nodes.push(t.task_name)
     }
   }
-  let define = (self.repo).find_define_by_id(inst.define_id)
+  let define_info = (self.repo).find_define_by_id(inst.define_id)
   let node_progress = @json.empty_object()
   let edges : Array[String] = []
-  match define {
+  match define_info {
     Some(d) => {
       let outcome = try? @parser.parse_model(d.content)
       match outcome {

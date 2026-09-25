@@ -88,7 +88,7 @@ fn sc_instance(iid : Int64, create_time : String) -> @model.ProcessInstance {
     create_user: Some("user1"),
     update_time: None,
     update_user: None,
-    define: None,
+    define_info: None,
   }
 }
 

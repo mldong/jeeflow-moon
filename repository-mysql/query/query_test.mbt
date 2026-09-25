@@ -4,7 +4,7 @@ test "query: parse m_ params two-segment" {
   args["m_LIKE_name"] = @json.string_of("t1-like-target")
   let filters = @query.parse_m_params(args)
   assert_eq(filters.length(), 1)
-  assert_eq(filters[0].alias(), "t")
+  assert_eq(filters[0].table_alias(), "t")
   assert_eq(filters[0].column(), "name")
   assert_true(filters[0].op() is Like)
   assert_eq(filters[0].value(), "t1-like-target")

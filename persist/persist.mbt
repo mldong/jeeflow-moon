@@ -127,7 +127,7 @@ pub fn is_table_name_safe(name : String) -> Bool {
 pub enum PersistMode {
   Archive
   Sync
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn PersistMode::from_str(s : String) -> PersistMode? {

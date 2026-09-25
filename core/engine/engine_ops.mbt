@@ -9,20 +9,20 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   args : @json.FlowData
 ) -> @model.ProcessInstance raise @error.JeeflowError {
   // 1. 加载定义
-  let define = match (self.repo()).find_define_by_id(define_id) {
+  let define_info = match (self.repo()).find_define_by_id(define_id) {
     Some(d) => d
     None => raise @error.DefineNotFound(define_id)
   }
   // 2. 解析模型
-  let model = @parser.parse_model(define.content)
+  let model = @parser.parse_model(define_info.content)
   // 3. 构建 args（合并 + 用户信息 + autoGenTitle）
   let full_args = @json.FlowData::new()
   full_args.merge(args)
   self.add_user_info(full_args, operator)
-  let title = gen_auto_title(full_args, define.display_name)
+  let title = gen_auto_title(full_args, define_info.display_name)
   full_args.insert_str("autoGenTitle", title)
   // 4. 创建实例
-  let instance = @model.ProcessInstance::create(define, operator, full_args)
+  let instance = @model.ProcessInstance::create(define_info, operator, full_args)
   // 5. expireTime
   match model.expire_time {
     Some(et) => instance.expire_time = Some(et)
@@ -39,7 +39,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
     self.notify_cc_create(instance.instance_id, cc_actors)
   }
   // 9. 从 start 节点执行
-  let exec = @exec.Execution::make(instance.clone(), model, define, operator, full_args)
+  let exec = @exec.Execution::make(instance.clone(), model, define_info, operator, full_args)
   match exec.process_model.get_start() {
     Some(start) => self.execute_node(exec, start)
     None => ()
@@ -75,11 +75,11 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
   }
   // 聚合水合：任务在独立仓储集合，读侧回填（issues/89）
   instance.tasks = (self.repo()).find_history_tasks(instance.instance_id)
-  let define = match (self.repo()).find_define_by_id(instance.define_id) {
+  let define_info = match (self.repo()).find_define_by_id(instance.define_id) {
     Some(d) => d
     None => raise @error.DefineNotFound(instance.define_id)
   }
-  let model = @parser.parse_model(define.content)
+  let model = @parser.parse_model(define_info.content)
   // issues/115 契约第 5 条（spec/06 §transfer-5，八栈同构）：办理提交的变量合并序
   // 「实例变量为底 ← 任务既有变量 ← 本次提交参数（最高）」。
   // 缺中间层则转办写在任务变量上的留痕（tf_transferHistory / submitType=7 槽位）
@@ -121,7 +121,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
   }
   self.update_task_by_id(task_id, instance)
   let node = model.get_node(task.task_name)
-  let exec = @exec.Execution::make(instance, model, define, operator, full_args)
+  let exec = @exec.Execution::make(instance, model, define_info, operator, full_args)
   exec.process_task = Some(task.clone())
   // 9.5 完成节点自身的后置拦截器（1.8.0 SYNC 演进）
   match node {
@@ -131,7 +131,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
     }
     None => ()
   }
-  (task, instance, define, model, exec, submit_type)
+  (task, instance, define_info, model, exec, submit_type)
 }
 
 ///|
@@ -576,17 +576,17 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   parent_id : Int64,
   parent_node_name : String
 ) -> @model.ProcessInstance raise @error.JeeflowError {
-  let define = match (self.repo()).find_define_by_id(define_id) {
+  let define_info = match (self.repo()).find_define_by_id(define_id) {
     Some(d) => d
     None => raise @error.DefineNotFound(define_id)
   }
-  let model = @parser.parse_model(define.content)
+  let model = @parser.parse_model(define_info.content)
   let full_args = @json.FlowData::new()
   full_args.merge(args)
   self.add_user_info(full_args, operator)
-  let title = gen_auto_title(full_args, define.display_name)
+  let title = gen_auto_title(full_args, define_info.display_name)
   full_args.insert_str("autoGenTitle", title)
-  let instance = @model.ProcessInstance::create_with_parent(define, operator, full_args, parent_id, parent_node_name)
+  let instance = @model.ProcessInstance::create_with_parent(define_info, operator, full_args, parent_id, parent_node_name)
   match model.expire_time {
     Some(et) => instance.expire_time = Some(et)
     None => ()
@@ -598,7 +598,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
     (self.repo()).create_cc_instance(instance.instance_id, operator, cc_actors)
     self.notify_cc_create(instance.instance_id, cc_actors)
   }
-  let exec = @exec.Execution::make(instance.clone(), model, define, operator, full_args)
+  let exec = @exec.Execution::make(instance.clone(), model, define_info, operator, full_args)
   match exec.process_model.get_start() {
     Some(start) => self.execute_node(exec, start)
     None => ()

@@ -20,18 +20,18 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     Some(v) => v
     None => raise @error.Business("缺少id参数")
   }
-  let define = match (self.repo).find_define_by_id(id) {
+  let define_info = match (self.repo).find_define_by_id(id) {
     Some(d) => d
     None => raise @error.DefineNotFound(id)
   }
   let o = @json.empty_object()
-  @json.obj_set(o, "id", i64_json(define.id))
-  @json.obj_set(o, "name", @json.string_of(define.name))
-  @json.obj_set(o, "display_name", @json.string_of(define.display_name))
-  @json.obj_set(o, "type", @json.string_of(define.define_type))
-  @json.obj_set(o, "state", num_json(define.state))
-  @json.obj_set(o, "version", num_json(define.version))
-  @json.obj_set(o, "jsonObject", parse_graph(define.content) |> opt_json_wrap)
+  @json.obj_set(o, "id", i64_json(define_info.id))
+  @json.obj_set(o, "name", @json.string_of(define_info.name))
+  @json.obj_set(o, "display_name", @json.string_of(define_info.display_name))
+  @json.obj_set(o, "type", @json.string_of(define_info.define_type))
+  @json.obj_set(o, "state", num_json(define_info.state))
+  @json.obj_set(o, "version", num_json(define_info.version))
+  @json.obj_set(o, "jsonObject", parse_graph(define_info.content) |> opt_json_wrap)
   o
 }
 
@@ -85,7 +85,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   } else {
     page.rows()[0].version + 1
   }
-  let define : @model.ProcessDefine = {
+  let define_info : @model.ProcessDefine = {
     id: 0L,
     name: model.name,
     display_name: model.display_name,
@@ -98,9 +98,9 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     update_time: None,
     update_user: None,
   }
-  (self.repo).save_define(define)
+  (self.repo).save_define(define_info)
   let o = @json.empty_object()
-  @json.obj_set(o, "processDefineId", i64_json(define.id))
+  @json.obj_set(o, "processDefineId", i64_json(define_info.id))
   o
 }
 
@@ -115,11 +115,11 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     None => raise @error.Business("content 缺失")
   }
   let model = @parser.parse_model(content)
-  let define = match (self.repo).find_define_by_id(define_id) {
+  let define_info = match (self.repo).find_define_by_id(define_id) {
     Some(d) => d
     None => raise @error.DefineNotFound(define_id)
   }
-  let updated : @model.ProcessDefine = { ..define,
+  let updated : @model.ProcessDefine = { ..define_info,
     name: model.name,
     display_name: model.display_name,
     define_type: model.model_type,
@@ -211,8 +211,8 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     Some(i) => i
     None => raise @error.InstanceNotFound(id)
   }
-  let define = (self.repo).find_define_by_id(inst.define_id)
-  let json_object = match define {
+  let define_info = (self.repo).find_define_by_id(inst.define_id)
+  let json_object = match define_info {
     Some(d) => parse_graph(d.content)
     None => None
   }
@@ -229,7 +229,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   @json.obj_set(o, "formData", form_data_of_flow(inst.variables, "f_"))
   @json.obj_set(o, "createTime", opt_json(inst.create_time))
   @json.obj_set(o, "createUser", opt_json(inst.create_user))
-  match define {
+  match define_info {
     Some(d) => {
       @json.obj_set(o, "displayName", @json.string_of(d.display_name))
       @json.obj_set(o, "name", @json.string_of(d.name))
@@ -521,13 +521,13 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   let instance_opt = (self.repo).find_instance_by_id(doing_task.process_instance_id)
   match instance_opt {
     Some(instance) => {
-      let define = (self.repo).find_define_by_id(instance.define_id)
-      let json_object = match define {
+      let define_info = (self.repo).find_define_by_id(instance.define_id)
+      let json_object = match define_info {
         Some(d) => parse_graph(d.content)
         None => None
       }
       @json.obj_set(vo, "jsonObject", opt_json_wrap(json_object))
-      match define {
+      match define_info {
         Some(d) => {
           if row_first == None {
             // 存量行才回退现算（仅进行中口径）；新行一律以落库值为准
@@ -615,12 +615,12 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     Some(i) => i
     None => raise @error.InstanceNotFound(task.process_instance_id)
   }
-  let define = match (self.repo).find_define_by_id(instance.define_id) {
+  let define_info = match (self.repo).find_define_by_id(instance.define_id) {
     Some(d) => d
     None => raise @error.DefineNotFound(instance.define_id)
   }
   // 模型候选：当前节点输出边指向的任务节点静态参与人
-  let model = @parser.parse_model(define.content)
+  let model = @parser.parse_model(define_info.content)
   let node = model.get_node(task.task_name)
   let candidates : Array[String] = []
   match node {

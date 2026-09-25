@@ -3,30 +3,30 @@
 
 ///|
 test "JEEFLOW_TZ_OFFSET 解析：整小时 / 小数小时 / 时:分 / 符号 / 上限" {
-  assert_eq(parse_tz_offset_seconds("8"), Some(28800))
-  assert_eq(parse_tz_offset_seconds("+8"), Some(28800))
-  assert_eq(parse_tz_offset_seconds("-5"), Some(-18000))
-  assert_eq(parse_tz_offset_seconds("5.5"), Some(19800))
-  assert_eq(parse_tz_offset_seconds("-9.5"), Some(-34200))
-  assert_eq(parse_tz_offset_seconds("+05:30"), Some(19800))
-  assert_eq(parse_tz_offset_seconds("0"), Some(0))
-  assert_eq(parse_tz_offset_seconds("14"), Some(50400))
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("8"), Some(28800))
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("+8"), Some(28800))
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("-5"), Some(-18000))
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("5.5"), Some(19800))
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("-9.5"), Some(-34200))
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("+05:30"), Some(19800))
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("0"), Some(0))
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("14"), Some(50400))
 }
 
 ///|
 test "JEEFLOW_TZ_OFFSET 非法值一律 None（回落 UTC，不静默猜区）" {
-  assert_eq(parse_tz_offset_seconds(""), None)
-  assert_eq(parse_tz_offset_seconds("   "), None)
-  assert_eq(parse_tz_offset_seconds("abc"), None)
-  assert_eq(parse_tz_offset_seconds("20"), None) // 超 UTC+14
-  assert_eq(parse_tz_offset_seconds("-20"), None)
-  assert_eq(parse_tz_offset_seconds("+05:70"), None) // 分钟越界
-  assert_eq(parse_tz_offset_seconds("8:"), None)
-  assert_eq(parse_tz_offset_seconds(":30"), None)
-  assert_eq(parse_tz_offset_seconds("8:30:00"), None)
-  assert_eq(parse_tz_offset_seconds("+"), None)
-  assert_eq(parse_tz_offset_seconds("-"), None)
-  assert_eq(parse_tz_offset_seconds("1.5.5"), None)
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds(""), None)
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("   "), None)
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("abc"), None)
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("20"), None) // 超 UTC+14
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("-20"), None)
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("+05:70"), None) // 分钟越界
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("8:"), None)
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds(":30"), None)
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("8:30:00"), None)
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("+"), None)
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("-"), None)
+  assert_eq(@jeeflow-demo.parse_tz_offset_seconds("1.5.5"), None)
 }
 
 ///|

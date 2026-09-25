@@ -20,26 +20,26 @@ fn make_define_struct() -> @model.ProcessDefine {
 ///|
 async test "memory: define crud" {
   let repo = @memory.MemoryRepository::new()
-  let define = make_define_struct()
-  repo.save_define(define)
-  assert_true(define.id > 0L)
-  let found = repo.find_define_by_id(define.id)
+  let define_info = make_define_struct()
+  repo.save_define(define_info)
+  assert_true(define_info.id > 0L)
+  let found = repo.find_define_by_id(define_info.id)
   assert_true(found is Some(_))
   assert_eq(found.unwrap().name, "test")
-  repo.update_define_state(define.id, 0)
-  let found = repo.find_define_by_id(define.id).unwrap()
+  repo.update_define_state(define_info.id, 0)
+  let found = repo.find_define_by_id(define_info.id).unwrap()
   assert_eq(found.state, 0)
-  repo.remove_define(define.id)
-  let found = repo.find_define_by_id(define.id)
+  repo.remove_define(define_info.id)
+  let found = repo.find_define_by_id(define_info.id)
   assert_true(found is None)
 }
 
 ///|
 async test "memory: instance and tasks" {
   let repo = @memory.MemoryRepository::new()
-  let define = make_define_struct()
-  repo.save_define(define)
-  let inst = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let define_info = make_define_struct()
+  repo.save_define(define_info)
+  let inst = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   repo.save_instance(inst)
   assert_true(inst.instance_id > 0L)
   let task = inst.create_task("apply", "Apply", ["user1"], "user1", @model.Major, @model.Normal, None, None)
@@ -133,9 +133,9 @@ async test "memory: design his newest first" {
 ///|
 async test "memory: doneList 解析流程显示名 + operator『我的』过滤 (issues/107 A/B)" {
   let repo = @memory.MemoryRepository::new()
-  let define = make_define_struct()
-  repo.save_define(define)
-  let inst = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let define_info = make_define_struct()
+  repo.save_define(define_info)
+  let inst = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   repo.save_instance(inst)
   // 同实例两个已完成任务：leader 办一个、user1 办一个（create_user 都是发起人 user1）
   let tA : @model.ProcessTask = {
@@ -219,9 +219,9 @@ async test "memory: doneList 解析流程显示名 + operator『我的』过滤 
 /// SQL 仓同判据真机对拍见 repository-mysql/smoke 的 T1-I117（同数据同答案 = 条款 6 通则）。
 async test "memory: doneList 状态集合 = task_state <> 10（20/30/40/99 四条全进，10 不进）" {
   let repo = @memory.MemoryRepository::new()
-  let define = make_define_struct()
-  repo.save_define(define)
-  let inst = @model.ProcessInstance::create(define, "boss", @json.FlowData::new())
+  let define_info = make_define_struct()
+  repo.save_define(define_info)
+  let inst = @model.ProcessInstance::create(define_info, "boss", @json.FlowData::new())
   repo.save_instance(inst)
   let states : Array[Int] = [20, 30, 40, 99, 10]
   for s in states {
@@ -275,12 +275,12 @@ async test "memory: doneList 状态集合 = task_state <> 10（20/30/40/99 四�
 ///|
 async test "memory: instancePage/ccList operator『我的』过滤 (issues/108)" {
   let repo = @memory.MemoryRepository::new()
-  let define = make_define_struct()
-  repo.save_define(define)
+  let define_info = make_define_struct()
+  repo.save_define(define_info)
   // 两个实例：user1 发起一个、leader 发起一个（实例 operator 即发起人）
-  let instA = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let instA = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   repo.save_instance(instA)
-  let instB = @model.ProcessInstance::create(define, "leader", @json.FlowData::new())
+  let instB = @model.ProcessInstance::create(define_info, "leader", @json.FlowData::new())
   repo.save_instance(instB)
   // 抄送：instA 抄给 leader/user2，instB 抄给 user1（共 3 行）
   repo.create_cc_instance(instA.instance_id, "user1", ["leader", "user2"])

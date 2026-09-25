@@ -292,7 +292,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn get_all_instances(se
       create_user: row_opt_text(r, "create_user"),
       update_time: row_opt_datetime(r, "update_time"),
       update_user: row_opt_text(r, "update_user"),
-      define: None,
+      define_info: None,
     })
   }
   out

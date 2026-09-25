@@ -40,7 +40,7 @@ pub(all) struct ProcessInstance {
   mut update_time : String?
   mut update_user : String?
   // 瞬态：define 信息（不落实例表）
-  mut define : ProcessDefine?
+  mut define_info : ProcessDefine?
 }
 
 ///|
@@ -60,7 +60,7 @@ pub fn ProcessInstance::clone(self : ProcessInstance) -> ProcessInstance {
     create_user: self.create_user,
     update_time: self.update_time,
     update_user: self.update_user,
-    define: match self.define {
+    define_info: match self.define_info {
       Some(d) => Some(d.clone())
       None => None
     },
@@ -79,7 +79,7 @@ fn clone_json_map(src : Map[String, Json]) -> Map[String, Json] {
 ///|
 /// 工厂：新建实例（state=DOING=10）
 pub fn ProcessInstance::create(
-  define : ProcessDefine,
+  define_info : ProcessDefine,
   operator : String,
   args : @json.FlowData
 ) -> ProcessInstance {
@@ -88,7 +88,7 @@ pub fn ProcessInstance::create(
   {
     instance_id: 0L,
     parent_id: None,
-    define_id: define.id,
+    define_id: define_info.id,
     state: InstanceState::Doing.code(),
     parent_node_name: None,
     business_no: args.get_str("BUSINESS_NO"),
@@ -100,20 +100,20 @@ pub fn ProcessInstance::create(
     create_user: Some(operator),
     update_time: None,
     update_user: None,
-    define: Some(define.clone()),
+    define_info: Some(define_info.clone()),
   }
 }
 
 ///|
 /// 工厂（子流程）：带父实例
 pub fn ProcessInstance::create_with_parent(
-  define : ProcessDefine,
+  define_info : ProcessDefine,
   operator : String,
   args : @json.FlowData,
   parent_id : Int64,
   parent_node_name : String
 ) -> ProcessInstance {
-  let inst = ProcessInstance::create(define, operator, args)
+  let inst = ProcessInstance::create(define_info, operator, args)
   inst.parent_id = Some(parent_id)
   inst.parent_node_name = Some(parent_node_name)
   inst

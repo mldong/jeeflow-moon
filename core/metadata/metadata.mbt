@@ -4,7 +4,7 @@
 pub(all) struct DictItem {
   value : String
   label : String
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn DictItem::value(self : DictItem) -> String {
@@ -97,7 +97,7 @@ pub(all) struct HandlerMeta {
   display_name : String
   order : Int
   group : String
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn HandlerMeta::make(

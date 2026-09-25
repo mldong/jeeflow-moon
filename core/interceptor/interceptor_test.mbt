@@ -2,7 +2,7 @@
 
 ///|
 test "itl: operator assignment handler" {
-  let define : @model.ProcessDefine = {
+  let define_info : @model.ProcessDefine = {
     id: 1L,
     name: "test",
     display_name: "Test",
@@ -15,7 +15,7 @@ test "itl: operator assignment handler" {
     update_time: None,
     update_user: None,
   }
-  let instance = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let instance = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   let model : @parser.ProcessModel = {
     name: "test",
     display_name: "Test",
@@ -26,14 +26,14 @@ test "itl: operator assignment handler" {
     nodes: [],
     edges: [],
   }
-  let exec = @exec.Execution::make(instance, model, define, "user1", @json.FlowData::new())
+  let exec = @exec.Execution::make(instance, model, define_info, "user1", @json.FlowData::new())
   let result = @interceptor.operator_assignment_handler()(exec)
   assert_eq(result, "user1")
 }
 
 ///|
 test "itl: form field assignee f_ prefix then bare name" {
-  let define : @model.ProcessDefine = {
+  let define_info : @model.ProcessDefine = {
     id: 1L,
     name: "test",
     display_name: "Test",
@@ -46,7 +46,7 @@ test "itl: form field assignee f_ prefix then bare name" {
     update_time: None,
     update_user: None,
   }
-  let instance = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let instance = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   let model : @parser.ProcessModel = {
     name: "test",
     display_name: "Test",
@@ -59,7 +59,7 @@ test "itl: form field assignee f_ prefix then bare name" {
   }
   let args = @json.FlowData::new()
   args.insert_str("node1", "user2,user3")
-  let exec = @exec.Execution::make(instance, model, define, "user1", args)
+  let exec = @exec.Execution::make(instance, model, define_info, "user1", args)
   let node : @parser.NodeModel = {
     id: "node1",
     node_type: @parser.Task,

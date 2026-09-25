@@ -54,44 +54,44 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_define_by_id(se
 }
 
 ///|
-pub impl @spi.ProcessRepository for MysqlRepository with fn save_define(self, define) {
-  if define.id == 0L {
-    define.id = next_snowflake_id()
+pub impl @spi.ProcessRepository for MysqlRepository with fn save_define(self, define_info) {
+  if define_info.id == 0L {
+    define_info.id = next_snowflake_id()
   }
-  if define.create_time is None {
-    define.create_time = Some(@model.current_time_str())
+  if define_info.create_time is None {
+    define_info.create_time = Some(@model.current_time_str())
   }
   let conn = self.open_or_tx()
   let _ = x(conn, 
     "INSERT INTO wf_process_define (id, name, display_name, type, state, content, version, create_time, create_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
-      @moondb.Int64(define.id),
-      @moondb.Text(define.name),
-      @moondb.Text(define.display_name),
-      @moondb.Text(define.define_type),
-      @moondb.Int(define.state),
-      @moondb.Text(define.content),
-      @moondb.Int(define.version),
-      opt_v(define.create_time),
-      opt_v(define.create_user),
+      @moondb.Int64(define_info.id),
+      @moondb.Text(define_info.name),
+      @moondb.Text(define_info.display_name),
+      @moondb.Text(define_info.define_type),
+      @moondb.Int(define_info.state),
+      @moondb.Text(define_info.content),
+      @moondb.Int(define_info.version),
+      opt_v(define_info.create_time),
+      opt_v(define_info.create_user),
     ],
   )
   close_conn(conn)
 }
 
 ///|
-pub impl @spi.ProcessRepository for MysqlRepository with fn update_define(self, define) {
+pub impl @spi.ProcessRepository for MysqlRepository with fn update_define(self, define_info) {
   let conn = self.open_or_tx()
   let _ = x(conn, 
     "UPDATE wf_process_define SET display_name=?, type=?, state=?, content=?, version=?, update_user=? WHERE id=?",
     [
-      @moondb.Text(define.display_name),
-      @moondb.Text(define.define_type),
-      @moondb.Int(define.state),
-      @moondb.Text(define.content),
-      @moondb.Int(define.version),
-      opt_v(define.update_user),
-      @moondb.Int64(define.id),
+      @moondb.Text(define_info.display_name),
+      @moondb.Text(define_info.define_type),
+      @moondb.Int(define_info.state),
+      @moondb.Text(define_info.content),
+      @moondb.Int(define_info.version),
+      opt_v(define_info.update_user),
+      @moondb.Int64(define_info.id),
     ],
   )
   close_conn(conn)
@@ -145,7 +145,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_instance_by_id(
     create_user: row_opt_text(r, "create_user"),
     update_time: row_opt_datetime(r, "update_time"),
     update_user: row_opt_text(r, "update_user"),
-    define: None,
+    define_info: None,
   })
 }
 

@@ -18,7 +18,7 @@ async fn sg_facade(
 
 ///|
 async fn sg_define_id(repo : @mem.MemoryRepository, content : String) -> Int64 raise {
-  let define : @model.ProcessDefine = {
+  let define_info : @model.ProcessDefine = {
     id: 0L,
     name: "decoy-define",
     display_name: "诱饵定义名",
@@ -31,8 +31,8 @@ async fn sg_define_id(repo : @mem.MemoryRepository, content : String) -> Int64 r
     update_time: None,
     update_user: None,
   }
-  repo.save_define(define)
-  define.id
+  repo.save_define(define_info)
+  define_info.id
 }
 
 ///|

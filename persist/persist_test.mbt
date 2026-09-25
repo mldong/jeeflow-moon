@@ -19,7 +19,7 @@ fn make_persist_fixture() -> (@persist.InMemoryMetaProvider, @persist.InMemoryTa
 
 ///|
 fn make_persist_exec(model_json : String, variables : Map[String, Json], state~ : Int = 10, node_id~ : String = "apply") -> @exec.Execution raise {
-  let define : @model.ProcessDefine = {
+  let define_info : @model.ProcessDefine = {
     id: 1L,
     name: "p",
     display_name: "P",
@@ -33,12 +33,12 @@ fn make_persist_exec(model_json : String, variables : Map[String, Json], state~ 
     update_user: None,
   }
   let model = @parser.parse_model(model_json)
-  let instance = @model.ProcessInstance::create(define, "user1", @json.FlowData::new())
+  let instance = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   instance.state = state
   for k, v in variables {
     instance.variables.insert(k, v)
   }
-  let exec = @exec.Execution::make(instance, model, define, "user1", @json.FlowData::new())
+  let exec = @exec.Execution::make(instance, model, define_info, "user1", @json.FlowData::new())
   match model.get_node(node_id) {
     Some(n) => exec.current_node = Some(n)
     None => ()

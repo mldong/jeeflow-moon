@@ -146,15 +146,15 @@ pub(all) struct TaskActor {
 ///|
 /// m_ 过滤条件（spec/06 §2.2）
 pub(all) struct QueryFilter {
-  alias : String // "t" 主表 / "pd" 流程定义 等
+  table_alias : String // "t" 主表 / "pd" 流程定义 等
   op : FilterOp
   column : String // snake_case 列名
   value : String
 } derive(Eq)
 
 ///|
-pub fn QueryFilter::alias(self : QueryFilter) -> String {
-  self.alias
+pub fn QueryFilter::table_alias(self : QueryFilter) -> String {
+  self.table_alias
 }
 
 ///|
@@ -174,12 +174,12 @@ pub fn QueryFilter::value(self : QueryFilter) -> String {
 
 ///|
 pub fn QueryFilter::make(
-  alias : String,
+  table_alias : String,
   op : FilterOp,
   column : String,
   value : String
 ) -> QueryFilter {
-  { alias, op, column, value }
+  { table_alias, op, column, value }
 }
 
 ///|

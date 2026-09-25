@@ -134,7 +134,7 @@ pub(all) enum NodeType {
   End
   Custom
   SubProcess
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 ///|
 pub fn NodeType::from_snaker_type(t : String) -> NodeType {

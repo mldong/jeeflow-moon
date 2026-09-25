@@ -24,14 +24,14 @@ pub(all) struct Execution {
 pub fn Execution::make(
   instance : @model.ProcessInstance,
   model : @parser.ProcessModel,
-  define : @model.ProcessDefine,
+  define_info : @model.ProcessDefine,
   operator : String,
   args : @json.FlowData
 ) -> Execution {
   {
     process_instance: instance,
     process_model: model,
-    process_define: define,
+    process_define: define_info,
     current_node: None,
     process_task: None,
     process_task_list: [],

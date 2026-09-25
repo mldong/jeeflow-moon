@@ -109,16 +109,16 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn find_define_by_id(s
 }
 
 ///|
-pub impl @spi.ProcessRepository for MemoryRepository with fn save_define(self, define) {
-  if define.id == 0L {
-    define.id = self.next_id()
+pub impl @spi.ProcessRepository for MemoryRepository with fn save_define(self, define_info) {
+  if define_info.id == 0L {
+    define_info.id = self.next_id()
   }
-  self.defines[define.id] = define.clone()
+  self.defines[define_info.id] = define_info.clone()
 }
 
 ///|
-pub impl @spi.ProcessRepository for MemoryRepository with fn update_define(self, define) {
-  self.defines[define.id] = define.clone()
+pub impl @spi.ProcessRepository for MemoryRepository with fn update_define(self, define_info) {
+  self.defines[define_info.id] = define_info.clone()
 }
 
 ///|
@@ -312,7 +312,7 @@ fn[T] page_slice(rows : Array[T], page_num : Int64, page_size : Int64) -> Array[
 fn task_row_of(
   t : @model.ProcessTask,
   inst : @model.ProcessInstance?,
-  define : @model.ProcessDefine?
+  define_info : @model.ProcessDefine?
 ) -> @model.TaskRow {
   let row = @model.TaskRow::new_empty()
   row.id = t.task_id
@@ -344,7 +344,7 @@ fn task_row_of(
     }
     None => ()
   }
-  match define {
+  match define_info {
     Some(d) => {
       row.define_name = Some(d.name)
       row.define_display_name = Some(d.display_name)
@@ -362,11 +362,11 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_todo_tasks(sel
     let t = self.tasks[tid]
     if t.task_state == @model.TaskState::Doing.code() && query_match(query, t.actor_ids) {
       let inst = self.instances.get(t.process_instance_id)
-      let define = match inst {
+      let define_info = match inst {
         Some(i) => self.defines.get(i.define_id)
         None => None
       }
-      rows.push(task_row_of(t, inst, define))
+      rows.push(task_row_of(t, inst, define_info))
     }
   }
   let total = rows.length().to_int64()
@@ -391,11 +391,11 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_done_tasks(sel
     let t = self.tasks[tid]
     if t.task_state != @model.TaskState::Doing.code() && done_operator_match(query, t) {
       let inst = self.instances.get(t.process_instance_id)
-      let define = match inst {
+      let define_info = match inst {
         Some(i) => self.defines.get(i.define_id)
         None => None
       }
-      rows.push(task_row_of(t, inst, define))
+      rows.push(task_row_of(t, inst, define_info))
     }
   }
   let total = rows.length().to_int64()
@@ -418,7 +418,7 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_instances(self
 ///|
 fn instance_row_of(
   i : @model.ProcessInstance,
-  define : @model.ProcessDefine?
+  define_info : @model.ProcessDefine?
 ) -> @model.InstanceRow {
   let row = @model.InstanceRow::new_empty()
   row.id = i.instance_id
@@ -434,7 +434,7 @@ fn instance_row_of(
   row.create_user = i.create_user
   row.update_time = i.update_time
   row.update_user = i.update_user
-  match define {
+  match define_info {
     Some(d) => {
       row.define_name = Some(d.name)
       row.define_display_name = Some(d.display_name)
@@ -454,7 +454,7 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_cc_instances(s
       continue
     }
     let inst = self.instances.get(cc.process_instance_id)
-    let define = match inst {
+    let define_info = match inst {
       Some(i) => self.defines.get(i.define_id)
       None => None
     }
@@ -478,7 +478,7 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_cc_instances(s
     row.create_user = cc.create_user
     row.update_time = cc.update_time
     row.update_user = cc.update_user
-    match define {
+    match define_info {
       Some(d) => {
         row.define_name = Some(d.name)
         row.define_display_name = Some(d.display_name)

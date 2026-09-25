@@ -29,7 +29,7 @@ $|
 
 ///|
 async fn save_flow_define(repo : @mem.MemoryRepository, name : String, content : String) -> Int64 raise {
-  let define : @model.ProcessDefine = {
+  let define_info : @model.ProcessDefine = {
     id: 0L,
     name,
     display_name: name,
@@ -42,8 +42,8 @@ async fn save_flow_define(repo : @mem.MemoryRepository, name : String, content :
     update_time: None,
     update_user: None,
   }
-  repo.save_define(define)
-  define.id
+  repo.save_define(define_info)
+  define_info.id
 }
 
 ///|
@@ -154,7 +154,7 @@ async test "engine: execute task permission denied" {
 
 ///|
 async test "engine: execution context new" {
-  let define : @model.ProcessDefine = {
+  let define_info : @model.ProcessDefine = {
     id: 1L,
     name: "test",
     display_name: "Test",
@@ -167,9 +167,9 @@ async test "engine: execution context new" {
     update_time: None,
     update_user: None,
   }
-  let model = @parser.parse_model(define.content)
-  let instance = @model.ProcessInstance::create(define, "user1", new_args())
-  let exec = @exec.Execution::make(instance, model, define, "user1", new_args())
+  let model = @parser.parse_model(define_info.content)
+  let instance = @model.ProcessInstance::create(define_info, "user1", new_args())
+  let exec = @exec.Execution::make(instance, model, define_info, "user1", new_args())
   assert_eq(exec.operator, "user1")
   assert_true(!exec.instance_finished)
   assert_true(exec.new_tasks.is_empty())

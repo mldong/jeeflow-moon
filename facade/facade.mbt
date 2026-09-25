@@ -116,11 +116,11 @@ pub fn facade_parse_m_filters(args : Map[String, Json]) -> Array[@model.QueryFil
     let rest = key.substring(start=2).to_string()
     let parts = split_char(rest, '_')
     if parts.length() >= 3 {
-      let alias = parts[0]
+      let table_alias = parts[0]
       let op_str = parts[1]
       let column = camel_to_snake(join_char(parts, '_', 2))
       match @model.FilterOp::from_str(op_str) {
-        Some(op) => filters.push(@model.QueryFilter::make(alias, op, column, val_str))
+        Some(op) => filters.push(@model.QueryFilter::make(table_alias, op, column, val_str))
         None => ()
       }
     } else if parts.length() == 2 {

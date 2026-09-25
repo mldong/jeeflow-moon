@@ -35,13 +35,13 @@ pub fn parse_m_params(args : Map[String, Json]) -> Array[@model.QueryFilter] {
     if parts.length() < 2 {
       continue
     }
-    let (alias, op, column) = if parts.length() == 2 {
+    let (table_alias, op, column) = if parts.length() == 2 {
       ("t", parts[0], to_underscore(parts[1]))
     } else {
       (parts[0], parts[1], to_underscore(parts[2]))
     }
     match @model.FilterOp::from_str(op) {
-      Some(parsed) => filters.push(@model.QueryFilter::make(alias, parsed, column, value_to_string(value)))
+      Some(parsed) => filters.push(@model.QueryFilter::make(table_alias, parsed, column, value_to_string(value)))
       None => continue
     }
   }
@@ -105,7 +105,7 @@ pub fn build_m_where(filters : Array[@model.QueryFilter]) -> (String, Array[@moo
   let b = StringBuilder()
   let params : Array[@moondb.Value] = []
   for f in filters {
-    let col = f.alias() + "." + f.column()
+    let col = f.table_alias() + "." + f.column()
     match f.op() {
       Eq => {
         b.write_string(" AND " + col + " = ?")

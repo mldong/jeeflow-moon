@@ -188,7 +188,7 @@ async fn setup(content : String) -> (@facade.Facade[@mem.MemoryRepository, @mem.
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let facade = @facade.Facade::make(ctx2)
-  let define : @model.ProcessDefine = {
+  let define_info : @model.ProcessDefine = {
     id: 0L,
     name: "wt-flow",
     display_name: "撤回转办流程",
@@ -201,10 +201,10 @@ async fn setup(content : String) -> (@facade.Facade[@mem.MemoryRepository, @mem.
     update_time: None,
     update_user: None,
   }
-  repo.save_define(define)
+  repo.save_define(define_info)
   let env = facade.flow(
     "processInstance/startAndExecute",
-    targs([("processDefineId", define.id.to_string()), ("operator", "applicant")]),
+    targs([("processDefineId", define_info.id.to_string()), ("operator", "applicant")]),
   )
   assert_eq(msg_of(env), "成功")
   let iid = @json.get_str(data_of(env), "processInstanceId").unwrap_or("0")

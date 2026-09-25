@@ -151,7 +151,7 @@ pub async fn seed_memory(repo : @memory.MemoryRepository) -> Unit raise {
   for name in names {
     let data = @fs.read_file("\{dir}/\{name}")
     let content = data.text()
-    let define : @model.ProcessDefine = {
+    let define_info : @model.ProcessDefine = {
       id,
       name: name.substring(start=0, end=name.length() - 5).to_string(),
       display_name: flow_display_name(content, name),
@@ -164,12 +164,12 @@ pub async fn seed_memory(repo : @memory.MemoryRepository) -> Unit raise {
       update_time: None,
       update_user: None,
     }
-    repo.save_define(define)
+    repo.save_define(define_info)
     // design + his（发起页 listByType 契约）
     let design : @model.ProcessDesign = {
       id,
-      name: define.name,
-      display_name: define.display_name,
+      name: define_info.name,
+      display_name: define_info.display_name,
       design_type: "approval",
       icon: None,
       is_deployed: 1,
