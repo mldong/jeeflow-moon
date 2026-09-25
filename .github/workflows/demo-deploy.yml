@@ -48,11 +48,14 @@ jobs:
             # 无 TCP 监听、docker logs 0 字节）。实测 seccomp=unconfined 后 health 立即通过
             # （2026-09-05 托管机 strace + A/B 对照定位）。宿主机 docker 升级到含现代默认
             # profile 的版本后可回收此参数（决策记录 MAINTAINING.md §4 D-M5-2）。
+            # JEEFLOW_TZ_OFFSET=8：时钟基准由宿主注入（issues/120 §9「引擎不自取基准」）。
+            # 引擎默认臂是 UTC，本站受众是国内用户 ⇒ 显式给东八；不配这一行就是 UTC，
+            # 不会静默猜区（demo 启动行会打印所选基准，可核对）。
             docker run -d --name jeeflow-moon-demo --restart always \
               --security-opt seccomp=unconfined \
               -p 16086:8092 \
-              jeeflow-moon-demo:latest
-            rm -f jeeflow-moon-demo.tar
+              -e JEEFLOW_TZ_OFFSET=8 \
+              jeeflow-moon-demo:latest            rm -f jeeflow-moon-demo.tar
             # native 冷启动 + seed 装载需数秒：轮询等待而非固定 sleep
             ok=""
             for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
