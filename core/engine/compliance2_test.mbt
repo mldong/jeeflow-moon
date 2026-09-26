@@ -98,8 +98,13 @@ async test "c27: executing abandoned task fails (negative)" {
   let args = new_args()
   args.insert_i64("submitType", 20L)
   let _ = engine.execute_task_async(user_a.task_id, "userA", args)
-  let outcome = engine.execute_task_async(user_b_id, "userB", new_args())
-  assert_true(outcome is Err(_))
+  let raised = try {
+    let _ = engine.execute_task_async(user_b_id, "userB", new_args())
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(raised)
 }
 
 ///|
@@ -295,35 +300,50 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
     Some(0L) => ()
     other => fail("前置条件：发起那条 parent 应为 0L")
   }
-  let r07 = engine.execute_and_jump_async(apply.task_id, "applicant", @json.FlowData::new(), None)
-  match r07 {
-    Ok(_) => fail("无血缘（parent=0L）必须报错，不得静默不建单")
-    Err(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
+  // 新效果系统下调用不再返回 Result：抛错与否用 None/Some 物化，
+  // 两臂逐字对应旧 `Ok(_) => fail / Err(e) => 判文案`。
+  // ⚠ 成功路径的 fail 必须在 try 外面，否则块内多出的 Failure 会把 catch 的 e 撑成 open Error。
+  let raised07 = try {
+    let _ = engine.execute_and_jump_async(apply.task_id, "applicant", @json.FlowData::new(), None)
+    None
+  } catch {
+    e => Some(e)
   }
-
+  match raised07 {
+    None => fail("无血缘（parent=0L）必须报错，不得静默不建单")
+    Some(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
+  }
   // ①′ 老行形状 A：parent 为 None（P1 之前落的数据该列是 NULL）——本栈与 Some(0L) 是两个 match 分支
   let inst_b = engine.start_async(did, "applicant", @json.FlowData::new())
   let apply_b = repo.find_doing_tasks(inst_b.instance_id, [])[0]
   apply_b.parent_task_id = None
   repo.update_task(apply_b)
-  let r07b = engine.execute_and_jump_async(apply_b.task_id, "applicant", @json.FlowData::new(), None)
-  match r07b {
-    Ok(_) => fail("parent=None 的老行必须报错，不得静默不建单")
-    Err(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
+  let raised07b = try {
+    let _ = engine.execute_and_jump_async(apply_b.task_id, "applicant", @json.FlowData::new(), None)
+    None
+  } catch {
+    e => Some(e)
   }
-
+  match raised07b {
+    None => fail("parent=None 的老行必须报错，不得静默不建单")
+    Some(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
+  }
   // ①″ 老行形状 B：parent 非 0 但仓储里查不到行（老数据被清过 / 跨库迁来的样子）
   //     ⇒ 走「取不到历史行」那条分支，同样必须 20010007
   let inst_c = engine.start_async(did, "applicant", @json.FlowData::new())
   let apply_c = repo.find_doing_tasks(inst_c.instance_id, [])[0]
   apply_c.parent_task_id = Some(9223372036854775807L)
   repo.update_task(apply_c)
-  let r07c = engine.execute_and_jump_async(apply_c.task_id, "applicant", @json.FlowData::new(), None)
-  match r07c {
-    Ok(_) => fail("parent 指不到真实行时必须报错，不得静默不建单")
-    Err(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
+  let raised07c = try {
+    let _ = engine.execute_and_jump_async(apply_c.task_id, "applicant", @json.FlowData::new(), None)
+    None
+  } catch {
+    e => Some(e)
   }
-
+  match raised07c {
+    None => fail("parent 指不到真实行时必须报错，不得静默不建单")
+    Some(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
+  }
   // ② fork 分支行的血缘前驱在 fork 之前（apply）⇒ 守卫拦住
   let (engine2, repo2) = make_compliance_engine()
   let did2 = save_flow_define(repo2, "ln08", load_flow("04-fork-join"))
@@ -356,10 +376,15 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
     None => fail("前置条件：分支行 parent 应已由 P1 写入")
   }
   let who2 = if br.actor_ids.length() > 0 { br.actor_ids[0] } else { "applicant" }
-  let r08 = engine2.execute_and_jump_async(br.task_id, who2, @json.FlowData::new(), None)
-  match r08 {
-    Ok(_) => fail("血缘前驱跨不过 fork 时必须被守卫拦下")
-    Err(e) => assert_true(e.message() == "无法驳回至上一步处理，请确认上一步骤并非fork、join、suprocess以及会签任务")
+  let raised08 = try {
+    let _ = engine2.execute_and_jump_async(br.task_id, who2, @json.FlowData::new(), None)
+    None
+  } catch {
+    e => Some(e)
+  }
+  match raised08 {
+    None => fail("血缘前驱跨不过 fork 时必须被守卫拦下")
+    Some(e) => assert_true(e.message() == "无法驳回至上一步处理，请确认上一步骤并非fork、join、suprocess以及会签任务")
   }
 }
 
@@ -404,9 +429,15 @@ async test "submitType negative: non-actor execute rejected (99999999 path)" {
   let did = save_flow_define(repo, "stneg", load_flow("01-simple"))
   let iid = start_and_apply(engine, repo, did)
   let task = find_doing_for(repo, iid, "leader")
-  let outcome = engine.execute_task_async(task.task_id, "intruder", new_args())
-  match outcome {
-    Ok(_) => assert_true(false)
-    Err(e) => assert_eq(e.code(), @error.ERR_BUSINESS)
+  // 旧两臂 ⇒ Some(码) / None(没抛)。fail 在 try 外，否则 Failure 会撑开 catch 的 e 类型
+  let raised_code = try {
+    let _ = engine.execute_task_async(task.task_id, "intruder", new_args())
+    None
+  } catch {
+    e => Some(e.code())
+  }
+  match raised_code {
+    None => fail("非参与者办理必须被拒（旧 Ok 臂 assert_true(false)）")
+    Some(c) => assert_eq(c, @error.ERR_BUSINESS)
   }
 }

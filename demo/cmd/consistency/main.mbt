@@ -207,17 +207,20 @@ async fn stats_call(
   action : String,
   args : Map[String, Json]
 ) -> Unit raise {
-  let outcome = f.flow(action, args)
-  match outcome {
-    Ok(v) => out.push((label, v))
-    Err(e) => {
+  // flow 自己就把引擎错误转成 err 信封（不再返回 Result）；这里的 catch 只兜门面之外的意外，
+  // 仍按同一 {code:99999999,msg,data} 形状入册 ⇒ 快照两态可比、且不因迁移漂移。
+  let outcome = try {
+    f.flow(action, args)
+  } catch {
+    e => {
       let o = @json.empty_object()
       @json.obj_set(o, "code", @json.number_of(99999999L))
-      @json.obj_set(o, "msg", @json.string_of(e.to_string()))
+      @json.obj_set(o, "msg", @json.string_of("\{e}"))
       @json.obj_set(o, "data", @json.null_json())
-      out.push((label, o))
+      o
     }
   }
+  out.push((label, outcome))
 }
 
 ///|

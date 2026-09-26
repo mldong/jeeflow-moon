@@ -63,8 +63,14 @@ test "args: dual string/number id (C2) + 非法id报错 (C3)" {
   args["id"] = @json.number_of(1001L)
   assert_eq(@facade.arg_i64(args, "id").unwrap(), 1001L)
   args["id"] = @json.string_of("not-a-number")
-  let outcome : Result[Int64?, @error.JeeflowError] = @facade.arg_i64(args, "id")
-  assert_true(outcome is Err(_))
+  // arg_i64 现签名 `-> Int64? raise JeeflowError`：非法串必须抛（旧 Err 臂）
+  let raised = try {
+    let _ = @facade.arg_i64(args, "id")
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(raised)
 }
 
 ///|
@@ -76,11 +82,17 @@ test "args: ids/id dual + empty explicit error (C15)" {
   single["id"] = @json.number_of(7L)
   assert_true(@facade.arg_ids(single) == [7L])
   let empty : Map[String, Json] = Map([])
-  let outcome : Result[Array[Int64], @error.JeeflowError] = @facade.arg_ids(empty)
-  match outcome {
-    Ok(_) => assert_true(false)
-    Err(e) => assert_eq(e.message(), "id 缺失或非法")
-  }
+  // 两臂逐字搬：Some(文案) 判精确串；None(没抛) ⇒ fail
+  let msg = try {
+    let _ = @facade.arg_ids(empty)
+    None
+  } catch {
+    e => Some(e.message())
+  }
+  match msg {
+    Some(m) => assert_eq(m, "id 缺失或非法")
+    None => fail("空 ids 必须显式报错（C15）")
+  }
 }
 
 ///|

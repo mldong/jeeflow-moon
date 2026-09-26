@@ -17,13 +17,15 @@ fn OrgAssignBase::dept_id_of(self : OrgAssignBase, user_id : String) -> String {
   }
   match self.user {
     Some(get_user) =>
-      match ((get_user)(user_id)) {
-        Ok(u) =>
-          match u {
-            Some(info) => info.dept_id()
-            None => ""
-          }
-        Err(_) => ""
+      // SPI 是 `-> UserInfo? raise JeeflowError`：值即 UserInfo?；取人失败**吞成空串**
+      // （参与人解析不许炸掉流程），故落 catch 臂而不是往外抛
+      try {
+        match (get_user)(user_id) {
+          Some(info) => info.dept_id()
+          None => ""
+        }
+      } catch {
+        _ => ""
       }
     None => ""
   }
@@ -36,14 +38,16 @@ fn OrgAssignBase::by_dept(self : OrgAssignBase, dept_id : String, main : Bool) -
   }
   match self.org {
     Some(org) => {
-      let outcome = (if main {
-        (org.find_dept_main_leaders)(dept_id)
-      } else {
-        (org.find_dept_leaders)(dept_id)
-      })
-      match outcome {
-        Ok(ids) => if ids.length() > 0 { ids.join(",") } else { "" }
-        Err(_) => ""
+      try {
+        let ids =
+          if main {
+            (org.find_dept_main_leaders)(dept_id)
+          } else {
+            (org.find_dept_leaders)(dept_id)
+          }
+        if ids.length() > 0 { ids.join(",") } else { "" }
+      } catch {
+        _ => ""
       }
     }
     None => ""
@@ -113,13 +117,13 @@ pub fn task_role_assignee_handler(
       Some(node) =>
         match org {
           None => ""
-          Some(o) => {
-            let outcome = (o.find_by_role)(node.id)
-            match outcome {
-              Ok(v) => if v.length() > 0 { v.join(",") } else { "" }
-              Err(_) => ""
+          Some(o) =>
+            try {
+              let v = (o.find_by_role)(node.id)
+              if v.length() > 0 { v.join(",") } else { "" }
+            } catch {
+              _ => ""
             }
-          }
         }
     }
   }

@@ -266,28 +266,33 @@ pub async fn App::handle(self : App, method : String, path : String, query_strin
     let action = path.substring(start=4).to_string()
     // body 解析失败 → 99999999 + stderr（rust issue 88 教训）
     let trimmed = body.trim(chars=" \t\r\n").to_string()
-    let parsed = if trimmed.is_empty() {
-      Ok(@json.empty_object())
-    } else {
-      @json.parse_json(trimmed)
-    }
-    let args : Map[String, Json] = match parsed {
-      Ok(Json::Object(m)) => {
-        let copy : Map[String, Json] = Map([])
-        for k, v in m {
-          copy[k] = v
-        }
-        copy
-      }
-      Ok(_) => {
-        println("[demo] body 解析失败: 非 JSON 对象")
-        raise @error.Business("body 必须是 JSON 对象")
-      }
-      Err(e) => {
-        println("[demo] body 解析失败: \{e.message()}")
-        raise @error.Business("body 解析失败: \{e.message()}")
-      }
-    }
+    // parse_json 现在直接 raise（不再返回 Result）：三档判据原样保留
+    // ——空 body 当空对象；坏 JSON 打印并转 99999999（rust issue 88 的教训）；非对象另一条文案。
+    let parsed = if trimmed.is_empty() {
+      @json.empty_object()
+    } else {
+      try {
+        @json.parse_json(trimmed)
+      } catch {
+        e => {
+          println("[demo] body 解析失败: \{e.message()}")
+          raise @error.Business("body 解析失败: \{e.message()}")
+        }
+      }
+    }
+    let args : Map[String, Json] = match parsed {
+      Json::Object(m) => {
+        let copy : Map[String, Json] = Map([])
+        for k, v in m {
+          copy[k] = v
+        }
+        copy
+      }
+      _ => {
+        println("[demo] body 解析失败: 非 JSON 对象")
+        raise @error.Business("body 必须是 JSON 对象")
+      }
+    }
     let result = match self.store {
       "mysql" =>
         match self.my_facade {

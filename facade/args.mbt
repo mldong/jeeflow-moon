@@ -183,10 +183,12 @@ pub fn arg_i64(args : Map[String, Json], key : String) -> Int64? raise @error.Je
         None =>
           match v {
             Json::String(s) =>
-              match (@string.parse_int64(s)) {
-                Ok(n) => Some(n)
-                Err(_) => raise @error.Business("非法id: \{s}")
-              }
+              // parse_int64 是 `-> Int64 raise`：解析失败 ⇒ 非法 id（文案逐字不变）
+              try {
+                Some(@string.parse_int64(s))
+              } catch {
+                _ => raise @error.Business("非法id: \{s}")
+              }
             _ => raise @error.Business("非法id: \{@json.stringify(v)}")
           }
       }
@@ -262,10 +264,12 @@ pub fn arg_ids(args : Map[String, Json]) -> Array[Int64] raise @error.JeeflowErr
           None =>
             match v {
               Json::String(s) =>
-                match (@string.parse_int64(s)) {
-                  Ok(n) => out.push(n)
-                  Err(_) => raise @error.Business("非法id: \{s}")
-                }
+                // 同上（数组档）
+                try {
+                  out.push(@string.parse_int64(s))
+                } catch {
+                  _ => raise @error.Business("非法id: \{s}")
+                }
               _ => raise @error.Business("非法id: \{@json.stringify(v)}")
             }
         }

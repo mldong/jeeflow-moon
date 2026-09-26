@@ -239,14 +239,16 @@ fn env_data(env : Json) -> Json {
 }
 
 ///|
-fn iid_of(env : Json) -> Int64 {
-  let s = @json.get_str(env_data(env), "processInstanceId").unwrap_or("0")
-  match (@string.parse_int64(s)) {
-    Ok(v) => v
-    Err(_) => abort("非法实例 id 出口值: \{s}")
-  }
-}
-
+fn iid_of(env : Json) -> Int64 raise {
+  let s = @json.get_str(env_data(env), "processInstanceId").unwrap_or("0")
+  // parse_int64 是 `-> Int64 raise`：出口值坏掉仍旧 abort（旧 Err 臂）；
+  // abort 在 catch 臂里 ⇒ 不污染 try 的 raise 集，但函数自己得声明 raise。
+  try {
+    @string.parse_int64(s)
+  } catch {
+    _ => abort("非法实例 id 出口值: \{s}")
+  }
+}
 ///|
 fn rows_of(data : Json) -> Array[Json] {
   match data.value("rows") {

@@ -247,12 +247,13 @@ pub fn parse_graph(content : String) -> Json? {
   if t.is_empty() {
     return None
   }
-  match (@json.parse_json(t)) {
-    Ok(v) => Some(v)
-    Err(_) => None
-  }
-}
-
+  // parse_json 是 `-> Json raise JeeflowError`：坏 JSON ⇒ None（旧 Err 臂）
+  try {
+    Some(@json.parse_json(t))
+  } catch {
+    _ => None
+  }
+}
 ///|
 pub fn parse_json_map(s : String?) -> Map[String, Json] {
   let out : Map[String, Json] = Map([])
@@ -260,13 +261,18 @@ pub fn parse_json_map(s : String?) -> Map[String, Json] {
     Some(raw) => {
       let t = raw.trim(chars=" \t\r\n").to_string()
       if !t.is_empty() {
-        match (@json.parse_json(t)) {
-          Ok(Json::Object(m)) =>
-            for k, v in m {
-              out[k] = v
-            }
-          _ => ()
-        }
+        // 坏 JSON 或非对象 ⇒ 空 map（旧 `_ => ()` / `Err ⇒ ()` 两臂合成一条）
+        try {
+          match @json.parse_json(t) {
+            Json::Object(m) =>
+              for k, v in m {
+                out[k] = v
+              }
+            _ => ()
+          }
+        } catch {
+          _ => ()
+        }
       }
     }
     None => ()

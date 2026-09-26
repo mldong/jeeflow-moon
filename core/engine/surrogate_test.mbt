@@ -200,18 +200,15 @@ async test "批次D 条款1: 办理推进 / 跳转两条路径都应用委托" {
   let t2 = sg_task(repo, inst.instance_id, "n2")
   sg_has(repo.find_task_actors(t2.task_id), "li", "办理推进路径：新单参与者含代理人")
   // 跳转（jump / rollback / 退回发起人共用同一条落库收口）
-  let jumped = engine.execute_and_jump_async(t2.task_id, "zhang", @json.FlowData::new(), Some("n3"))
-  match jumped {
-    Ok(tasks) => {
-      sg_check(!tasks.is_empty(), "跳转应产出目标节点任务")
-      sg_has(
-        repo.find_task_actors(tasks[0].task_id),
-        "li2",
-        "跳转路径：目标节点任务参与者含代理人",
-      )
-    }
-    Err(e) => abort("跳转失败: \{e.message()}")
-  }
+  // 旧 Err 臂是 abort(消息) ⇒ 与"让错误外抛、用例判红"同效，故两臂收敛成成功路径 +
+  // 两条判据；抛错时错误自己冒到 test 框架（消息不丢）。
+  let tasks = engine.execute_and_jump_async(t2.task_id, "zhang", @json.FlowData::new(), Some("n3"))
+  sg_check(!tasks.is_empty(), "跳转应产出目标节点任务")
+  sg_has(
+    repo.find_task_actors(tasks[0].task_id),
+    "li2",
+    "跳转路径：目标节点任务参与者含代理人",
+  )
 }
 
 ///|

@@ -31,11 +31,15 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   action : String,
   args : Map[String, Json]
 ) -> Json raise {
-  let outcome = self.dispatch(action, args)
-  match outcome {
-    Ok(data) => transform_output(ok_data(data))
-    Err(e) => transform_output(err(e.message()))
+  // dispatch 是 `-> Json raise JeeflowError`：raise 即旧 Err 臂，出口转 err 信封；
+  // 成功臂必须过 ok_data（旧 `Ok(data) => transform_output(ok_data(data))`）——
+  // 少这一层就没有 {code:0,msg:"成功"} 信封，T0 的「委托台账保存成功」当场红。
+  let outcome = try {
+    ok_data(self.dispatch(action, args))
+  } catch {
+    e => err(e.message())
   }
+  transform_output(outcome)
 }
 
 ///|

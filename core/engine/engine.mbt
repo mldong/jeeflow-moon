@@ -47,18 +47,23 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::add_user_i
   }
   match self.ctx.user_provider {
     Some(get_user) => {
-      let outcome : Result[@model.UserInfo?, @error.JeeflowError] = (get_user)(operator)
-      match outcome {
-        Ok(Some(user)) => {
-          args.insert_str("u_userId", user.user_id())
-          args.insert_str("u_realName", user.real_name())
-          args.insert_str("u_deptId", user.dept_id())
-          args.insert_str("u_deptName", user.dept_name())
-          args.insert_str("u_postId", user.post_id())
-          args.insert_str("u_postName", user.post_name())
-        }
-        _ => ()
-      }
+      // provider 签名是 `(String) -> UserInfo? raise JeeflowError`：
+      // 取用户失败按旧语义吞掉（catch 到 _ => ()），不炸发起路径。
+      try {
+        match (get_user)(operator) {
+          Some(user) => {
+            args.insert_str("u_userId", user.user_id())
+            args.insert_str("u_realName", user.real_name())
+            args.insert_str("u_deptId", user.dept_id())
+            args.insert_str("u_deptName", user.dept_name())
+            args.insert_str("u_postId", user.post_id())
+            args.insert_str("u_postName", user.post_name())
+          }
+          None => ()
+        }
+      } catch {
+        _ => ()
+      }
     }
     None => ()
   }
@@ -101,13 +106,14 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::resolve_as
   match node.assignment_handler() {
     Some(handler_name) =>
       match self.ctx.find_assignment_handler(handler_name) {
-        Some(handler) => {
-          let outcome = (handler)(exec)
-          match outcome {
-            Ok(result) => if !result.is_empty() { return split_actors(result) }
-            Err(_) => ()
-          }
-        }
+        Some(handler) => {
+          // handler 签名是 `-> String raise JeeflowError`：旧 `try?` 把 raise 折成 Result，
+          // Err 臂就是"这一档跳过"；换成空串后下面的 !is_empty 判据走同一条落空路径。
+          let result = try { (handler)(exec) } catch { _ => "" }
+          if !result.is_empty() {
+            return split_actors(result)
+          }
+        }
         None => ()
       }
     None => ()
@@ -339,17 +345,18 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::evaluate_e
       for k, v in exec.args.inner() {
         vars[k] = v
       }
-      let outcome = (eval)(expr, vars)
-      match outcome {
-        Ok(v) =>
-          match v {
-            Json::True => true
-            Json::False => false
-            Json::Number(n, ..) => n != 0.0
-            Json::String(s) => !s.is_empty() && s != "false" && s != "0"
-            _ => false
-          }
-        Err(_) => false
+      // SPI 是 `-> Json raise JeeflowError`：值即 Json。求值失败按旧语义当 false
+      try {
+        let v = (eval)(expr, vars)
+        match v {
+          Json::True => true
+          Json::False => false
+          Json::Number(n, ..) => n != 0.0
+          Json::String(s) => !s.is_empty() && s != "false" && s != "0"
+          _ => false
+        }
+      } catch {
+        _ => false
       }
     }
     None => self.simple_eval(expr, exec)
@@ -399,10 +406,20 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::simple_eva
 ///|
 /// 比较：数值优先，字符串兜底 → Some(-1/0/1) / None（不可解析）
 fn compare_values(left : String, right : String) -> Int? {
-  let l = (@string.parse_double(left))
-  let r = (@string.parse_double(right))
-  match (l, r) {
-    (Ok(lv), Ok(rv)) =>
+  // 两侧都能解析成数值才按数值比，任一失败 ⇒ 字符串兜底（旧语义）
+  // parse_double 是 `-> Double raise`：`try` 两臂必须同类型，所以成功臂自己包 Some
+  let l = try {
+    Some(@string.parse_double(left))
+  } catch {
+    _ => None
+  }
+  let r = try {
+    Some(@string.parse_double(right))
+  } catch {
+    _ => None
+  }
+  match (l, r) {
+    (Some(lv), Some(rv)) =>
       if lv < rv {
         Some(-1)
       } else if lv > rv {

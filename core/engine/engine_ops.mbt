@@ -99,10 +99,12 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
     None =>
       match full_args.get_str("submitType") {
         Some(s) =>
-          match (@string.parse_int64(s)) {
-            Ok(v) => Some(v)
-            Err(_) => None
-          }
+          // parse_int64 是 `-> Int64 raise`：解析失败 ⇒ "没有数字档"（旧 Err ⇒ None）
+          try {
+            Some(@string.parse_int64(s))
+          } catch {
+            _ => None
+          }
         None => None
       }
   }

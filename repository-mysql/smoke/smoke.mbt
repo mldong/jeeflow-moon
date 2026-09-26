@@ -190,21 +190,28 @@ async fn t1_m4_tx_rollback() -> Unit raise {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   let tpl = @repo.MysqlTxTemplate::from_env()
-  let outcome = tpl.execute_in_tx(fn() {
-    let conn = @repo.current_tx_conn().unwrap()
-    let _ = @repo.x(
-      conn,
-      "INSERT INTO wf_process_instance (id, process_define_id, state, operator, variable, create_time, create_user) VALUES (990020, 990001, 10, 'user9x', '{}', NOW(), 't1')",
-      [],
-    )
-    let _ = @repo.x(
-      conn,
-      "INSERT INTO wf_process_task (id, process_instance_id, task_name, display_name, task_state, create_time, create_user) VALUES (990021, 990020, 'apply', 'A', 10, NOW(), 't1')",
-      [],
-    )
-    raise @error.Business("boom-in-tx")
-  })
-  check(outcome is Err(_), "回调抛错外传")
+  // 事务模板现在直接 raise：旧 `outcome is Err(_)` 物化成 Bool。
+  // 判据不空转——若模板把回调异常吞了（回滚语义退化成"静默成功"），false ⇒ 这格红。
+  let raised = try {
+    tpl.execute_in_tx(fn() {
+      let conn = @repo.current_tx_conn().unwrap()
+      let _ = @repo.x(
+        conn,
+        "INSERT INTO wf_process_instance (id, process_define_id, state, operator, variable, create_time, create_user) VALUES (990020, 990001, 10, 'user9x', '{}', NOW(), 't1')",
+        [],
+      )
+      let _ = @repo.x(
+        conn,
+        "INSERT INTO wf_process_task (id, process_instance_id, task_name, display_name, task_state, create_time, create_user) VALUES (990021, 990020, 'apply', 'A', 10, NOW(), 't1')",
+        [],
+      )
+      raise @error.Business("boom-in-tx")
+    })
+    false
+  } catch {
+    _ => true
+  }
+  check(raised, "回调抛错外传")
   let conn = repo.open_raw()
   let inst_rows = @repo.q(conn, "SELECT COUNT(*) AS c FROM wf_process_instance WHERE id = 990020", [])
   let task_rows = @repo.q(conn, "SELECT COUNT(*) AS c FROM wf_process_task WHERE id = 990021", [])
@@ -224,15 +231,26 @@ async fn t1_m5_idempotent() -> Unit raise {
   let inst = engine.start_async(990001L, "user9x", @json.FlowData::new())
   let tasks = repo.find_doing_tasks(inst.instance_id, [])
   check(tasks.length() == 1, "办理前 1 个 DOING")
-  let first = engine.execute_task_async(tasks[0].task_id, "user9x", @json.FlowData::new())
-  check(first is Ok(_), "第一次办理成功")
-  let second = engine.execute_task_async(tasks[0].task_id, "user9x", @json.FlowData::new())
-  let mut code_ok = false
-  match second {
-    Ok(_) => code_ok = false
-    Err(e) => code_ok = e.code() == @error.ERR_BUSINESS
-  }
-  check(code_ok, "第二次办理 99999999（任务已办理守卫）")
+  // 正向第一次：旧 `is Ok(_)`
+  let first_ok = try {
+    let _ = engine.execute_task_async(tasks[0].task_id, "user9x", @json.FlowData::new())
+    true
+  } catch {
+    _ => false
+  }
+  check(first_ok, "第一次办理成功")
+  // 负向第二次：守卫必须报 99999999；没抛错 ⇒ Some? 不，None 臂 ⇒ code_ok 恒 false
+  let second_code = try {
+    let _ = engine.execute_task_async(tasks[0].task_id, "user9x", @json.FlowData::new())
+    None
+  } catch {
+    e => Some(e.code())
+  }
+  let code_ok = match second_code {
+    Some(c) => c == @error.ERR_BUSINESS
+    None => false
+  }
+  check(code_ok, "第二次办理 99999999（任务已办理守卫）")
   clean_9x(repo)
 }
 

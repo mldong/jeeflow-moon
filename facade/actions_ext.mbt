@@ -210,15 +210,16 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     ext.save_design_his(h)
   }
   // 同步基本信息 + 置未部署
-  let outcome = @parser.parse_model(content)
-  match outcome {
-    Ok(model) => {
-      design.name = model.name
-      design.display_name = model.display_name
-      design.design_type = model.model_type
-    }
-    Err(_) => ()
-  }
+  // parse_model 是 `-> ProcessModel raise JeeflowError`：解析失败 ⇒ 三个字段保持原值
+  //（旧 Err ⇒ () 同一条落空路径）
+  try {
+    let model = @parser.parse_model(content)
+    design.name = model.name
+    design.display_name = model.display_name
+    design.design_type = model.model_type
+  } catch {
+    _ => ()
+  }
   design.is_deployed = 0
   design.update_user = Some(arg_str_or(args, "operator", "system"))
   ext.update_design(design)
@@ -548,14 +549,16 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   // metaTableReader 未注册显式报错（issues/28）
   match self.engine.context().biz_data_reader {
     Some(reader) => {
-      let outcome = (reader)(table, instance_id)
-      match outcome {
-        Ok(rows) => match rows {
-          Some(row) => obj_json(row)
-          None => @json.null_json()
-        }
-        Err(e) => raise @error.Business("业务数据读取失败: \{e.message()}")
-      }
+      // reader: `(String, Int64) -> Map[String,Json]? raise JeeflowError`
+      let rows = try {
+        (reader)(table, instance_id)
+      } catch {
+        e => raise @error.Business("业务数据读取失败: \{e.message()}")
+      }
+      match rows {
+        Some(row) => obj_json(row)
+        None => @json.null_json()
+      }
     }
     None => raise @error.Business("业务数据读取器未注册（ServiceContext.put(\"metaTableReader\", ...)，需引入 jeeflow-persist）")
   }
@@ -612,14 +615,14 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   let edges : Array[String] = []
   match define_info {
     Some(d) => {
-      let outcome = @parser.parse_model(d.content)
-      match outcome {
-        Ok(model) => {
-          build_node_progress(model, history, node_progress)
-          collect_path(model, model.get_start(), active, history_nodes, edges, inst.variables, history)
-        }
-        Err(_) => ()
-      }
+      // 同上：坏定义 ⇒ 进度/路径两档都留空（旧 Err ⇒ ()）
+      try {
+        let model = @parser.parse_model(d.content)
+        build_node_progress(model, history, node_progress)
+        collect_path(model, model.get_start(), active, history_nodes, edges, inst.variables, history)
+      } catch {
+        _ => ()
+      }
     }
     None => ()
   }

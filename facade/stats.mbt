@@ -8,36 +8,51 @@ pub fn parse_epoch_secs(s : String) -> Int64? {
   if t.length() < 10 {
     return None
   }
-  let y = (@string.parse_int(t.substring(start=0, end=4).to_string()))
-  let mo = (@string.parse_int(t.substring(start=5, end=7).to_string()))
-  let d = (@string.parse_int(t.substring(start=8, end=10).to_string()))
-  let (y, mo, d) = match (y, mo, d) {
-    (Ok(a), Ok(b), Ok(c)) => (a, b, c)
-    _ => return None
-  }
+  // parse_int 现签名 `-> Int raise`：日期三段任一失败 ⇒ 不是这个格式 ⇒ None。
+  // 兜底挪进 parse_int_or_none（非 raise 函数里裸调会 raise 的函数，编译器直接拒绝），
+  // 调用点形状与旧 Ok/Err 三档一一对应，只换构造器名。
+  let y = parse_int_or_none(t.substring(start=0, end=4).to_string())
+  let mo = parse_int_or_none(t.substring(start=5, end=7).to_string())
+  let d = parse_int_or_none(t.substring(start=8, end=10).to_string())
+  let (y, mo, d) = match (y, mo, d) {
+    (Some(a), Some(b), Some(c)) => (a, b, c)
+    _ => return None
+  }
   let mut hh = 0
   let mut mi = 0
   let mut ss = 0
   if t.length() >= 19 {
-    match (@string.parse_int(t.substring(start=11, end=13).to_string())) {
-      Ok(v) => hh = v
-      Err(_) => ()
-    }
-    match (@string.parse_int(t.substring(start=14, end=16).to_string())) {
-      Ok(v) => mi = v
-      Err(_) => ()
-    }
-    match (@string.parse_int(t.substring(start=17, end=19).to_string())) {
-      Ok(v) => ss = v
-      Err(_) => ()
-    }
+    // 时间三段解析失败保持 0（旧 Err ⇒ () 语义）
+    hh = parse_int_or(t.substring(start=11, end=13).to_string(), 0)
+    mi = parse_int_or(t.substring(start=14, end=16).to_string(), 0)
+    ss = parse_int_or(t.substring(start=17, end=19).to_string(), 0)
   }
   let days = days_from_civil(y, mo, d)
   Some(days.to_int64() * 86400L + (hh * 3600 + mi * 60 + ss).to_int64())
 }
 
-///|
-/// Howard Hinnant days_from_civil
+///|
+/// `parse_int`（`-> Int raise`）兜底：默认值档 / None 档各一个入口，
+/// 让"解析失败算不算错"这件事在调用点上写明白，而不是靠 Ok/Err 猜。
+fn parse_int_or(s : String, fallback : Int) -> Int {
+  try {
+    @string.parse_int(s)
+  } catch {
+    _ => fallback
+  }
+}
+
+///|
+fn parse_int_or_none(s : String) -> Int? {
+  try {
+    Some(@string.parse_int(s))
+  } catch {
+    _ => None
+  }
+}
+
+///|
+/// Howard Hinnant days_from_civil
 fn days_from_civil(y : Int, m : Int, d : Int) -> Int {
   let y2 = if m <= 2 { y - 1 } else { y }
   let era = (if y2 >= 0 { y2 } else { y2 - 399 }) / 400

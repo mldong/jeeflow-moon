@@ -194,8 +194,10 @@ pub async fn seed_memory(repo : @memory.MemoryRepository) -> Unit raise {
 
 ///|
 fn flow_display_name(content : String, fallback : String) -> String {
-  match (@json.parse_json(content)) {
-    Ok(v) => @json.get_str(v, "displayName").unwrap_or(fallback)
-    Err(_) => fallback
-  }
+  // parse_json 是 `-> Json raise`：坏 JSON ⇒ 回落 fallback（旧 Err 臂）
+  try {
+    @json.get_str(@json.parse_json(content), "displayName").unwrap_or(fallback)
+  } catch {
+    _ => fallback
+  }
 }

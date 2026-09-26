@@ -130,15 +130,26 @@ async test "engine: start_async creates instance" {
 ///|
 async test "engine: start_async define not found" {
   let (engine, _repo) = make_test_engine()
-  let outcome = engine.start_async(99999L, "user1", new_args())
-  assert_true(outcome is Err(_))
+  // 旧 `assert_true(outcome is Err(_))` ⇒ 物化成"到底抛没抛"
+  let raised = try {
+    let _ = engine.start_async(99999L, "user1", new_args())
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(raised)
 }
 
 ///|
 async test "engine: execute task not found" {
   let (engine, _repo) = make_test_engine()
-  let outcome = engine.execute_task_async(99999L, "user1", new_args())
-  assert_true(outcome is Err(_))
+  let raised = try {
+    let _ = engine.execute_task_async(99999L, "user1", new_args())
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(raised)
 }
 
 ///|
@@ -148,8 +159,13 @@ async test "engine: execute task permission denied" {
   let instance = engine.start_async(define_id, "user1", new_args())
   let tasks = repo.find_doing_tasks(instance.instance_id, [])
   assert_true(!tasks.is_empty())
-  let outcome = engine.execute_task_async(tasks[0].task_id, "user999", new_args())
-  assert_true(outcome is Err(_))
+  let raised = try {
+    let _ = engine.execute_task_async(tasks[0].task_id, "user999", new_args())
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(raised)
 }
 
 ///|
@@ -180,10 +196,15 @@ async test "engine: no ext repository design path errors" {
   let repo = @mem.MemoryRepository::new()
   let ctx = @spi.Ctx::new(repo, @spi.NoExtRepository::new())
   let engine = @engine.Engine::make(ctx)
-  let outcome = engine.context().ext_repository().find_design_by_id(1L)
-  match outcome {
-    Ok(r) => assert_true(r is None)
-    Err(_) => assert_true(false)
+  // 两臂逐字搬：拿到值 ⇒ 判它是 None；抛错 ⇒ 这条判据本就该红（旧 Err ⇒ assert_true(false)）
+  let found = try {
+    Some(engine.context().ext_repository().find_design_by_id(1L))
+  } catch {
+    _ => None
+  }
+  match found {
+    Some(r) => assert_true(r is None)
+    None => assert_true(false)
   }
 }
 
@@ -428,8 +449,13 @@ async test "c09: non-actor permission denied" {
   let iid = start_and_apply(engine, repo, did)
   let tasks = repo.find_doing_tasks(iid, [])
   if !(tasks.is_empty()) {
-    let outcome = engine.execute_task_async(tasks[0].task_id, "unauthorized_user", new_args())
-    assert_true(outcome is Err(_))
+    let raised = try {
+      let _ = engine.execute_task_async(tasks[0].task_id, "unauthorized_user", new_args())
+      false
+    } catch {
+      _ => true
+    }
+    assert_true(raised)
   }
 }
 
@@ -456,8 +482,14 @@ async test "c12: flow.auto can execute any task" {
   let iid = start_and_apply(engine, repo, did)
   let tasks = repo.find_doing_tasks(iid, [])
   assert_true(!tasks.is_empty())
-  let outcome = engine.execute_task_async(tasks[0].task_id, "flow.auto", new_args())
-  assert_true(outcome is Ok(_))
+  // 正向：旧 `is Ok(_)` ⇒ 没抛错才算通过（抛错走 catch 收成 false，判据不靠 test 框架兜）
+  let ok = try {
+    let _ = engine.execute_task_async(tasks[0].task_id, "flow.auto", new_args())
+    true
+  } catch {
+    _ => false
+  }
+  assert_true(ok)
 }
 
 ///|

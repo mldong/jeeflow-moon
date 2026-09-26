@@ -647,14 +647,19 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   let rows = @json.empty_array()
   if !candidates.is_empty() {
     for actor in candidates {
-      let info = match self.engine.context().user_provider {
-        Some(get_user) =>
-          match ((get_user)(actor)) {
-            Ok(Some(u)) => u.real_name()
-            _ => ""
-          }
-        None => ""
-      }
+      // provider: `(String) -> UserInfo? raise JeeflowError`；取不到或报错 ⇒ 空串（旧语义）
+      let info = match self.engine.context().user_provider {
+        Some(get_user) =>
+          try {
+            match (get_user)(actor) {
+              Some(u) => u.real_name()
+              None => ""
+            }
+          } catch {
+            _ => ""
+          }
+        None => ""
+      }
       @json.arr_push(rows, candidate_row(actor, info, None))
     }
     // 分页信封（pageNum=1 pageSize=rows）

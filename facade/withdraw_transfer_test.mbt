@@ -239,10 +239,8 @@ async fn done_page(
 
 ///|
 fn parse_iid(s : String) -> Int64 {
-  match (@string.parse_int64(s)) {
-    Ok(v) => v
-    Err(_) => abort("非法实例 id: \{s}")
-  }
+  // parse_int64 是 `-> Int64 raise`：坏数字仍旧 abort（abort 返回 Nothing，与成功臂同型）
+  try { @string.parse_int64(s) } catch { _ => abort("非法实例 id: \{s}") }
 }
 
 // ══════════════════ 正向 ══════════════════
