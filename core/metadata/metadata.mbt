@@ -72,7 +72,7 @@ pub fn EnumDictRegistry::new() -> EnumDictRegistry {
     { value: "0", label: "并行会签" },
     { value: "1", label: "串行会签" },
   ]
-  { dicts }
+  { dicts, }
 }
 
 ///|
@@ -202,7 +202,7 @@ pub fn HandlerRegistry::new() -> HandlerRegistry {
     order: 0,
     group: "built-in",
   })
-  { handlers }
+  { handlers, }
 }
 
 ///|
