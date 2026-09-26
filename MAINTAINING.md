@@ -317,7 +317,7 @@ jeeflow-ui 联调：`?lang=moon` 分段 / `/moon-api` 代理（apps/demo）。
 3. `Array::sort/sort_by` 对 String 在 wasm 排序结果错误——用 `@model.sort_strings/sort_i64/sort_int`（§4 D-M3-2）。
 4. 断言用 `assert_eq/assert_true`（无裸 `assert`、无 `!` 后缀）。
 
-## 3. mooncakes.io 发版通道（jeeflow-moon，独立 0.x 线，现 0.1.12）
+## 3. mooncakes.io 发版通道（jeeflow-moon，独立 0.x 线，现 0.1.13）
 
 > 原则：**首次发版失败可重试、tag 可删重打，版本号严禁跳号**（0.1.0 起完整递增，不断号）。
 > CI 不跑测试——本地 T0/T1/T2 已验口径不变。
@@ -369,7 +369,7 @@ git tag v0.1.5 && git push origin v0.1.5   # 触发 publish workflow（版本号
     （workflow_dispatch，checkout master HEAD）或把 tag 重指到修复后的 commit 再推。
   - **纯偶发**（网络 / CDN / registry 抖动，代码与 CI 都没动）：直接 Actions 页 Re-run 原 run；
     或删 tag 重打（`git tag -d v0.1.5 && git push origin :refs/tags/v0.1.5 && git tag v0.1.5 && git push origin v0.1.5`）。
-- 版本号不变（moon 走 **0.x 独立线**，现 0.1.12，见 §4 D-M5-1；下方示例的
+- 版本号不变（moon 走 **0.x 独立线**，现 0.1.13，见 §4 D-M5-1；下方示例的
   `1.0.0` 系早期文档残留，实际以仓内 `moon.mod` 当前版本为准），重试 publish 同版本号——mooncakes
   对已存在版本会拒绝，若部分模块已发成功：仅重发失败模块（workflow 幂等按模块步进），**不要 bump
   版本号来绕**。
