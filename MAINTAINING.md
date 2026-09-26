@@ -67,14 +67,29 @@ registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）
 > 比对要按载荷比、别按文件字节数比——这不是行为变化）。
 > 工具：`scripts/moon_dep_bump.py <old> <new>`（5 个 `*/moon.mod` 字节级替换 + 逐文件命中数断言）。
 >
-> ⚠️ 顺手记下的一条事实：`repository-mysql/moon.mod` 里的 **moonmysql 声明是死依赖**——
-> 本仓源码（含测试）**零处 `@moonmysql` 引用**，实际用的是 `repository-mysql/vendored/moon_mysql_client/`
-> （§4 D-M0-2 的 wasm/native 解锁副本）。留着它 ⇒ 白拉一串传递依赖：moonmysql 0.7.2 直接要
-> `moondb@0.2.0`、`moonvar@0.2.0`、`moonbase@0.4.0`、`mooncred@0.6.0`、`mooncrypt@0.3.1`、`async@0.20.3`，
-> 而 moondb 0.2.0 又带来 `moonpool@0.2.0` + `moondate@0.1.0`（`moon install` 日志里还见到 `moonjson@0.3.0`）。
-> 注意本仓最终解析到的是 **async 0.22.4**（高于它声明的 0.20.3，moon 取高版本、没有冲突）。
-> 这些版本会进**发布物的 moon.mod 元数据**。**删声明是独立的语义决定**（要配一轮"vendored 与上游 0.7.2 的
-> diff 复核"），本轮只按 owner 指示升版本，没有动它——下轮想摘就以这条为入口。
+> ⚠️ **本节原先写错过一条（2026-09-26 同日，owner 问"摘了会有啥影响"时实测翻案）**：
+> 原文是"moonmysql 声明是死依赖、全仓零 `@moonmysql` 引用、想摘就以这条为入口"——**结论反了**。
+> 错因在探针本身：我 grep 时把 `vendored/` 目录排除掉了，而**消费者恰恰就住在那个目录里**。
+> 真实用量是 `repository-mysql/vendored/moon_mysql_client/` 里 **75 处 `@moonmysql.*`、27 个不同符号**
+> （`conn.mbt` 72 + `driver.mbt` 3；`ProtocolError` 10、`is_err_packet` 9、`parse_err` 8、
+> `ServerKind` / `QuoteMode` / `parse_handshake` / `build_handshake_response` / `bind_params` …），而该包 `moon.pkg` 的注释一开始
+> 就写明了分工：**"root codec 包仍走 registry 不 vendor"**——vendored 的只有 client 两文件
+> （为绕上游 `supported_targets="native"`，§4 D-M0-2），**协议编解码仍吃注册表那份 moonmysql**。
+> 实测（干净副本里摘掉那行声明）⇒ `moon check` 直接红：
+> `Cannot find import 'moonbitstack/moonmysql' in …/vendored/moon_mysql_client@0.1.14`；
+> 且摘掉后 `.mooncakes/` 只剩 `async / moondb / moonpool / moondate`——
+> 说明 `moonbase/mooncred/mooncrypt/moonjson/moonvar` 这一串**确实只由这条声明带进来**，
+> 但那是"摘不动"的代价，不是"可以摘"的理由。**要真摘，得先把 codec 一起 vendored，那是独立一轮工程。**
+>
+> 翻案后留下一条更该盯的事实：**混代是真的**——vendored client 拷自 **0.4.0**，
+> registry codec 本轮升到 **0.7.2**，两者同时在跑。`moon check` 管不到它（类型层面对得上），
+> 判据只能落在真机协议路径：0.7.2 物化状态下 T1 仓储级 **111 格** + T1-F 门面级 **104 格** 全绿
+> （握手、认证、报文编解码都在其中；收口后又以同窗口读数复跑一次，0 FAIL）。
+> 下一轮若上游 client 放开 native（D-M0-2 的 vendoring 理由消失），就把 client 与 codec 一起回到
+> 同源版本，届时这条混代说明可撤。
+>
+> 另记一条解析行为：moonmysql 声明自己要 `async@0.20.3`，本仓钉的是 `0.22.4`，
+> moon 取高版本、无冲突（所以本仓最终物化 0.22.4）。
 >
 > ⚠️ 判"某个 bump 是不是本机 native 的锅"的姿势：native 在 Windows 从来编不了（上面那条框），
 > 所以本机 native 失败**不构成回退证据**；要判 bump 好坏看 wasm 全门禁 + CI 的 native job。

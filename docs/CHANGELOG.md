@@ -15,9 +15,15 @@ pin 写在各 `*/moon.mod`，**随本版发布后** `moon add mldong/jeeflow-*@0
   证"pin 真生效"；② 比快照按**载荷**比、不按文件字节比——本工具链 `moon run` 的 stdout
   末尾多吐一个 `\n`，按字节数比会误报成"输出变了"。
 - 对外形状零变化：HTTP 出口、46 个 action、SPI 签名、错误码与 0.1.13 一致。
-- 顺手记一条依赖面事实：`repository-mysql` 声明的 moonmysql 在本仓**零引用**（实际用的是
-  vendored 副本，缘由见 MAINTAINING §1「依赖版本」与 §4 D-M0-2）。摘掉这条声明是独立的
-  语义决定（要配一轮 vendored ↔ 上游 0.7.2 的 diff 复核），本版没动它。
+- **依赖面事实（本节曾写错、同日实测更正）**：`repository-mysql` 声明的 moonmysql **不是死依赖，摘不掉**。
+  vendored 的只有 client 两文件（绕上游 `supported_targets="native"`，见 MAINTAINING §4 D-M0-2），
+  **协议编解码那半（root codec）仍走注册表**——`vendored/moon_mysql_client/` 里 **75 处
+  `@moonmysql.*`、27 个不同符号**（`ServerKind`/`QuoteMode`/`parse_handshake`/`build_handshake_response`/`parse_err` …）。
+  副本实测：删掉声明 ⇒ `moon check` 报 `Cannot find import 'moonbitstack/moonmysql' in …/vendored/moon_mysql_client`。
+  要真摘得把 codec 一并 vendored，那是独立一轮。⇒ 连带一条该盯的：**本版是混代**
+  （vendored client 拷自 0.4.0 + registry codec 0.7.2 同时在跑），`moon check` 测不到它，
+  判据在真机协议路径：T1 111 格 + T1-F 104 格全绿（收口后同窗口复跑再验一次，0 FAIL）。
+  详见 MAINTAINING §1「依赖版本」。
 - 本机 Windows 的 `moon build --target native` 仍编不过 async 的 C 臂（MSVC-only，
   `thread_pool.c` / `fs.c` / `event_bus.c` 三处 `#error`），**0.20.3 起即如此**——
   它既不是本版的回退证据，native 通道的真验证在 CI（Linux）。
