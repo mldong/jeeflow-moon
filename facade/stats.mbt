@@ -167,7 +167,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::stats_overview(
     }
   }
   // todayNew：恒按当前钟当天
-  let today_prefix = @model.current_time_str().substring(start=0, end=10).to_string()
+  let today_prefix = @model.current_time_str()[0:10].to_owned()
   let mut today_new = 0L
   for inst in all {
     match inst.create_time {

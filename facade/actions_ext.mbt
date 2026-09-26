@@ -433,7 +433,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
         surrogate: arg_str(args, "surrogate").unwrap_or(""),
         start_time: parse_surrogate_time(arg_str(args, "startTime")),
         end_time: parse_surrogate_time(arg_str(args, "endTime")),
-        enabled: arg_i64_or(args, "enabled", 1L) |> _.to_int(),
+        enabled: arg_i64_or(args, "enabled", 1L).to_int(),
         create_time: Some(@model.current_time_str()),
         create_user: Some(operator),
         update_time: None,

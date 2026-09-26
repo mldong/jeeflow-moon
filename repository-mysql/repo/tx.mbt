@@ -15,7 +15,7 @@ pub fn current_tx_conn() -> @client.MysqlConn? {
 
 ///|
 /// MysqlRepository.open() 在事务态复用环境连接
-async fn open_or_tx(self : MysqlRepository) -> @client.MysqlConn raise @error.JeeflowError {
+async fn MysqlRepository::open_or_tx(self : MysqlRepository) -> @client.MysqlConn raise @error.JeeflowError {
   match tx_conn.val {
     Some(conn) => conn
     None => self.open()

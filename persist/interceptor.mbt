@@ -23,7 +23,7 @@ pub fn PersistPostInterceptor::as_interceptor(
   self : PersistPostInterceptor
 ) -> @spi.InterceptorFn {
   let it = self
-  { order: 100, run: fn(exec) { it.intercept(exec) } }
+  { order: 100, run: (exec) => it.intercept(exec) }
 }
 
 ///|

@@ -184,6 +184,25 @@ async fn t1_m3_mparams() -> Unit raise {
   clean_9x(repo)
 }
 
+/// 事务体：两条 INSERT 后主动抛错。抽成具名 async fn 是因为内联 `fn() { … }` 闭包
+/// 在本工具链下两头堵——不标 async 吃 deprecated_syntax，标了 `async fn()` 又把效应推成
+/// 开放 Error、与 execute_in_tx 声明的闭集 raise JeeflowError 不匹配。
+async fn t1_m4_boom_tx() -> Unit raise @error.JeeflowError {
+  let conn = @repo.current_tx_conn().unwrap()
+  let _ = @repo.x(
+    conn,
+    "INSERT INTO wf_process_instance (id, process_define_id, state, operator, variable, create_time, create_user) VALUES (990020, 990001, 10, 'user9x', '{}', NOW(), 't1')",
+    [],
+  )
+  let _ = @repo.x(
+    conn,
+    "INSERT INTO wf_process_task (id, process_instance_id, task_name, display_name, task_state, create_time, create_user) VALUES (990021, 990020, 'apply', 'A', 10, NOW(), 't1')",
+    [],
+  )
+  raise @error.Business("boom-in-tx")
+}
+
+///|
 ///|
 /// T1-M4：事务回滚无半完成实例（§6.2 语义级）
 async fn t1_m4_tx_rollback() -> Unit raise {
@@ -193,20 +212,7 @@ async fn t1_m4_tx_rollback() -> Unit raise {
   // 事务模板现在直接 raise：旧 `outcome is Err(_)` 物化成 Bool。
   // 判据不空转——若模板把回调异常吞了（回滚语义退化成"静默成功"），false ⇒ 这格红。
   let raised = try {
-    tpl.execute_in_tx(fn() {
-      let conn = @repo.current_tx_conn().unwrap()
-      let _ = @repo.x(
-        conn,
-        "INSERT INTO wf_process_instance (id, process_define_id, state, operator, variable, create_time, create_user) VALUES (990020, 990001, 10, 'user9x', '{}', NOW(), 't1')",
-        [],
-      )
-      let _ = @repo.x(
-        conn,
-        "INSERT INTO wf_process_task (id, process_instance_id, task_name, display_name, task_state, create_time, create_user) VALUES (990021, 990020, 'apply', 'A', 10, NOW(), 't1')",
-        [],
-      )
-      raise @error.Business("boom-in-tx")
-    })
+    tpl.execute_in_tx(t1_m4_boom_tx)
     false
   } catch {
     _ => true

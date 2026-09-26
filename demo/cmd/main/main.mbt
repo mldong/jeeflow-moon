@@ -64,7 +64,7 @@ async fn main {
   println("jeeflow-moon demo listening on \{listen} store=\{app.store}")
   let addr = @socket.Addr::parse(listen)
   let server = @http.Server(addr, reuse_addr=true)
-  server.run_forever() <| fn(req, body, conn) {
+  server.run_forever() <| async fn(req, body, conn) {
     handle(app, req, body, conn)
   }
 }

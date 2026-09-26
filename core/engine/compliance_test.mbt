@@ -13,7 +13,7 @@ fn make_test_engine() -> (@engine.Engine[@mem.MemoryRepository, @mem.MemoryRepos
 
 ///|
 fn simple_flow_json() -> String {
-  $|  {"name": "test-flow", "displayName": "Test Flow", "type": "approval",
+  let s = $|  {"name": "test-flow", "displayName": "Test Flow", "type": "approval",
 $|   "nodes": [
 $|     {"id": "start", "type": "snaker:start", "text": {"value": "Start"}},
 $|     {"id": "apply", "type": "snaker:task", "text": {"value": "Apply"},
@@ -25,6 +25,7 @@ $|     {"id": "e1", "sourceNodeId": "start", "targetNodeId": "apply"},
 $|     {"id": "e2", "sourceNodeId": "apply", "targetNodeId": "end"}
 $|   ]}
 $|  
+  s
 }
 
 ///|

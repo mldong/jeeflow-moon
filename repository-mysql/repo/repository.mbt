@@ -220,7 +220,7 @@ fn map_mysql_task(r : @moondb.Row, actor_ids : Array[String]) -> @model.ProcessT
 
 ///|
 /// 任务行 → ProcessTask + 参与人批量水合（rust tasks_from_rows：is_allowed 依赖 actor_ids）
-async fn hydrate_tasks(self : MysqlRepository, rows : Array[@moondb.Row]) -> Array[@model.ProcessTask] raise @error.JeeflowError {
+async fn MysqlRepository::hydrate_tasks(self : MysqlRepository, rows : Array[@moondb.Row]) -> Array[@model.ProcessTask] raise @error.JeeflowError {
   let conn = self.open_or_tx()
   let out : Array[@model.ProcessTask] = []
   for r in rows {

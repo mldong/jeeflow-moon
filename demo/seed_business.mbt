@@ -431,7 +431,7 @@ fn sb_actor(t : Json) -> String? {
   match @json.get(t, "taskActorIdList") {
     Some(list) => match @json.as_array(list) {
       Some(arr) => if arr.length() > 0 {
-        arr[0].as_string()
+        @json.as_str(arr[0])
       } else {
         None
       }

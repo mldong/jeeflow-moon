@@ -7,7 +7,7 @@
 ///|
 /// 两节点线性流：apply(applicant) → task1(leader) → end（契约示例同形：leader 转办给 lisi）
 fn linear_flow_json() -> String {
-  $|{"name": "wt-linear", "displayName": "撤回转办流程", "type": "approval",
+  let s = $|{"name": "wt-linear", "displayName": "撤回转办流程", "type": "approval",
   $| "nodes": [
   $|   {"id": "start", "type": "snaker:start", "text": {"value": "S"}},
   $|   {"id": "apply", "type": "snaker:task", "text": {"value": "申请"},
@@ -22,13 +22,14 @@ fn linear_flow_json() -> String {
   $|   {"id": "e3", "sourceNodeId": "task1", "targetNodeId": "end"}
   $| ]}
 $| 
+  s
 }
 
 ///|
 /// 单人多参与人的普通任务（performType=0）：一个任务行挂两个参与者，
 /// 转办只摘 fromActor 一行、另一人必须不受影响
 fn shared_task_flow_json() -> String {
-  $|{"name": "wt-shared", "displayName": "共享待办流程", "type": "approval",
+  let s = $|{"name": "wt-shared", "displayName": "共享待办流程", "type": "approval",
   $| "nodes": [
   $|   {"id": "start", "type": "snaker:start", "text": {"value": "S"}},
   $|   {"id": "apply", "type": "snaker:task", "text": {"value": "申请"},
@@ -43,12 +44,13 @@ fn shared_task_flow_json() -> String {
   $|   {"id": "e3", "sourceNodeId": "task1", "targetNodeId": "end"}
   $| ]}
 $| 
+  s
 }
 
 ///|
 /// 并行会签（performType=1）：每人一个独立任务，转的是"自己那一票"
 fn countersign_flow_json() -> String {
-  $|{"name": "wt-cs", "displayName": "并行会签流程", "type": "approval",
+  let s = $|{"name": "wt-cs", "displayName": "并行会签流程", "type": "approval",
   $| "nodes": [
   $|   {"id": "start", "type": "snaker:start", "text": {"value": "S"}},
   $|   {"id": "apply", "type": "snaker:task", "text": {"value": "申请"},
@@ -64,6 +66,7 @@ fn countersign_flow_json() -> String {
   $|   {"id": "e3", "sourceNodeId": "task1", "targetNodeId": "end"}
   $| ]}
 $| 
+  s
 }
 
 // ── 参数 / 信封助手 ──

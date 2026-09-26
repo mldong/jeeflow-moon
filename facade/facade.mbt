@@ -206,7 +206,7 @@ fn matches_filter(row : Json, f : @model.QueryFilter) -> Bool {
   let camel_col = camel_to_snake_inverse_for(f)
   let field_val = match @json.get(row, camel_col) {
     Some(v) => Some(v)
-    None => row.value(f.column())
+    None => @json.get(row, f.column())
   }
   let field_str = match field_val {
     Some(Json::String(s)) => s

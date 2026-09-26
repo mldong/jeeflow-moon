@@ -242,7 +242,7 @@ async test "批次121: detail 出口的 ext.isFirstTaskNode 以落库值为准�
   let iid = sg_started(facade, did)
   let env = facade.flow("processInstance/detail", targs([("id", iid.to_string())]))
   sg_ok(code_of(env) == 0L, "detail 应成功（msg=\{msg_of(env)}）")
-  let rows = match data_of(env).value("tasks") {
+  let rows = match @json.get(data_of(env), "tasks") {
     Some(Json::Array(a)) => a
     _ => []
   }

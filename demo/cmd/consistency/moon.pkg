@@ -5,6 +5,6 @@ import {
   "mldong/jeeflow-core/model" @model,
   "mldong/jeeflow-core/spi" @spi,
   "mldong/jeeflow-facade" @facade,
-  "moonbitlang/async" @async,
+  "moonbitlang/async",
 }
 pkgtype(kind: "executable")

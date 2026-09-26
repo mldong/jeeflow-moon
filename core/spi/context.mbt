@@ -31,7 +31,7 @@ pub(all) struct JsonProviderFns {
 pub fn default_json_provider() -> JsonProviderFns {
   {
     to_json: fn(v) { v.stringify() },
-    from_json: fn(s) { @json.parse_json(s) },
+    from_json: (s) => @json.parse_json(s),
     is_json: fn(s) { @cjson.valid(s) },
   }
 }
