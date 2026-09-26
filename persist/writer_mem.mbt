@@ -141,6 +141,7 @@ pub impl DynamicTableWriter for InMemoryTableWriter with fn update_by_key(self, 
 
 ///|
 pub impl DynamicTableWriter for InMemoryTableWriter with fn columns(self, _table_name, candidates) {
+  let _ = self
   candidates.copy()
 }
 

@@ -1,8 +1,8 @@
 import {
   "mldong/jeeflow-core/model" @model,
-  "mldong/jeeflow-core/json" @json,
   "moonbitstack/moondb" @moondb,
 }
 
 import {
+  "mldong/jeeflow-core/json" @json,
 } for "test"

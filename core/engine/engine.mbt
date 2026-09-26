@@ -433,6 +433,7 @@ fn compare_values(left : String, right : String) -> Int? {
 ///|
 /// ${var} 与 #var 引用替换（# 会签门控变量优先 gate_vars）
 fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::resolve_var_refs(self : Engine[R, E], expr : String, exec : @exec.Execution) -> String raise @error.JeeflowError {
+  let _ = self
   let mut result = expr
   // ${var}
   let mut cont = true

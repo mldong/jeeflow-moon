@@ -76,7 +76,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_todo_tasks(self
   let count_rows = q(conn, count_sql, count_params)
   let total = if count_rows.is_empty() { 0L } else { row_i64(count_rows[0], "cnt") }
   let sql = "SELECT DISTINCT t.id, t.process_instance_id, t.task_name, t.display_name, t.task_type, t.perform_type, t.task_state, t.operator AS actor_id, t.finish_time, t.expire_time, t.form_key, t.task_parent_id, t.variable, t.create_time, t.create_user, t.update_time, t.update_user, pi.process_define_id, pi.state AS instance_state, pi.operator AS instance_operator, pi.business_no, pi.variable AS instance_variable, pi.create_time AS instance_create_time, pd.name AS define_name, pd.display_name AS define_display_name, pd.version AS define_version FROM wf_process_task t LEFT JOIN wf_process_task_actor ta ON ta.process_task_id = t.id LEFT JOIN wf_process_instance pi ON pi.id = t.process_instance_id LEFT JOIN wf_process_define pd ON pd.id = pi.process_define_id WHERE t.task_state = 10" + m_where + (match operator {
-      Some(op) => " AND ta.actor_id = ?"
+      Some(_op) => " AND ta.actor_id = ?"
       None => ""
     }) + " ORDER BY t.id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()
   let params : Array[@moondb.Value] = []
@@ -163,7 +163,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_instances(self,
   let count_rows = q(conn, count_sql, count_params)
   let total = if count_rows.is_empty() { 0L } else { row_i64(count_rows[0], "cnt") }
   let sql = "SELECT pi.id, pi.parent_id, pi.process_define_id, pi.state, pi.parent_node_name, pi.business_no, pi.operator, pi.expire_time, pi.variable, pi.create_time, pi.create_user, pi.update_time, pi.update_user, pd.name AS define_name, pd.display_name AS define_display_name, pd.version AS define_version FROM wf_process_instance pi LEFT JOIN wf_process_define pd ON pd.id = pi.process_define_id WHERE 1=1" + m_where + (match operator {
-      Some(op) => " AND pi.operator = ?"
+      Some(_op) => " AND pi.operator = ?"
       None => ""
     }) + " ORDER BY pi.id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()
   let params : Array[@moondb.Value] = []

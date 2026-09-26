@@ -140,7 +140,8 @@ fn PersistPostInterceptor::intercept_sync(
 
 ///|
 /// 表名：relTableName 缺省回落流程 name
-fn PersistPostInterceptor::resolve_table(self : PersistPostInterceptor, model : @parser.ProcessModel) -> String? {
+fn PersistPostInterceptor::resolve_table(self : PersistPostInterceptor, model : @parser.ProcessModel) -> String? {
+  let _ = self
   let name = match model.rel_table_name {
     Some(t) => t
     None => model.name
@@ -166,8 +167,9 @@ fn PersistPostInterceptor::meta(self : PersistPostInterceptor, table : String) -
 fn PersistPostInterceptor::filter_editable(
   self : PersistPostInterceptor,
   meta : TableMeta,
-  data : Map[String, Json]
-) -> Map[String, Json] {
+  data : Map[String, Json]
+) -> Map[String, Json] {
+  let _ = self
   let filtered : Map[String, Json] = Map([])
   for field in meta.fields {
     if field.is_editable() {

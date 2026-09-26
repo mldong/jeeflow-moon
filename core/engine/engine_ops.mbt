@@ -483,6 +483,7 @@ fn is_control_var_key(k : String) -> Bool {
 fn[R, E] Engine::rollback_to_parent(
   self : Engine[R, E], exec : @exec.Execution
 ) -> Unit raise @error.JeeflowError {
+  let _ = self
   let current = match exec.process_task {
     None => raise @error.Business("上一步任务ID为空，无法驳回至上一步处理")
     Some(t) => t

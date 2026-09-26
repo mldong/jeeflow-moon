@@ -336,7 +336,7 @@ async fn[R : @spi.ProcessRepository, E] Facade::save_deployed_define(self : Faca
 
 ///|
 /// listByType：发起页数据契约（issues/28；分组契约 C14）
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::design_list_by_type(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::design_list_by_type(self : Facade[R, E], _args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let ext = self.ext()
   let query = @model.PageQuery::new(1L, 2147483646L)
   let design_page = ext.page_designs(query)

@@ -1,4 +1,7 @@
 import {
   "mldong/jeeflow-core/model" @model,
-  "mldong/jeeflow-core/json" @json,
 }
+
+import {
+  "mldong/jeeflow-core/json" @json,
+} for "test"

@@ -20,6 +20,7 @@ pub(all) suberror JeeflowError {
 
 ///|
 pub fn JeeflowError::code(self : JeeflowError) -> Int64 {
+  let _ = self
   ERR_BUSINESS
 }
 

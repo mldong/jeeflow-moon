@@ -6,7 +6,6 @@ import {
   "mldong/jeeflow-core/json" @json,
   "mldong/jeeflow-core/error" @error,
   "mldong/jeeflow-core/event" @event,
-  "mldong/jeeflow-core/id_gen" @id_gen,
   "moonbitlang/core/string" @string,
 }
 
@@ -17,4 +16,5 @@ import {
   "mldong/jeeflow-core/memory" @mem,
   "mldong/jeeflow-core/interceptor" @itl,
   "mldong/jeeflow-core/metadata" @metadata,
+  "mldong/jeeflow-core/id_gen" @id_gen,
 } for "test"

@@ -180,7 +180,7 @@ async test "c31: form field assignee on resume (L3 S11-B)" {
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() }).with_user_provider(compliance_user_provider)
   // 注册 7 内置 handler（rust register_builtin_assignment_handlers 同款）
-  let base : @itl.OrgAssignBase = { user: Some(compliance_user_provider), org: None }
+  let _base : @itl.OrgAssignBase = { user: Some(compliance_user_provider), org: None }
   ctx2.register_assignment_handler(
     "com.mldong.jeeflow.interceptor.impl.OperatorAssignmentHandler",
     @itl.operator_assignment_handler(),
@@ -298,7 +298,7 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
   let apply = repo.find_doing_tasks(inst.instance_id, [])[0]
   match apply.parent_task_id {
     Some(0L) => ()
-    other => fail("前置条件：发起那条 parent 应为 0L")
+    _ => fail("前置条件：发起那条 parent 应为 0L")
   }
   // 新效果系统下调用不再返回 Result：抛错与否用 None/Some 物化，
   // 两臂逐字对应旧 `Ok(_) => fail / Err(e) => 判文案`。
