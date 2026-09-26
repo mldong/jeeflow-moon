@@ -140,7 +140,7 @@ pub fn filter_fields_by_permission(
   for key, value in args.inner() {
     if key.has_prefix("f_") {
       let perm_key = "PERMISSION_\{key}"
-      let perm_key_no_prefix = "PERMISSION_\{key.substring(start=2)}"
+      let perm_key_no_prefix = "PERMISSION_\{key[2:]}"
       let perm = match permissions.get(perm_key) {
         Some(p) => p
         None =>

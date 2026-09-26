@@ -192,7 +192,7 @@ fn row_opt_int(r : @moondb.Row, col : String) -> Int? {
 /// DATETIME 文本归一：text 协议回 "2026-09-05 12:34:56[.fff]" → 截 19 位（C7：yyyy-MM-dd HH:mm:ss）
 fn norm_datetime(s : String) -> String {
   if s.length() > 19 {
-    s.substring(start=0, end=19).to_string()
+    s[0:19].to_owned()
   } else {
     s
   }

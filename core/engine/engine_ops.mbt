@@ -287,7 +287,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
     } else {
       let has_expr_cond = match cond {
         Some(c) => {
-          let cc = c.trim(chars=" \t\r\n").to_string()
+          let cc = c.trim(chars=" \t\r\n").to_owned()
           !cc.is_empty() && cc.to_lower() != "one_vote_veto"
         }
         None => false
@@ -300,7 +300,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
         exec.process_instance.variables.insert_i64("nrOfInstances", total.to_int64())
         exec.process_instance.variables.insert_i64("nrOfActivateInstances", doing_count.to_int64())
         exec.process_instance.variables.insert_i64("nrOfCompletedInstances", finished_count.to_int64())
-        let cond_str = cond.unwrap().trim(chars=" \t\r\n").to_string()
+        let cond_str = cond.unwrap().trim(chars=" \t\r\n").to_owned()
         let merged = self.simple_eval(cond_str, exec)
         if merged {
           self.abandon_countersign_remaining(exec, node_id)

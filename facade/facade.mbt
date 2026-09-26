@@ -117,7 +117,7 @@ pub fn facade_parse_m_filters(args : Map[String, Json]) -> Array[@model.QueryFil
       Json::String(s) => s
       other => @json.stringify(other)
     }
-    let rest = key.substring(start=2).to_string()
+    let rest = key[2:].to_owned()
     let parts = split_char(rest, '_')
     if parts.length() >= 3 {
       let table_alias = parts[0]

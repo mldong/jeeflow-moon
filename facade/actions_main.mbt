@@ -273,7 +273,7 @@ fn arg_required_str(
   key : String,
   msg : String
 ) -> String raise @error.JeeflowError {
-  let v = arg_str(args, key).unwrap_or("").trim(chars=" \t\r\n").to_string()
+  let v = arg_str(args, key).unwrap_or("").trim(chars=" \t\r\n").to_owned()
   if v.is_empty() {
     raise @error.Business(msg)
   }
@@ -695,7 +695,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::candidate_page(self : Facade
 fn split_comma(s : String) -> Array[String] {
   let out : Array[String] = []
   for part in s.split(",") {
-    let t = part.to_string().trim(chars=" \t\r\n").to_string()
+    let t = part.to_string().trim(chars=" \t\r\n").to_owned()
     if !t.is_empty() {
       out.push(t)
     }
@@ -766,7 +766,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::task_transfer(self : Facade[
   (self.repo).remove_task_actor(task_id, [from_actor])
   (self.repo).add_task_actor(task_id, [to_actor])
   // 语义 4 留痕①：跨跳追加式账本 tf_transferHistory——每跳 append，只追加不覆盖
-  let reason = arg_str(args, "reason").unwrap_or("").trim(chars=" \t\r\n").to_string()
+  let reason = arg_str(args, "reason").unwrap_or("").trim(chars=" \t\r\n").to_owned()
   let history = @json.empty_array()
   match task.variables.get("tf_transferHistory") {
     Some(Json::Array(items)) =>

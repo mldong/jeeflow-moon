@@ -105,7 +105,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_done_tasks(self
   // 本轮不把 doneList 的 operator 改成硬必填（前端 + drift_gate 另轮统一收），
   // 但仓储层必须堵死"空即全量"。内存仓 `core/memory/memory.mbt` 同口径。
   let operator = match query.operator() {
-    Some(op) => op.trim(chars=" \t\r\n").to_string()
+    Some(op) => op.trim(chars=" \t\r\n").to_owned()
     None => ""
   }
   if operator.is_empty() {

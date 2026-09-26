@@ -104,10 +104,10 @@ fn[R, E] Engine::surrogate_process_name(
   exec : @exec.Execution
 ) -> String {
   let _ = self
-  let model_name = exec.process_model.name.trim(chars=" \t\r\n").to_string()
+  let model_name = exec.process_model.name.trim(chars=" \t\r\n").to_owned()
   if !model_name.is_empty() && model_name != "unknown" {
     model_name
   } else {
-    exec.process_define.name.trim(chars=" \t\r\n").to_string()
+    exec.process_define.name.trim(chars=" \t\r\n").to_owned()
   }
 }

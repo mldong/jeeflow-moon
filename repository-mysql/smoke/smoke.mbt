@@ -408,7 +408,7 @@ async fn select_cell_dt(
 ///|
 /// DATETIME(3) 文本比较取前 19 位（列带 `.000` 尾巴时不影响判据；C7 同口径）
 fn head19(s : String) -> String {
-  if s.length() >= 19 { s.substring(start=0, end=19).to_string() } else { s }
+  if s.length() >= 19 { s[0:19].to_owned() } else { s }
 }
 
 ///|

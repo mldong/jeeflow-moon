@@ -122,7 +122,7 @@ fn[R, E] Engine::resolve_assignee(self : Engine[R, E], exec : @exec.Execution, n
   match node.candidate_users() {
     Some(users) => {
       for u in users.split(",") {
-        let s = u.to_string().trim(chars=" \t\r\n").to_string()
+        let s = u.to_string().trim(chars=" \t\r\n").to_owned()
         if !s.is_empty() {
           actors.push(s)
         }
@@ -137,7 +137,7 @@ fn[R, E] Engine::resolve_assignee(self : Engine[R, E], exec : @exec.Execution, n
 fn split_actors(s : String) -> Array[String] {
   let out : Array[String] = []
   for part in s.split(",") {
-    let t = part.to_string().trim(chars=" \t\r\n").to_string()
+    let t = part.to_string().trim(chars=" \t\r\n").to_owned()
     if !t.is_empty() {
       out.push(t)
     }
@@ -365,14 +365,14 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::evaluate_e
 ///|
 /// 简单表达式求值：比较运算 + ${var}/#var 引用 + 布尔字面量
 fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::simple_eval(self : Engine[R, E], expr : String, exec : @exec.Execution) -> Bool raise @error.JeeflowError {
-  let e = expr.trim(chars=" \t\r\n").to_string()
+  let e = expr.trim(chars=" \t\r\n").to_owned()
   let resolved = self.resolve_var_refs(e, exec)
   // 比较运算（先长后短避免误切）
   for op in [">=", "<=", "!=", "==", ">", "<"] {
     match resolved.find(op) {
       Some(pos) => {
-        let left = resolved.substring(start=0, end=pos).to_string().trim(chars=" \t\r\n").to_string()
-        let right = resolved.substring(start=pos + op.length()).to_string().trim(chars=" \t\r\n").to_string()
+        let left = resolved[0:pos].trim(chars=" \t\r\n").to_owned()
+        let right = resolved[pos + op.length():].trim(chars=" \t\r\n").to_owned()
         let ordering = compare_values(left, right)
         if op == ">" {
           return match ordering { Some(2) => true; _ => false }
@@ -439,14 +439,14 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::resolve_va
   while cont {
     match result.find("$" + "{") {
       Some(s) =>
-        match result.substring(start=s).find("}") {
+        match result[s:].find("}") {
           Some(offset) => {
-            let var_name = result.substring(start=s + 2, end=s + offset).to_string()
+            let var_name = result[s + 2:s + offset].to_owned()
             let value = match exec.args.get_str(var_name) {
               Some(v) => v
               None => "0"
             }
-            result = result.substring(start=0, end=s).to_string() + value + result.substring(start=s + offset + 1).to_string()
+            result = result[0:s].to_owned() + value + result[s + offset + 1:].to_owned()
           }
           None => cont = false
         }
@@ -471,7 +471,7 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::resolve_va
           break
         }
       }
-      let var_name = result.substring(start=start, end=end).to_string()
+      let var_name = result[start:end].to_owned()
       let value = match exec.gate_vars.get_str(var_name) {
         Some(v) => Some(v)
         None => exec.args.get_str(var_name)
@@ -625,7 +625,7 @@ pub fn parse_cc_actors(v : Json?) -> Array[String] {
       }
     Some(Json::String(s)) => {
       for part in s.split(",") {
-        let t = part.to_string().trim(chars=" \t\r\n").to_string()
+        let t = part.to_string().trim(chars=" \t\r\n").to_owned()
         if !t.is_empty() {
           out.push(t)
         }

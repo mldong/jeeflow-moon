@@ -241,7 +241,7 @@ pub fn arg_actor_ids(args : Map[String, Json]) -> Array[String] {
       }
     Some(Json::String(s)) => {
       for part in s.split(",") {
-        let t = part.to_string().trim(chars=" \t\r\n").to_string()
+        let t = part.to_string().trim(chars=" \t\r\n").to_owned()
         if !t.is_empty() {
           out.push(t)
         }

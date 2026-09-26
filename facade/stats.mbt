@@ -4,16 +4,16 @@
 ///|
 /// "yyyy-MM-dd[ HH:mm[:ss]]" → epoch 秒（civil 算法逆运算）
 pub fn parse_epoch_secs(s : String) -> Int64? {
-  let t = s.trim(chars=" \t\r\n").to_string()
+  let t = s.trim(chars=" \t\r\n").to_owned()
   if t.length() < 10 {
     return None
   }
   // parse_int 现签名 `-> Int raise`：日期三段任一失败 ⇒ 不是这个格式 ⇒ None。
   // 兜底挪进 parse_int_or_none（非 raise 函数里裸调会 raise 的函数，编译器直接拒绝），
   // 调用点形状与旧 Ok/Err 三档一一对应，只换构造器名。
-  let y = parse_int_or_none(t.substring(start=0, end=4).to_string())
-  let mo = parse_int_or_none(t.substring(start=5, end=7).to_string())
-  let d = parse_int_or_none(t.substring(start=8, end=10).to_string())
+  let y = parse_int_or_none(t[0:4].to_owned())
+  let mo = parse_int_or_none(t[5:7].to_owned())
+  let d = parse_int_or_none(t[8:10].to_owned())
   let (y, mo, d) = match (y, mo, d) {
     (Some(a), Some(b), Some(c)) => (a, b, c)
     _ => return None
@@ -23,9 +23,9 @@ pub fn parse_epoch_secs(s : String) -> Int64? {
   let mut ss = 0
   if t.length() >= 19 {
     // 时间三段解析失败保持 0（旧 Err ⇒ () 语义）
-    hh = parse_int_or(t.substring(start=11, end=13).to_string(), 0)
-    mi = parse_int_or(t.substring(start=14, end=16).to_string(), 0)
-    ss = parse_int_or(t.substring(start=17, end=19).to_string(), 0)
+    hh = parse_int_or(t[11:13].to_owned(), 0)
+    mi = parse_int_or(t[14:16].to_owned(), 0)
+    ss = parse_int_or(t[17:19].to_owned(), 0)
   }
   let days = days_from_civil(y, mo, d)
   Some(days.to_int64() * 86400L + (hh * 3600 + mi * 60 + ss).to_int64())
@@ -171,7 +171,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::stats_overview(
   let mut today_new = 0L
   for inst in all {
     match inst.create_time {
-      Some(ct) => if ct.substring(start=0, end=10).to_string() == today_prefix { today_new = today_new + 1L }
+      Some(ct) => if ct[0:10] == today_prefix { today_new = today_new + 1L }
       None => ()
     }
   }

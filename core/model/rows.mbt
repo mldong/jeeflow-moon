@@ -80,20 +80,20 @@ pub fn ProcessSurrogate::is_effective(self : ProcessSurrogate, operator : String
     return false
   }
   // 与 Java 同形：只 trim 被委托人一侧（`surrogate` 是台账里的自由输入）
-  let agent = self.surrogate.trim(chars=" \t\r\n").to_string()
+  let agent = self.surrogate.trim(chars=" \t\r\n").to_owned()
   if agent.is_empty() {
     return false
   }
   if agent == operator {
     return false
   }
-  let now = time.trim(chars=" \t\r\n").to_string()
+  let now = time.trim(chars=" \t\r\n").to_owned()
   if now.is_empty() {
     return true
   }
   match self.start_time {
     Some(s) => {
-      let v = s.trim(chars=" \t\r\n").to_string()
+      let v = s.trim(chars=" \t\r\n").to_owned()
       if !v.is_empty() && v.compare(now) > 0 {
         return false
       }
@@ -102,7 +102,7 @@ pub fn ProcessSurrogate::is_effective(self : ProcessSurrogate, operator : String
   }
   match self.end_time {
     Some(s) => {
-      let v = s.trim(chars=" \t\r\n").to_string()
+      let v = s.trim(chars=" \t\r\n").to_owned()
       if !v.is_empty() && v.compare(now) < 0 {
         return false
       }

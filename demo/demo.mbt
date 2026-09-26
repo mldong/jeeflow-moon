@@ -153,7 +153,7 @@ pub async fn seed_memory(repo : @memory.MemoryRepository) -> Unit raise {
     let content = data.text()
     let define_info : @model.ProcessDefine = {
       id,
-      name: name.substring(start=0, end=name.length() - 5).to_string(),
+      name: name[0:name.length() - 5].to_owned(),
       display_name: flow_display_name(content, name),
       define_type: "approval",
       state: 1,

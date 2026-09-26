@@ -30,7 +30,7 @@ pub fn parse_m_params(args : Map[String, Json]) -> Array[@model.QueryFilter] {
     if is_empty_value(value) {
       continue
     }
-    let suffix = key.substring(start=2).to_string()
+    let suffix = key[2:].to_owned()
     let parts = split_underscore(suffix)
     if parts.length() < 2 {
       continue

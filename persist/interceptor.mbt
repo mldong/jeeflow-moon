@@ -145,7 +145,7 @@ fn PersistPostInterceptor::resolve_table(self : PersistPostInterceptor, model : 
     Some(t) => t
     None => model.name
   }
-  let trimmed = name.trim(chars=" \t\r\n").to_string()
+  let trimmed = name.trim(chars=" \t\r\n").to_owned()
   if trimmed.is_empty() {
     None
   } else {
@@ -192,12 +192,12 @@ fn PersistPostInterceptor::extract_fields(
   let data : Map[String, Json] = Map([])
   for key, value in variables.inner() {
     if key.has_prefix("f_") {
-      let name = key.substring(start=2).to_string()
+      let name = key[2:].to_owned()
       if !name.is_empty() && include_form_fields && self.is_editable(field_perm, name) {
         data[name] = value
       }
     } else if key.has_prefix("tf_") {
-      let name = key.substring(start=3).to_string()
+      let name = key[3:].to_owned()
       if !name.is_empty() && include_task_fields {
         data[name] = value
       }

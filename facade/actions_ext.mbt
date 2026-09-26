@@ -402,16 +402,16 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 fn parse_surrogate_time(s : String?) -> String? {
   match s {
     Some(raw) => {
-      let t = raw.trim(chars=" \t\r\n").to_string()
+      let t = raw.trim(chars=" \t\r\n").to_owned()
       if t.is_empty() {
         return None
       }
       if t.length() >= 19 {
         let bytes = t.to_array()
         if bytes[10] == 'T' {
-          return Some(t.substring(start=0, end=10).to_string() + " " + t.substring(start=11, end=19).to_string())
+          return Some(t[0:10].to_owned() + " " + t[11:19].to_owned())
         }
-        return Some(t.substring(start=0, end=19).to_string())
+        return Some(t[0:19].to_owned())
       }
       Some(t)
     }
@@ -570,7 +570,7 @@ fn rel_table_name_of(content : String) -> String? {
     Some(meta) => {
       let t = @json.get_str(meta, "relTableName")
       match t {
-        Some(s) => if !s.trim(chars=" \t\r\n").is_empty() { Some(s.trim(chars=" \t\r\n").to_string()) } else { rel_fallback_name(meta) }
+        Some(s) => if !s.trim(chars=" \t\r\n").is_empty() { Some(s.trim(chars=" \t\r\n").to_owned()) } else { rel_fallback_name(meta) }
         None => rel_fallback_name(meta)
       }
     }
@@ -581,7 +581,7 @@ fn rel_table_name_of(content : String) -> String? {
 ///|
 fn rel_fallback_name(meta : Json) -> String? {
   match @json.get_str(meta, "name") {
-    Some(s) => if !s.trim(chars=" \t\r\n").is_empty() { Some(s.trim(chars=" \t\r\n").to_string()) } else { None }
+    Some(s) => if !s.trim(chars=" \t\r\n").is_empty() { Some(s.trim(chars=" \t\r\n").to_owned()) } else { None }
     None => None
   }
 }

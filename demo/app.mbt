@@ -120,14 +120,14 @@ fn digits_to_int(s : String) -> Int? {
 ///|
 /// 解析小时偏移为秒。上限 UTC+14（50400 秒），越界或格式不符 ⇒ None（调用侧回落 UTC）。
 pub fn parse_tz_offset_seconds(raw : String) -> Int? {
-  let s = raw.trim(chars=" \t\r\n").to_string()
+  let s = raw.trim(chars=" \t\r\n").to_owned()
   if s.is_empty() {
     return None
   }
   let neg = s.has_prefix("-")
   let body =
     if s.has_prefix("+") || s.has_prefix("-") {
-      s.substring(start=1, end=s.length()).to_string()
+      s[1:s.length()].to_owned()
     } else {
       s
     }
@@ -162,8 +162,8 @@ fn hh_mm_to_secs(body : String) -> Int? {
   match body.find(":") {
     None => None
     Some(i) => {
-      let hs = body.substring(start=0, end=i).to_string()
-      let ms = body.substring(start=i + 1, end=body.length()).to_string()
+      let hs = body[0:i].to_owned()
+      let ms = body[i + 1:body.length()].to_owned()
       if ms.contains_char(':') {
         return None
       }
@@ -187,8 +187,8 @@ fn decimal_hours_to_secs(body : String) -> Int? {
   match body.find(".") {
     None => None
     Some(i) => {
-      let hs = body.substring(start=0, end=i).to_string()
-      let fs = body.substring(start=i + 1, end=body.length()).to_string()
+      let hs = body[0:i].to_owned()
+      let fs = body[i + 1:body.length()].to_owned()
       if fs.contains_char('.') {
         return None
       }
@@ -203,7 +203,7 @@ fn decimal_hours_to_secs(body : String) -> Int? {
         } else if fs.length() == 1 {
           fs + "0"
         } else {
-          fs.substring(start=0, end=2).to_string()
+          fs[0:2].to_owned()
         }
       match digits_to_int(pad2) {
         Some(dd) => Some(h * 3600 + dd * 36)
@@ -263,9 +263,9 @@ pub async fn App::handle(self : App, meth : String, path : String, query_string 
   }
   // POST /wf/{action} → facade 全转发
   if path.has_prefix("/wf/") {
-    let action = path.substring(start=4).to_string()
+    let action = path[4:].to_owned()
     // body 解析失败 → 99999999 + stderr（rust issue 88 教训）
-    let trimmed = body.trim(chars=" \t\r\n").to_string()
+    let trimmed = body.trim(chars=" \t\r\n").to_owned()
     // parse_json 现在直接 raise（不再返回 Result）：三档判据原样保留
     // ——空 body 当空对象；坏 JSON 打印并转 99999999（rust issue 88 的教训）；非对象另一条文案。
     let parsed = if trimmed.is_empty() {
@@ -324,8 +324,8 @@ fn query_param(qs : String, key : String) -> String? {
     let idx = kv.find("=")
     match idx {
       Some(i) =>
-        if kv.substring(start=0, end=i).to_string() == key {
-          return Some(kv.substring(start=i + 1).to_string())
+        if kv[0:i] == key {
+          return Some(kv[i + 1:].to_owned())
         }
       None => ()
     }

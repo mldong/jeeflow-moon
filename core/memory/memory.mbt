@@ -20,7 +20,7 @@ fn query_match(q : @model.PageQuery, actor_ids : Array[String]) -> Bool {
 fn done_operator_match(q : @model.PageQuery, t : @model.ProcessTask) -> Bool {
   match q.operator() {
     Some(op) => {
-      let want = op.trim(chars=" \t\r\n").to_string()
+      let want = op.trim(chars=" \t\r\n").to_owned()
       if want.is_empty() {
         false
       } else {
@@ -381,7 +381,7 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_done_tasks(sel
   // ② operator 为空 ⇒ 空页，不得退化成"无过滤 = 全库已办"。
   let rows : Array[@model.TaskRow] = []
   let operator = match query.operator() {
-    Some(op) => op.trim(chars=" \t\r\n").to_string()
+    Some(op) => op.trim(chars=" \t\r\n").to_owned()
     None => ""
   }
   if operator.is_empty() {

@@ -205,12 +205,12 @@ fn format_time_value(v : Json) -> Json {
       if s.length() >= 19 {
         let bytes = s.to_array()
         if bytes[10] == 'T' {
-          let approx = s.substring(start=0, end=10).to_string() + " " + s.substring(start=11, end=19).to_string()
+          let approx = s[0:10].to_owned() + " " + s[11:19].to_owned()
           return @json.string_of(approx)
         }
         // 毫秒尾巴 ".fff" 截断
         if s.length() > 19 && s.to_array()[10] == ' ' {
-          return @json.string_of(s.substring(start=0, end=19).to_string())
+          return @json.string_of(s[0:19].to_owned())
         }
       }
       @json.string_of(s)
@@ -243,7 +243,7 @@ pub fn[T] page_to_json(page : @model.PageResult[T], row_json : (T) -> Json) -> J
 
 ///|
 pub fn parse_graph(content : String) -> Json? {
-  let t = content.trim(chars=" \t\r\n").to_string()
+  let t = content.trim(chars=" \t\r\n").to_owned()
   if t.is_empty() {
     return None
   }
@@ -259,7 +259,7 @@ pub fn parse_json_map(s : String?) -> Map[String, Json] {
   let out : Map[String, Json] = Map([])
   match s {
     Some(raw) => {
-      let t = raw.trim(chars=" \t\r\n").to_string()
+      let t = raw.trim(chars=" \t\r\n").to_owned()
       if !t.is_empty() {
         // 坏 JSON 或非对象 ⇒ 空 map（旧 `_ => ()` / `Err ⇒ ()` 两臂合成一条）
         try {
@@ -287,7 +287,7 @@ pub fn form_data_of_map(vars : Map[String, Json], prefix : String) -> Json {
   for k, v in vars {
     if k.has_prefix(prefix) {
       @json.obj_set(out, k, v)
-      @json.obj_set(out, k.substring(start=prefix.length()).to_string(), v)
+      @json.obj_set(out, k[prefix.length():].to_owned(), v)
     }
   }
   out
