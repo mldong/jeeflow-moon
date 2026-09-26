@@ -47,18 +47,42 @@ export PATH="$HOME/.moon/bin:$PATH"
 | 验收正式口径 / demo 生产态 | native | CI（GitHub runner）/ 开发服务器（debian:bookworm + build-essential 独立容器，O4） |
 
 > ⚠️ Windows 上 **native + async 结构性不可编译**（moonbitlang/async 运行时 C 源硬编码
-> MSVC-only，`thread_pool.c:23 #error`），Windows 本机一律 wasm；不得为绕过而改工具链 C 源。
+> MSVC-only：0.22.4 实测 `thread_pool.c:23`、`fs.c:23`、`event_bus.c:26` 三处
+> `#error "Currently only MSVC is supported on Windows"`，0.20.3 起即如此，**升依赖不会修好也不会更坏**；
+> MinGW 侧另会撞 `FileRenameInfoEx`/`SO_REUSE_MULTICASTPORT` 等未声明符号），
+> Windows 本机一律 wasm；不得为绕过而改工具链 C 源。native 通道的真验证在 CI（Linux）。
 
 ### 依赖版本（registry 包，非工具链）
 
 registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）：
-`moonbitstack/moondb@0.1.8`、`moonbitstack/moonmysql@0.4.0`、`moonbitlang/async@0.20.3`。
+`moonbitstack/moondb@0.2.0`、`moonbitstack/moonmysql@0.7.2`、`moonbitlang/async@0.22.4`。
 这与「工具链 latest-only」是两回事——**依赖包钉版本、编译器不钉**。
+
+> **2026-09-26 依赖换代（0.1.13 → 待发的下一版）**：async `0.20.3→0.22.4`、moondb `0.1.8→0.2.0`、
+> moonmysql `0.4.0→0.7.2`。三个 bump **逐个做、每步全工程 `moon check` 当验收人**，
+> 三次读数都是 **0 error / 11 warning**（11 条 = §1.3 已证伪不可摘的那批误报，一条没多）；
+> 之后的门禁：T0 168/168、T1 仓储级 111 断言 PASS（真机 160）、T1-F 门面级 104 断言 PASS、
+> T2 ALL PASS、manifest 46/46、`consistency/moon.json` **载荷逐字节等值**
+> （md5 `a74cb69323870759bb30ff330d940bd3`；新工具链的 `moon run` stdout 多吐一个 `\n`，
+> 比对要按载荷比、别按文件字节数比——这不是行为变化）。
+> 工具：`scripts/moon_dep_bump.py <old> <new>`（5 个 `*/moon.mod` 字节级替换 + 逐文件命中数断言）。
+>
+> ⚠️ 顺手记下的一条事实：`repository-mysql/moon.mod` 里的 **moonmysql 声明是死依赖**——
+> 本仓源码（含测试）**零处 `@moonmysql` 引用**，实际用的是 `repository-mysql/vendored/moon_mysql_client/`
+> （§4 D-M0-2 的 wasm/native 解锁副本）。留着它 ⇒ 白拉一串传递依赖：moonmysql 0.7.2 直接要
+> `moondb@0.2.0`、`moonvar@0.2.0`、`moonbase@0.4.0`、`mooncred@0.6.0`、`mooncrypt@0.3.1`、`async@0.20.3`，
+> 而 moondb 0.2.0 又带来 `moonpool@0.2.0` + `moondate@0.1.0`（`moon install` 日志里还见到 `moonjson@0.3.0`）。
+> 注意本仓最终解析到的是 **async 0.22.4**（高于它声明的 0.20.3，moon 取高版本、没有冲突）。
+> 这些版本会进**发布物的 moon.mod 元数据**。**删声明是独立的语义决定**（要配一轮"vendored 与上游 0.7.2 的
+> diff 复核"），本轮只按 owner 指示升版本，没有动它——下轮想摘就以这条为入口。
+>
+> ⚠️ 判"某个 bump 是不是本机 native 的锅"的姿势：native 在 Windows 从来编不了（上面那条框），
+> 所以本机 native 失败**不构成回退证据**；要判 bump 好坏看 wasm 全门禁 + CI 的 native job。
 
 > 2026-09-19 坐标迁移：moondb/moonmysql 在 mooncakes 从 `Lfan-ke/` 迁到 `moonbitstack/`
 > （包名同时去连字符：`moon-mysql` → `moonmysql`），旧 `Lfan-ke/*` 停在 0.1.7 / 0.3.1 不再更新。
-> **两者必须成对迁移**——moonmysql 0.4.0 依赖 `moonbitstack/moondb@0.1.8`，若本仓仍钉
-> `Lfan-ke/moondb@0.1.7` 会同时物化两套 moondb，`@moondb.Value`/`Row` 成为不同类型而编译失败。
+> **两者必须成对迁移**——moonmysql 依赖 `moonbitstack/moondb`（0.4.0 要 0.1.8，0.7.2 要 0.2.0），
+> 若本仓仍钉 `Lfan-ke/moondb@0.1.7` 会同时物化两套 moondb，`@moondb.Value`/`Row` 成为不同类型而编译失败。
 > 详见 §4 D-M6-1。
 
 ### 语法口径备忘（moonc 0.10.x 实测，M1 起照此写）
