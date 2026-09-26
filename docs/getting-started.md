@@ -21,7 +21,7 @@
 ## 安装（作为 SDK 依赖）
 
 mooncakes.io 正式版本（0.1.x 线）。核心引擎仅依赖 MoonBit 标准库，按需引入仓储/门面——
-`moon add` 不带版本即拉 latest，自动把解析到的精确版本写进 moon.mod（实测 0.1.13，
+`moon add` 不带版本即拉 latest，自动把解析到的精确版本写进 moon.mod（实测 0.1.14，
 传递依赖 moondb/moonmysql/async 一并解析，无需手声明）：
 
 ```bash

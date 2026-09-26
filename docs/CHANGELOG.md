@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## 0.1.14（2026-09-26）
+
+**本版无行为变化**：只换 registry 依赖代次——`moonbitlang/async 0.20.3 → 0.22.4`、
+`moonbitstack/moondb 0.1.8 → 0.2.0`、`moonbitstack/moonmysql 0.4.0 → 0.7.2`。
+pin 写在各 `*/moon.mod`，**随本版发布后** `moon add mldong/jeeflow-*@0.1.14` 才会带上新代次
+（0.1.13 那份元数据仍钉旧版本，这也是本版值得单独发的唯一理由）。
+
+- 三个 bump **逐个做，每步以全工程 `moon check` 当验收人**：三次读数都是 **0 error / 11 warning**
+  （那 11 条就是 0.1.13 里逐条证伪过不可摘的结构性误报，一条没多）。
+- 门禁：T0 168/168、T1 仓储级 111 格、T1-F 门面级 104 格（两者真机 160）、T2 ALL PASS、
+  action manifest 46/46、`consistency/moon.json` **载荷逐字节等值**（md5 `a74cb69323870759bb30ff330d940bd3`）。
+- 两个防假绿的对照：① 物化版本读 `.mooncakes/<org>/<mod>/moon.mod` 的 `version` 实值，
+  证"pin 真生效"；② 比快照按**载荷**比、不按文件字节比——本工具链 `moon run` 的 stdout
+  末尾多吐一个 `\n`，按字节数比会误报成"输出变了"。
+- 对外形状零变化：HTTP 出口、46 个 action、SPI 签名、错误码与 0.1.13 一致。
+- 顺手记一条依赖面事实：`repository-mysql` 声明的 moonmysql 在本仓**零引用**（实际用的是
+  vendored 副本，缘由见 MAINTAINING §1「依赖版本」与 §4 D-M0-2）。摘掉这条声明是独立的
+  语义决定（要配一轮 vendored ↔ 上游 0.7.2 的 diff 复核），本版没动它。
+- 本机 Windows 的 `moon build --target native` 仍编不过 async 的 C 臂（MSVC-only，
+  `thread_pool.c` / `fs.c` / `event_bus.c` 三处 `#error`），**0.20.3 起即如此**——
+  它既不是本版的回退证据，native 通道的真验证在 CI（Linux）。
+
 ## 0.1.13（2026-09-26）
 
 **本版无行为变化**：整版内容是把引擎适配到**新工具链（moon 0.1.20260920 / moonc v0.10.14）**
