@@ -78,14 +78,12 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::find
   now : String
 ) -> @model.ProcessSurrogate? raise @error.JeeflowError {
   let ext = self.ctx.ext_repository()
-  let outcome : Result[@model.ProcessSurrogate?, @error.JeeflowError] = (ext).get_surrogate(
-    actor,
-    process_name,
-    now,
-  )
-  match outcome {
-    Ok(sg) => sg
-    Err(_) => None
+  // SPI 签名是 `-> T? raise JeeflowError`：值就是 T?，旧代码当 Result 用是历史壳；
+  // 旧 Err 臂回退 None ⇒ 落进 catch 臂（委托查询失败不得打断建单，见 issues/100 谱系）
+  try {
+    (ext).get_surrogate(actor, process_name, now)
+  } catch {
+    _ => None
   }
 }
 

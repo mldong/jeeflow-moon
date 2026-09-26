@@ -19,10 +19,10 @@ pub fn MysqlRepository::from_env() -> MysqlRepository raise {
 ///|
 /// 测试/工具用裸连接（绕过事务环境，始终新开；调用方负责 close）
 pub async fn MysqlRepository::open_raw(self : MysqlRepository) -> @client.MysqlConn raise @error.JeeflowError {
-  let outcome = self.config.open_conn()
-  match outcome {
-    Ok(conn) => conn
-    Err(e) => raise e
+  try {
+    self.config.open_conn()
+  } catch {
+    e => raise e
   }
 }
 

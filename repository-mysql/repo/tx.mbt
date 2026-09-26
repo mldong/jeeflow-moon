@@ -54,36 +54,47 @@ pub async fn MysqlTxTemplate::execute_in_tx(
     op()
     return
   }
-  let conn = self.config.open_conn()
-  let conn = match conn {
-    Ok(c) => c
-    Err(e) => raise e
+  let conn = try {
+    self.config.open_conn()
+  } catch {
+    e => raise e
   }
   tx_conn.val = Some(conn)
-  let outcome = {
-    let begin = conn.begin()
-    match begin {
-      Ok(_) => ()
-      Err(e) => raise @error.Internal("tx begin: \{e}")
+  // 1) BEGIN 的错误**先**映射成 JeeflowError，再交给下面的统一回滚臂——
+  //    否则 catch 臂绑到的错误类型会含 DbError，`raise e` 与函数签名的 raise JeeflowError 不匹配。
+  // 2) BEGIN 或 op 失败 ⇒ ROLLBACK（回滚自身失败不掩盖原错误）→ 清事务态 → 关连接 → 外抛原错误。
+  try {
+    try {
+      conn.begin()
+    } catch {
+      e => raise @error.Internal("tx begin: \{e}")
     }
     op()
-  }
-  match outcome {
-    Ok(_) => {
-      let commit = conn.commit()
-      tx_conn.val = None
-      conn.close()
-      match commit {
-        Ok(_) => ()
-        Err(e) => raise @error.Internal("tx commit: \{e}")
+  } catch {
+    e => {
+      try {
+        conn.rollback()
+      } catch {
+        _ => ()
       }
-    }
-    Err(e) => {
-      let _ = conn.rollback()
       tx_conn.val = None
       conn.close()
       raise e
     }
+  }
+  // 3) COMMIT：照旧顺序 commit → 清态 → 关连接，**之后**才判错误
+  //    （已提交不再回滚；但清态与关连接不能因为 commit 报错而被跳过——原实现正是这个顺序）。
+  let commit_err = try {
+    conn.commit()
+    None
+  } catch {
+    e => Some(e)
+  }
+  tx_conn.val = None
+  conn.close()
+  match commit_err {
+    Some(e) => raise @error.Internal("tx commit: \{e}")
+    None => ()
   }
 }
 

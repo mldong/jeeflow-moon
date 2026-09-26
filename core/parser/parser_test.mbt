@@ -134,8 +134,13 @@ test "parser: node properties" {
 
 ///|
 test "parser: invalid json raises" {
-  let outcome = @parser.parse_model("not json")
-  assert_true(outcome is Err(_))
+  let raised = try {
+    let _ = @parser.parse_model("not json")
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(raised) // 非法流程 JSON ⇒ 必须 raise（旧写法是物化 Result 判 Err）
 }
 
 ///|
