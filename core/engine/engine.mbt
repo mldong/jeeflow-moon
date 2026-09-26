@@ -8,10 +8,9 @@ pub(all) struct Engine[R, E] {
 }
 
 ///|
-pub fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::make(ctx : @spi.Ctx[R, E]) -> Engine[R, E] {
-  { ctx }
-}
-
+pub fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::make(ctx : @spi.Ctx[R, E]) -> Engine[R, E] {
+  { ctx, }
+}
 ///|
 pub fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::context(self : Engine[R, E]) -> @spi.Ctx[R, E] {
   self.ctx

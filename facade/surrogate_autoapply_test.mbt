@@ -7,7 +7,7 @@
 
 ///|
 /// 门面 + 内存仓（ext 与主仓同一个实例 = 台账与查询同源），auto_apply 即条款 3 的开关
-async fn sg_facade(
+fn sg_facade(
   repo : @mem.MemoryRepository,
   auto_apply~ : Bool = true
 ) -> @facade.Facade[@mem.MemoryRepository, @mem.MemoryRepository] raise {

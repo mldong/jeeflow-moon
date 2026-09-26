@@ -8,5 +8,6 @@ import {
   "moonbitlang/async/socket" @socket,
   "moonbitlang/async/io" @io,
   "moonbitlang/core/encoding/utf8" @utf8,
+  "moonbitlang/core/env" @env,
 }
 pkgtype(kind: "executable")

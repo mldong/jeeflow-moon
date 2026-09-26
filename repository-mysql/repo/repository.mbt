@@ -8,9 +8,9 @@ pub(all) struct MysqlRepository {
 
 ///|
 pub fn MysqlRepository::make(config : MysqlConfig) -> MysqlRepository {
-  { config }
+  // 块里只有一个 `{ … }` 时"代码块 vs 结构体字面量"有歧义（编译器直接点名）⇒ 限定写法
+  MysqlRepository::{ config }
 }
-
 ///|
 pub fn MysqlRepository::from_env() -> MysqlRepository raise {
   { config: MysqlConfig::from_env() }
@@ -19,13 +19,9 @@ pub fn MysqlRepository::from_env() -> MysqlRepository raise {
 ///|
 /// 测试/工具用裸连接（绕过事务环境，始终新开；调用方负责 close）
 pub async fn MysqlRepository::open_raw(self : MysqlRepository) -> @client.MysqlConn raise @error.JeeflowError {
-  try {
-    self.config.open_conn()
-  } catch {
-    e => raise e
-  }
+  // 同上：`try { … } catch { e => raise e }` 是空壳，去掉包装不改任何行为
+  self.config.open_conn()
 }
-
 ///|
 pub impl @spi.ProcessRepository for MysqlRepository with fn find_define_by_id(self, define_id) {
   let conn = self.open_or_tx()

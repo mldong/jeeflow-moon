@@ -35,11 +35,7 @@ test "model: task lifecycle and permission" {
   assert_true(task.is_doing())
   assert_true(task.is_allowed("user1"))
   assert_true(!task.is_allowed("user2"))
-  try {
-    task.finish("user1")
-  } catch {
-    e => raise e
-  }
+  task.finish("user1")
   assert_true(task.is_finished())
   assert_eq(task.actor_id.unwrap(), "user1")
 }
@@ -79,11 +75,7 @@ test "model: instance withdraw → 实例 30 + 任务 30 + update_user 回写 (C
   let inst = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   let _ = inst.create_task("t", "T", ["user1"], "user1", @model.Major, @model.Normal, None, None)
   let finished = inst.create_task("t2", "T2", ["user1"], "user1", @model.Major, @model.Normal, None, None)
-  try {
-    finished.finish("user1")
-  } catch {
-    e => raise e
-  }
+  finished.finish("user1")
   inst.withdraw("revoker")
   assert_eq(inst.state, 30)
   // 任务态是 30 不是 99（99 保留给"废弃"语义）
@@ -97,13 +89,13 @@ test "model: instance withdraw → 实例 30 + 任务 30 + update_user 回写 (C
 
 ///|
 test "model: page result total page" {
-  let pr = @model.PageResult::new(1L, 10L, 25L, [])
+  let pr : @model.PageResult[String] = @model.PageResult::new(1L, 10L, 25L, [])
   assert_eq(pr.total_page(), 3L)
-  let pr = @model.PageResult::new(1L, 10L, 0L, [])
+  let pr : @model.PageResult[String] = @model.PageResult::new(1L, 10L, 0L, [])
   assert_eq(pr.total_page(), 0L)
-  let pr = @model.PageResult::new(1L, 10L, 20L, [])
+  let pr : @model.PageResult[String] = @model.PageResult::new(1L, 10L, 20L, [])
   assert_eq(pr.total_page(), 2L)
-  let pr = @model.PageResult::new(1L, 10L, 1L, [])
+  let pr : @model.PageResult[String] = @model.PageResult::new(1L, 10L, 1L, [])
   assert_eq(pr.total_page(), 1L)
 }
 

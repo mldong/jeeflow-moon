@@ -211,7 +211,7 @@ pub fn ProcessInstance::interrupt(self : ProcessInstance) -> Unit {
 }
 
 ///|
-pub fn ProcessInstance::resume(self : ProcessInstance) -> Unit {
+pub fn ProcessInstance::resume_from_interrupt(self : ProcessInstance) -> Unit {
   for t in self.tasks {
     if t.task_state == TaskState::Interrupt.code() {
       t.task_state = TaskState::Doing.code()
@@ -548,7 +548,7 @@ pub fn ProcessTask::pending(self : ProcessTask) -> Unit raise @error.JeeflowErro
 }
 
 ///|
-pub fn ProcessTask::resume(self : ProcessTask) -> Unit {
+pub fn ProcessTask::resume_from_interrupt(self : ProcessTask) -> Unit {
   if self.task_state == TaskState::Interrupt.code() {
     self.task_state = TaskState::Doing.code()
   }

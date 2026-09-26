@@ -228,7 +228,7 @@ pub async fn App::reset(self : App) -> Unit raise {
 
 ///|
 /// 请求分发：返回 (status, json)
-pub async fn App::handle(self : App, method : String, path : String, query_string : String, body : String) -> (Int, String) raise {
+pub async fn App::handle(self : App, meth : String, path : String, query_string : String, body : String) -> (Int, String) raise {
   if path == "/health" {
     return (200, "{\"status\":\"ok\",\"engine\":\"jeeflow-moon\",\"store\":\"" + self.store + "\"}")
   }

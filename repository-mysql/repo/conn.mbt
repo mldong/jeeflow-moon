@@ -40,13 +40,9 @@ async fn open_conn(self : MysqlConfig) -> @client.MysqlConn raise @error.Jeeflow
 ///|
 /// 打开连接（错误归一；事务态复用环境连接且不 close，见 tx.mbt）
 async fn open(self : MysqlRepository) -> @client.MysqlConn raise @error.JeeflowError {
-  try {
-    self.config.open_conn()
-  } catch {
-    e => raise e
-  }
+  // 上一轮 `try?` 换形时留下的空壳（catch 里原样再抛）：直接调用即可
+  self.config.open_conn()
 }
-
 ///|
 /// 事务感知 close：事务连接归还模板管理
 pub fn close_conn(conn : @client.MysqlConn) -> Unit {
