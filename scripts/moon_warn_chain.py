@@ -45,6 +45,8 @@ def check():
         except ValueError:
             continue
         m = d.get("message", "")
+        if not d.get("path"):
+            continue          # 有些诊断（工具链自身的报错）不带 path，relpath 会直接抛
         rel = os.path.relpath(d["path"], ROOT).replace(os.sep, "/")
         if d.get("level") == "error":
             errs += 1
@@ -124,7 +126,12 @@ def main():
                     continue
                 lines[i] = trial
                 write(path, lines, eols, tail)
-                per2, errs2 = check()
+                try:                        # 试摘中途任何异常都必须还原，否则脏改动留在树里
+                    per2, errs2 = check()
+                except Exception:
+                    lines[i] = raw
+                    write(path, lines, eols, tail)
+                    raise
                 if errs2 == 0 and per2[path][cls] < per[path][cls]:
                     print("  摘 %-42s 行%-5d %-34s %s %d→%d（本文件）"
                           % (path, i + 1, seg.strip(), cls, per[path][cls], per2[path][cls]))

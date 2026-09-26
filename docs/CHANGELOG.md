@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## 0.1.13（2026-09-26）
+
+**本版无行为变化**：整版内容是把引擎适配到**新工具链（moon 0.1.20260920 / moonc v0.10.14）**
+——从"能编译"推到 **0 error**、警告 629 → 11。剩下的 11 条（8 `unused_trait_bound`
++ 3 `unused_error_type`）已逐条证伪"可摘"：它们是"只看函数体、不看调用链"的结构性误报，
+摘掉要么编译不过（效果不参与函数子类型），要么只是把告警搬到另一行；
+条目级静音在本工具链无可用机制。证据与四种试法记在 MAINTAINING §1.3。
+判据侧一字未改（T0 168 格、T1 仓储级 111 格、T1-F 门面级 104 格全绿；
+`consistency/moon.json` 逐字节不变）。
+CI 侧的连带收获：`Native Probe` 此前在 latest 上是红的，崩因是诊断渲染器（ariadne）
+在**打印 warning** 时 panic —— 与本仓代码无关，`--no-render` 即可解耦（已写进 MAINTAINING）。
+
+采用的新形状（都带"为什么"，写在 MAINTAINING §1.3）：
+
+- `impl Trait for T` 的方法不再被隐式提升为常规方法 ⇒ 全仓补 48 条
+  `pub extend T with Trait::{…}`；vendored 两文件保持逐字节原样，
+  extend 落在同包的本仓自有新文件 `vendored/moon_mysql_client/extend_driver.mbt`。
+- 事务模板的"回滚 → 清态 → 关连接 → 外抛"由 `try/catch + raise` 改 **`errdefer`**
+  （工具链声明 try/catch 将来不再捕获异步取消）。
+- 弃办的 `fn meth(self : T, …)` ⇒ `fn T::meth(self : T, …)`；
+  `try?`（已废）全部塌成 `try { 块 } catch { 臂 }`；SPI 闭包的 `Ok/Err` 双消费点
+  改成 `try/catch` 或箭头闭包；`x |> _.f()` 偏应用改直接方法调用。
+- 字符串：`substring(…)` ⇒ 切片 `s[a:b]`（38 处）；StringView 尾巴
+  `.to_string()` ⇒ `.to_owned()`（42 处）；多行串不再裸用作函数体，改 `let` 绑定
+  （`$|` 行逐字节未动——缩进参与内容）。
+- Json：`x.value(k)` / `x.as_string()` 等弃办调用统一走本仓 `@json` 助手
+  （`get`/`as_str`/`as_bool`/`as_f64`，并新增同形的 **`as_array`**）；助手体本身
+  改成编译器建议的判形，一处收口。
+- 清理：删死函数 `sql_escape_text`；6 个"体内不用 self"的方法补显式忽略；
+  `moon.pkg` 里 3 条**只有测试在用**的 import 从常规块挪进 `for "test"` 块。
+
+**两处对外形状的收敛（消费方需知）**：
+
+1. `ProcessInstance::resume` / `ProcessTask::resume` ⇒ **`resume_from_interrupt`**
+   （`resume` 是本工具链预留字）。这两个方法全仓 0 调用点，也不是跨栈契约名
+   ——契约只钉 HTTP action 串与 JSON 形状。`App::handle` 的形参 `method` ⇒ `meth`。
+2. 若干**从不抛错**的函数摘掉了 `raise` 声明（门面出口 `Facade::flow`、各 getter/助手）。
+   这是"效果收窄"，对调用方源码兼容；且 `flow` 的语义本就是错误转
+   `{code:99999999,msg}` 信封，不抛才诚实。
+
 ## 0.1.12（2026-09-26）
 
 - **时间只有引擎一把钟（issues/120 附证）**：

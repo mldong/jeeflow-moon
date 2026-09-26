@@ -61,7 +61,8 @@ jobs:
         if: ${{ inputs.validate_only }}
         run: |
           echo "通道自检：工具链 + workspace 依赖 + native 构建全通过即视为发版通道可用"
-          moon build --target native
+          # --no-render：绕开 ariadne 渲染告警时的 panic（同 native-probe.yml 的注释）
+          moon build --target native --no-render
 
       # 拓扑序：core → persist → repository-mysql → facade（demo 不发布）
       - name: Publish core

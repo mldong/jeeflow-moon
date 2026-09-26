@@ -22,7 +22,11 @@ jobs:
           moon update
 
       - name: Native build (workspace)
-        run: moon build --target native
+        # --no-render：诊断走裸文本而非 ariadne 渲染。本仓现存 11 条告警（MAINTAINING §1.3
+        # 已逐条证伪"可摘"），而 0.1.20260920 的渲染器在有告警时会 panic
+        # （ariadne: Label start is after its end）——2026-09-26 那次 Native Probe 就是这么红的，
+        # 与代码正确性无关。等上游修好渲染器可去掉这个开关。
+        run: moon build --target native --no-render
 
       - name: Run demo health flow (native)
         run: |
@@ -32,4 +36,4 @@ jobs:
           curl -sf http://127.0.0.1:8092/health && echo "NATIVE DEMO OK"
 
       - name: Native test (full suite)
-        run: moon test --target native
+        run: moon test --target native --no-render

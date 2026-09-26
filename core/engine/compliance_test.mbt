@@ -54,9 +54,9 @@ async fn make_define(repo : @mem.MemoryRepository) -> Int64 raise {
 
 ///|
 /// 用户信息 provider（合规测试同款：realName=userId）
-fn compliance_user_provider(uid : String) -> @model.UserInfo? raise @error.JeeflowError {
-  Some(@model.UserInfo::make(user_id=uid, real_name=uid, dept_id="dept1", dept_name="TestDept", post_id="post1", post_name="TestPost"))
-}
+let compliance_user_provider : (String) -> @model.UserInfo? raise @error.JeeflowError =
+  (uid) =>
+    Some(@model.UserInfo::make(user_id=uid, real_name=uid, dept_id="dept1", dept_name="TestDept", post_id="post1", post_name="TestPost"))
 
 ///|
 fn make_compliance_engine() -> (@engine.Engine[@mem.MemoryRepository, @mem.MemoryRepository], @mem.MemoryRepository) {

@@ -27,9 +27,8 @@ fn find_user(uid : String) -> @model.UserInfo? {
 
 ///|
 /// IUserProvider 注入形态
-pub fn demo_user_provider(uid : String) -> @model.UserInfo? raise @error.JeeflowError {
-  find_user(uid)
-}
+pub let demo_user_provider : (String) -> @model.UserInfo? raise @error.JeeflowError =
+  (uid) => find_user(uid)
 
 ///|
 /// IOrgUserProvider：dept 经理/分管/角色 —— demo 规则：同部门 post2+ 视为经理层；boss 兜底

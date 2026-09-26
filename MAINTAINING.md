@@ -221,11 +221,38 @@ D-M6-1 的"逐字节原样拷贝"改写为"仅允许这两类偏离"。之后 63
 发版前那一道"native 不带 --output-json 也要过"是自证这条的门禁，别省。
 
 **残留判断**（写在这里免得下轮又当新发现）：`unused_error_type` 与 `unused_trait_bound`
-两类呈**守恒**特征——摘掉 A 处的那一个，B 处冒出一个新的（实测：摘 `Engine::repo` 的
+两类呈**守恒**特征——摘掉 A 处的那一个，B 处冒出一条新的（实测：摘 `Engine::repo` 的
 `E : ProcessExtRepository` ⇒ 21:11 那条消失、engine.mbt:532 与 engine_ops.mbt:193 各新增一条）。
 逐点贪心因此不收敛，只能做**集合级不动点**。剩下的这几条要么整族重排签名（会动已发布的
 门面效应声明形状），要么带 `// 约束留着是 API 文档` 的例外记档 —— 属发版前的口径决定，
 不要顺手改。
+
+#### 2026-09-26 收尾：残留 11 条已逐条证伪"可摘"，别再花第二轮
+
+四种办法都试过，都到不了 0：
+
+| 试法 | 结果 |
+|---|---|
+| 逐点摘 + 全局警告数下降才保留（`moon_warn_w3.py`） | 60→8；剩下 8 条一律"摘了数不动" |
+| 放宽成"本文件计数下降"才保留（`moon_warn_chain.py`） | 整轮 **0 摘除**即不动点（守恒就发生在同文件内） |
+| 全拆 → 按编译器的错往回装最小集（`moon_warn_w14.py`/`w14b.py`） | 全拆 27 error；装回一个声明**同时**消一条错、冒一条新错（实测装回 `execute_node` 的约束：`Type R has no method update_instance` 没了，多出 `Type R does not implement trait` 两条——约束沿调用链双向传导），贪心卡死 |
+| 条目级静音 | 本工具链没有可用机制：`@@(nolint=…)` 直接 Lexing error（`@` 不是合法字符），`moon.pkg` 也没有 warn 字段的位置 |
+
+**结论**：这 11 条（8 `unused_trait_bound` + 3 `unused_error_type`）是"看函数体、不看调用链"
+的告警在本仓的**结构性误报**——摘掉要么编译不过（`raise` 那条：`(String) -> UserInfo?`
+不能当 `(String) -> UserInfo? raise JeeflowError` 用，效果不参与子类型），
+要么只是把告警搬到另一行。**留着，别再来一轮。**
+
+真能收的都在这一轮收了：SPI 槽位的 provider 由"具名 fn + 未用的 raise"改成
+**带类型标注的箭头值**（`let p : (String) -> UserInfo? raise JeeflowError = (uid) => …`），
+raise 由标注承担、不再是"体内未用的效应类型"——`compliance_test`、`demo/cmd/consistency`、
+`demo` 三处各消一条。⚠ 别改成 `= find_user` 这种 η 归约：效果不下降，直接类型不匹配。
+
+**CI 侧的连带修法（比追零警告更实在）**：`moon check --help` 有 `--no-render`
+（"Don't render diagnostics (in raw human-readable format)"）与 `--warn-list`。
+`Native Probe` 崩在 ariadne 渲染 warning 上 ⇒ 工作流里的 `moon build`/`moon test`
+带 `--no-render` 即可与警告数**解耦**（本机同理用 `--output-json`）。
+警告码也在裸渲染里给出：`unused_trait_bound=E0053`、`unused_error_type=E0024`。
 
 ## 2. 测试指南（T0/T1/T2 + 构建目标维度）
 

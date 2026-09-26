@@ -11,8 +11,8 @@
 // 运行：moon run --target wasm demo/cmd/consistency
 
 ///|
-fn stats_user_provider(uid : String) -> @model.UserInfo? raise @error.JeeflowError {
-  Some({
+let stats_user_provider : (String) -> @model.UserInfo? raise @error.JeeflowError =
+  (uid) => Some({
     user_id: uid,
     real_name: "用户\{uid}",
     dept_id: "",
@@ -20,7 +20,6 @@ fn stats_user_provider(uid : String) -> @model.UserInfo? raise @error.JeeflowErr
     post_id: "",
     post_name: "",
   })
-}
 
 ///|
 fn stats_make_ctx(
