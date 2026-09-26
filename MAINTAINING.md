@@ -117,6 +117,28 @@ registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）
    塌成 `try CALL catch { 失败臂 } noraise { 成功臂 }` 即可，试算过：改写形状正确、
    负向断言强度不降（从"判 `Err(_)`"变成"确实 raise 才算过"）。
 
+#### 2026-09-26 复核：A 案的真实边界（三条实测，别按"补几行标注"估工）
+
+owner 让先查上游是否已修，再定 A/B/C。实测结论：**B 不成立，A 是子工程**。
+
+1. 上游 **moonmysql 最新 0.7.2**（我们 vendored 自 0.4.0）的 `MysqlConn::connect/query/execute/
+   begin/commit/rollback` 签名**依旧不标 `raise`**（`-> MysqlConn` / `-> ExecResult` / `-> Unit`），
+   仍靠效应推断；且 `client/moon.pkg` 的 `supported_targets = "native"` **没有放开**
+   ⇒ D-M0-2 的 vendored 解锁必须继续保留，"等上游修"不是一条路。
+   顺带：0.7.2 的依赖里多了 `moonbitstack/moonpool@0.2.0`，真升 vendored 基线是另一次对齐。
+2. **不碰 vendored 走不通**：对本仓 `repo/conn.mbt` 试 `let c = try connect(...) catch {...}
+   noraise {...}` ⇒ 整式被判 `Expr Type Mismatch: has Unit, wanted MysqlConn`；
+   保留 `match ... { Ok/Err }` 又因 `connect` 不返 Result 而报错。两头都不通。
+3. **开放效应会级联**：`repo/tx.mbt:73` 报 `error type mismatched: wanted
+   @mldong/jeeflow-core/error.JeeflowError, has Error.` —— 调用方签名只能声明有限错误类型，
+   而被调链上的效应是未闭合的 `Error.`。 ⇒ 只标几个公开函数不够，要把 vendored 两个文件
+   **自底向上做成效应显式**（体内每一层调用都要闭合，粗量 30~60 处标注/转换）。
+
+因此 A 的执行形状：单独一轮"vendored 效应显式化"，验收口径 =
+`repository-mysql/vendored/moon_mysql_client/*` 与上游的 diff **只允许**
+① 去 `supported_targets` 行、② 新增的 `raise`/错误转换；sha 基线重核并把两侧 diff 落档，
+D-M6-1 的"逐字节原样拷贝"改写为"仅允许这两类偏离"。之后 63 个 `try?` 站点才有落点。
+
 ## 2. 测试指南（T0/T1/T2 + 构建目标维度）
 
 ### T0 仓内快测（必绿门槛）
