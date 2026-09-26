@@ -12,7 +12,7 @@ pub fn set_clock(f : (() -> String)?) -> Unit {
 ///|
 /// 当前墙钟毫秒（@env.now() 的单位实测为 epoch 毫秒，见 model_test）
 pub fn epoch_millis() -> Int64 {
-  @env.now().to_int64()
+  @env.now().reinterpret_as_int64()
 }
 
 ///|

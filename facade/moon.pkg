@@ -5,9 +5,6 @@ import {
   "mldong/jeeflow-core/json" @json,
   "mldong/jeeflow-core/error" @error,
   "mldong/jeeflow-core/parser" @parser,
-  "mldong/jeeflow-core/exec" @exec,
-  "mldong/jeeflow-core/event" @event,
-  "mldong/jeeflow-persist" @persist,
   "moonbitlang/core/string" @string,
 }
 

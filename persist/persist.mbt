@@ -108,7 +108,7 @@ pub fn is_table_name_safe(name : String) -> Bool {
   }
   for ch in name {
     let c = ch.to_int()
-    let alnum = c >= 48 && c <= 57 || c >= 65 && c <= 90 || c >= 97 && c <= 122
+    let alnum = (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122)
     if !(alnum || ch == '_') {
       return false
     }

@@ -56,7 +56,7 @@ fn to_camel(s : String) -> String {
     } else if upper_next {
       let code = ch.to_int()
       if code >= 97 && code <= 122 {
-        b.write_char(Char::from_int(code - 32))
+        b.write_char((code - 32).unsafe_to_char())
       } else {
         b.write_char(ch)
       }

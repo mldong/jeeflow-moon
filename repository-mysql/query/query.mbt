@@ -8,7 +8,7 @@ pub fn to_underscore(camel : String) -> String {
     let code = ch.to_int()
     if code >= 65 && code <= 90 {
       b.write_char('_')
-      b.write_char(Char::from_int(code + 32))
+      b.write_char((code + 32).unsafe_to_char())
     } else {
       b.write_char(ch)
     }

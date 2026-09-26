@@ -460,12 +460,12 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::resolve_va
   let len = chars.length()
   while i < len {
     let ch = chars[i]
-    if ch == '#' && i + 1 < len && (chars[i + 1].to_int() >= 97 && chars[i + 1].to_int() <= 122 || chars[i + 1].to_int() >= 65 && chars[i + 1].to_int() <= 90 || chars[i + 1] == '_') {
+    if ch == '#' && i + 1 < len && ((chars[i + 1].to_int() >= 97 && chars[i + 1].to_int() <= 122) || (chars[i + 1].to_int() >= 65 && chars[i + 1].to_int() <= 90) || chars[i + 1] == '_') {
       let start = i + 1
       let mut end = start
       while end < len {
         let c = chars[end].to_int()
-        if c >= 97 && c <= 122 || c >= 65 && c <= 90 || c >= 48 && c <= 57 || chars[end] == '_' {
+        if (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || chars[end] == '_' {
           end = end + 1
         } else {
           break

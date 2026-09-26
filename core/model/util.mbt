@@ -2,7 +2,7 @@
 fn upper_ascii(ch : Char) -> Char {
   let code = ch.to_int()
   if code >= 97 && code <= 122 {
-    Char::from_int(code - 32)
+    (code - 32).unsafe_to_char()
   } else {
     ch
   }

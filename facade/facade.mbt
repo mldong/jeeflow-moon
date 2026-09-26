@@ -175,7 +175,7 @@ fn camel_to_snake(s : String) -> String {
     let c = ch.to_int()
     if c >= 65 && c <= 90 {
       b.write_char('_')
-      b.write_char(Char::from_int(c + 32))
+      b.write_char((c + 32).unsafe_to_char())
     } else {
       b.write_char(ch)
     }
@@ -263,7 +263,7 @@ fn camel_to_snake_inverse_for(f : @model.QueryFilter) -> String {
     } else if upper_next {
       let c = ch.to_int()
       if c >= 97 && c <= 122 {
-        b.write_char(Char::from_int(c - 32))
+        b.write_char((c - 32).unsafe_to_char())
       } else {
         b.write_char(ch)
       }

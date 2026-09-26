@@ -7,9 +7,6 @@ import {
   "mldong/jeeflow-core/memory" @memory,
   "mldong/jeeflow-facade" @facade,
   "mldong/jeeflow-repository-mysql/repo" @repo,
-  "moonbitlang/async" @async,
   "moonbitlang/async/fs" @fs,
   "moonbitlang/core/env" @env,
-  "moonbitlang/core/string" @string,
-  "moonbitlang/core/encoding/utf8" @utf8,
 }
