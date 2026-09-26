@@ -134,6 +134,23 @@ owner 让先查上游是否已修，再定 A/B/C。实测结论：**B 不成立�
    而被调链上的效应是未闭合的 `Error.`。 ⇒ 只标几个公开函数不够，要把 vendored 两个文件
    **自底向上做成效应显式**（体内每一层调用都要闭合，粗量 30~60 处标注/转换）。
 
+#### 2026-09-26 二次更正：A 案作废——`try { 块 } catch` 就够了，vendored 不用动
+
+上一条里"不碰 vendored 两头不通"的结论**是我用错了形状**：我试的是
+`let v = try CALL catch {..} noraise {..}`（表达式形），它被判 `has Unit` 是**因为 `noraise`
+臂与块值的合成规则**，不是因为 vendored 有开放效应。照上游 `driver.mbt::with_conn` 的写法
+——**`try { CALL } catch { e => raise ... }`，块尾表达式即结果、不带 `noraise`**——
+在副本 `shape2` 实测：`repository-mysql/repo/conn.mbt::open_conn` 改成该形状后
+全工程 check 里 **conn.mbt 零 error**（剩下的 60 条都在 engine/interceptor 等待改站点）。
+
+⇒ 结论替换为：**不需要给 vendored 补效应标注，也不产生偏离白名单**；
+每个 `try?` 站点塌成 `try { CALL [后续处理] } catch { <失败臂> }` 即可：
+  - 旧 Err 臂是 `raise X` ⇒ catch 臂 `e => raise X`；
+  - 旧 Err 臂是回退值 ⇒ catch 臂 `_ => 回退值`；
+  - 旧成功臂是 `Ok(Some(u))` 这类嵌套模式 ⇒ 把 `match 值 { Some(u) => .. None => .. }` 挪进 try 块里。
+上游未标注 + `supported_targets="native"` 两条仍然成立（D-M0-2 的 vendored 继续保留、
+真升 0.7.2 基线是另一轮），只是它们不再阻塞 `try?` 清零。
+
 **A 的落点已量清（关键省力发现）**：`vendored/moon_mysql_client/driver.mbt:49-50` 里上游
 **自己已经做过同类收口** —— `fn to_db_error(e : Error) -> @moondb.DbError`，且 `Driver` 的
 trait impl（`execute/query/begin/commit/rollback`）全都标了 `raise @moondb.DbError`。
