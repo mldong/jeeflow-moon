@@ -251,7 +251,7 @@ fn iid_of(env : Json) -> Int64 raise {
 }
 ///|
 fn rows_of(data : Json) -> Array[Json] {
-  match data.value("rows") {
+  match @json.get(data, "rows") {
     Some(Json::Array(a)) => a
     _ => []
   }
@@ -261,7 +261,7 @@ fn rows_of(data : Json) -> Array[Json] {
 fn page_has(data : Json, iid : Int64) -> Bool {
   let mut hit = false
   for r in rows_of(data) {
-    let rid = match r.value("processInstanceId") {
+    let rid = match @json.get(r, "processInstanceId") {
       Some(v) => @json.as_str(v).unwrap_or("")
       None => ""
     }
@@ -335,7 +335,7 @@ fn history_of(task : @model.ProcessTask) -> Array[Json] {
 
 ///|
 fn hop_field(hop : Json, key : String) -> String {
-  match hop.value(key) {
+  match @json.get(hop, key) {
     Some(v) =>
       match @json.as_str(v) {
         Some(s) => s

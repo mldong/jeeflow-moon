@@ -332,7 +332,7 @@ fn with_task_form(ex : Map[String, Json], form_key : String) -> Unit {
 /// 任务行的 formKey（facade 出口 to_camel 后统一是 camelCase 键；无/为 null → ""，
 /// 只落通用意见）
 fn task_form_key(t : Json) -> String {
-  match t.value("formKey") {
+  match @json.get(t, "formKey") {
     Some(v) => @json.as_str(v).unwrap_or("")
     None => ""
   }
@@ -380,13 +380,13 @@ fn str_array_json(items : Array[String]) -> Json {
 
 ///|
 fn sb_code(resp : Json) -> Int64 {
-  sb_num_of(resp.value("code"), -1L)
+  sb_num_of(@json.get(resp, "code"), -1L)
 }
 
 ///|
 fn sb_iid(resp : Json) -> Json? {
-  match resp.value("data") {
-    Some(d) => d.value("processInstanceId")
+  match @json.get(resp, "data") {
+    Some(d) => @json.get(d, "processInstanceId")
     None => None
   }
 }
@@ -394,7 +394,7 @@ fn sb_iid(resp : Json) -> Json? {
 ///|
 fn sb_num_of(j : Json?, fallback : Int64) -> Int64 {
   match j {
-    Some(v) => match v.as_number() {
+    Some(v) => match @json.as_f64(v) {
       Some(d) => d.to_int64()
       None => fallback
     }
@@ -404,12 +404,12 @@ fn sb_num_of(j : Json?, fallback : Int64) -> Int64 {
 
 ///|
 fn sb_state(data : Json) -> Int64 {
-  sb_num_of(data.value("state"), 0L)
+  sb_num_of(@json.get(data, "state"), 0L)
 }
 
 ///|
 fn sb_field(t : Json, key : String) -> Json {
-  match t.value(key) {
+  match @json.get(t, key) {
     Some(v) => v
     None => @json.number_of(0L)
   }
@@ -417,8 +417,8 @@ fn sb_field(t : Json, key : String) -> Json {
 
 ///|
 fn sb_actor(t : Json) -> String? {
-  match t.value("operator") {
-    Some(op) => match op.as_string() {
+  match @json.get(t, "operator") {
+    Some(op) => match @json.as_str(op) {
       Some(s) => if s != "" {
         return Some(s)
       } else {
@@ -428,8 +428,8 @@ fn sb_actor(t : Json) -> String? {
     }
     None => ()
   }
-  match t.value("taskActorIdList") {
-    Some(list) => match list.as_array() {
+  match @json.get(t, "taskActorIdList") {
+    Some(list) => match @json.as_array(list) {
       Some(arr) => if arr.length() > 0 {
         arr[0].as_string()
       } else {
@@ -452,7 +452,7 @@ async fn sb_advance(
     let detail : Map[String, Json] = Map([])
     detail["id"] = iid
     let resp = facade.flow("processInstance/detail", detail)
-    let data = match resp.value("data") {
+    let data = match @json.get(resp, "data") {
       Some(d) => d
       None => return -1L
     }
@@ -461,10 +461,10 @@ async fn sb_advance(
       return state
     }
     let mut progress = false
-    match data.value("tasks") {
-      Some(tasks) => match tasks.as_array() {
+    match @json.get(data, "tasks") {
+      Some(tasks) => match @json.as_array(tasks) {
         Some(list) => for t in list {
-          if sb_num_of(t.value("taskState"), 0L) == 10L {
+          if sb_num_of(@json.get(t, "taskState"), 0L) == 10L {
             match sb_actor(t) {
               Some(actor) => {
                 let ex : Map[String, Json] = Map([])
@@ -504,14 +504,14 @@ async fn sb_todo_row(
   args["pageNum"] = @json.number_of(1L)
   args["pageSize"] = @json.number_of(200L)
   let resp = facade.flow("processTask/todoList", args)
-  match resp.value("data") {
-    Some(data) => match data.value("rows") {
-      Some(rows) => match rows.as_array() {
+  match @json.get(resp, "data") {
+    Some(data) => match @json.get(data, "rows") {
+      Some(rows) => match @json.as_array(rows) {
         Some(list) => {
           let iid_key = iid.stringify()
           for r in list {
             let row_iid = sb_field(r, "processInstanceId").stringify()
-            if row_iid == iid_key && sb_num_of(r.value("taskState"), 0L) == 10L {
+            if row_iid == iid_key && sb_num_of(@json.get(r, "taskState"), 0L) == 10L {
               return Some(r)
             }
           }

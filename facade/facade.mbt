@@ -204,7 +204,7 @@ fn is_known_op(s : String) -> Bool {
 /// 行级过滤（camelCase 行键；值按字符串比较，对齐 rust matches_filter）
 fn matches_filter(row : Json, f : @model.QueryFilter) -> Bool {
   let camel_col = camel_to_snake_inverse_for(f)
-  let field_val = match row.value(camel_col) {
+  let field_val = match @json.get(row, camel_col) {
     Some(v) => Some(v)
     None => row.value(f.column())
   }
@@ -224,7 +224,7 @@ fn matches_filter(row : Json, f : @model.QueryFilter) -> Bool {
     In => {
       let mut any = false
       for v in f.value().split(",") {
-        if v.to_string() == field_str {
+        if v.to_owned() == field_str {
           any = true
         }
       }
@@ -233,7 +233,7 @@ fn matches_filter(row : Json, f : @model.QueryFilter) -> Bool {
     Nin => {
       let mut any = false
       for v in f.value().split(",") {
-        if v.to_string() == field_str {
+        if v.to_owned() == field_str {
           any = true
         }
       }

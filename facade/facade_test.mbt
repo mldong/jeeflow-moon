@@ -8,7 +8,7 @@ test "outbound: stringify ids recursive incl plural arrays (C1)" {
   let out = @facade.stringify_ids(input)
   assert_eq(@json.get_str(out, "id").unwrap(), "1000")
   assert_eq(@json.get_str(out, "processInstanceId").unwrap(), "1001")
-  match out.value("taskIds") {
+  match @json.get(out, "taskIds") {
     Some(Json::Array(arr)) => {
       assert_eq(arr.length(), 2)
       assert_eq(@json.as_str(arr[0]).unwrap(), "2001")
@@ -16,7 +16,7 @@ test "outbound: stringify ids recursive incl plural arrays (C1)" {
     }
     _ => assert_true(false)
   }
-  assert_eq(@json.get_str(out.value("child").unwrap(), "recordId").unwrap(), "3001")
+  assert_eq(@json.get_str(@json.get(out, "child").unwrap(), "recordId").unwrap(), "3001")
   // 非id键不受影响
   assert_eq(@json.get_i64(out, "count").unwrap(), 5L)
   assert_eq(@json.get_str(out, "name").unwrap(), "x")
@@ -26,7 +26,7 @@ test "outbound: stringify ids recursive incl plural arrays (C1)" {
 test "outbound: null id stays null" {
   let input = @json.parse_json("{\"id\":null,\"other\":1}")
   let out = @facade.stringify_ids(input)
-  assert_true(out.value("id").unwrap() is Json::Null)
+  assert_true(@json.get(out, "id").unwrap() is Json::Null)
 }
 
 ///|
@@ -40,7 +40,7 @@ test "outbound: camelCase + opaque keys (C1 嵌套保留)" {
   // 时间 T → 空格（C7）
   assert_eq(@json.get_str(out, "createTime").unwrap(), "2026-08-01 10:00:00")
   // opaque 嵌套键保留原样
-  let ext = out.value("ext").unwrap()
+  let ext = @json.get(out, "ext").unwrap()
   assert_true(@json.get_str(ext, "u_realName") is Some(_))
   assert_true(@json.get_i64(ext, "PERMISSION_f_note") is Some(_))
 }

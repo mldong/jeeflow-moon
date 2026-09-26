@@ -307,13 +307,13 @@ pub fn flow_data_to_object(vars : @json.FlowData) -> Json {
 pub fn first_task_node_id(json_object : Json?) -> String? {
   match json_object {
     Some(obj) =>
-      match obj.value("nodes") {
+      match @json.get(obj, "nodes") {
         Some(Json::Array(nodes)) => {
           for n in nodes {
-            match n.value("type") {
+            match @json.get(n, "type") {
               Some(Json::String(t)) =>
                 if t == "snaker:task" {
-                  return @json.as_str(n.value("id").unwrap_or(@json.null_json()))
+                  return @json.as_str(@json.get(n, "id").unwrap_or(@json.null_json()))
                 }
               _ => ()
             }

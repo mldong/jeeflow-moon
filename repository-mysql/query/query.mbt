@@ -144,7 +144,7 @@ pub fn build_m_where(filters : Array[@model.QueryFilter]) -> (String, Array[@moo
               b.write_string(",")
             }
             b.write_string("?")
-            params.push(@moondb.Text(items[i].to_string()))
+            params.push(@moondb.Text(items[i].to_owned()))
           }
           b.write_string(")")
         }
@@ -158,7 +158,7 @@ pub fn build_m_where(filters : Array[@model.QueryFilter]) -> (String, Array[@moo
               b.write_string(",")
             }
             b.write_string("?")
-            params.push(@moondb.Text(items[i].to_string()))
+            params.push(@moondb.Text(items[i].to_owned()))
           }
           b.write_string(")")
         }
@@ -167,8 +167,8 @@ pub fn build_m_where(filters : Array[@model.QueryFilter]) -> (String, Array[@moo
         let parts = f.value().split(",").collect()
         if parts.length() >= 2 {
           b.write_string(" AND " + col + " BETWEEN ? AND ?")
-          params.push(@moondb.Text(parts[0].to_string()))
-          params.push(@moondb.Text(parts[1].to_string()))
+          params.push(@moondb.Text(parts[0].to_owned()))
+          params.push(@moondb.Text(parts[1].to_owned()))
         }
       }
     }

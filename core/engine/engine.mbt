@@ -122,7 +122,7 @@ fn[R, E] Engine::resolve_assignee(self : Engine[R, E], exec : @exec.Execution, n
   match node.candidate_users() {
     Some(users) => {
       for u in users.split(",") {
-        let s = u.to_string().trim(chars=" \t\r\n").to_owned()
+        let s = u.to_owned().trim(chars=" \t\r\n").to_owned()
         if !s.is_empty() {
           actors.push(s)
         }
@@ -137,7 +137,7 @@ fn[R, E] Engine::resolve_assignee(self : Engine[R, E], exec : @exec.Execution, n
 fn split_actors(s : String) -> Array[String] {
   let out : Array[String] = []
   for part in s.split(",") {
-    let t = part.to_string().trim(chars=" \t\r\n").to_owned()
+    let t = part.to_owned().trim(chars=" \t\r\n").to_owned()
     if !t.is_empty() {
       out.push(t)
     }
@@ -625,7 +625,7 @@ pub fn parse_cc_actors(v : Json?) -> Array[String] {
       }
     Some(Json::String(s)) => {
       for part in s.split(",") {
-        let t = part.to_string().trim(chars=" \t\r\n").to_owned()
+        let t = part.to_owned().trim(chars=" \t\r\n").to_owned()
         if !t.is_empty() {
           out.push(t)
         }

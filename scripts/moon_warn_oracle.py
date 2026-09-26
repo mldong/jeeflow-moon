@@ -86,7 +86,7 @@ RECIPES = {
     # Json 的 .value(k) → @json.get(x, k)（我们自己的 get 就是编译器建议的那一形状）
     "jget": dict(
         cls="deprecated",
-        site=re.compile(r"(?P<recv>[A-Za-z_@][\w.]*?)\.value\((?P<arg>[^()]*)\)"),
+        site=re.compile(r"(?P<recv>[A-Za-z_@][\w.]*?)\.value\((?P<arg>[^()]+)\)"),  # 空实参的那些是我们自己的 DictItem/QueryFilter::value，不该动
         variants=lambda m: [
             ("@json.get(%s, %s)" % (m["recv"], m["arg"])),
             ("get(%s, %s)" % (m["recv"], m["arg"])),          # core/json 自己包内直呼
@@ -94,11 +94,14 @@ RECIPES = {
     ),
     "jasm": dict(
         cls="deprecated",
-        site=re.compile(r"(?P<recv>[A-Za-z_@][\w.]*?)\.as_(string|bool|number|array)\((?P<arg>[^()]*)\)"),
-        variants=lambda m: ["@json.as_str(%s)" % m["recv"]] if m["group(2)"] == "string" else [
-            "@json.as_%s(%s)" % (m["group(2)"], m["recv"]),
-            "as_%s(%s)" % (m["group(2)"], m["recv"]),
-        ],
+        site=re.compile(r"(?P<recv>[A-Za-z_@][\w.]*?)\.as_(string|bool|number|array)\(\)"),
+        # 本仓 core/json 的助手名与内建不是一一对应：as_number→as_f64、as_string→as_str，
+        # as_array 是 W8a 刚补的那一个。包内直呼的形态排第二，给 core/json 自己用。
+        variants=lambda m: (lambda pair: [
+            "@json.%s(%s)" % (pair, m["recv"]),
+            "%s(%s)" % (pair, m["recv"]),
+        ])({"string": "as_str", "number": "as_f64",
+            "bool": "as_bool", "array": "as_array"}[m.group(2)]),
     ),
 }
 

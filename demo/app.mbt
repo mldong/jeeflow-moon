@@ -320,7 +320,7 @@ fn query_param(qs : String, key : String) -> String? {
     return None
   }
   for pair in qs.split("&") {
-    let kv = pair.to_string()
+    let kv = pair.to_owned()
     let idx = kv.find("=")
     match idx {
       Some(i) =>

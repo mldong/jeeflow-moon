@@ -252,8 +252,8 @@ async test "批次121: detail 出口的 ext.isFirstTaskNode 以落库值为准�
       saw_apply = true
       let row_state = @json.get_i64(row, "taskState").unwrap_or(-1L)
       sg_ok(row_state != 10L, "前置条件：apply 行应已办结（实得 state=\{row_state}）")
-      let flag = match row.value("ext") {
-        Some(ext) => match ext.value("isFirstTaskNode") {
+      let flag = match @json.get(row, "ext") {
+        Some(ext) => match @json.get(ext, "isFirstTaskNode") {
           Some(v) => @json.as_bool(v).unwrap_or(false)
           None => false
         }

@@ -695,7 +695,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::candidate_page(self : Facade
 fn split_comma(s : String) -> Array[String] {
   let out : Array[String] = []
   for part in s.split(",") {
-    let t = part.to_string().trim(chars=" \t\r\n").to_owned()
+    let t = part.to_owned().trim(chars=" \t\r\n").to_owned()
     if !t.is_empty() {
       out.push(t)
     }

@@ -21,14 +21,33 @@ pub fn stringify(value : Json) -> String {
 
 ///|
 pub fn get(value : Json, key : String) -> Json? {
-  value.value(key)
+  // `Json.value` 已弃办，建议形就是这一句；本仓所有"取对象键"都从这里过，
+  // 所以只改这一处，其余 70+ 个 `.value(` 站点交给菜谱换成 @json.get(...)。
+  if value is Object(obj) {
+    obj.get(key)
+  } else {
+    None
+  }
+}
+///|
+pub fn as_str(value : Json) -> String? {
+  // 同上：`Json.as_string` 已弃办
+  if value is String(s) {
+    Some(s)
+  } else {
+    None
+  }
 }
 
 ///|
-pub fn as_str(value : Json) -> String? {
-  value.as_string()
+/// `Json.as_array` 的替身（本仓原来没有这一档，三个调用点各写一遍判形不如集中一处）
+pub fn as_array(value : Json) -> Array[Json]? {
+  if value is Array(a) {
+    Some(a)
+  } else {
+    None
+  }
 }
-
 ///|
 /// 对齐 rust as_i64：Number 截断 / Str 解析双收。
 /// Number 的 double 分量对 >2^53 整数会取整（雪花 id 均超限）；
@@ -82,7 +101,7 @@ pub fn as_bool(value : Json) -> Bool? {
 
 ///|
 pub fn get_str(value : Json, key : String) -> String? {
-  match value.value(key) {
+  match get(value, key) {
     Some(v) => as_str(v)
     None => None
   }
@@ -90,7 +109,7 @@ pub fn get_str(value : Json, key : String) -> String? {
 
 ///|
 pub fn get_i64(value : Json, key : String) -> Int64? {
-  match value.value(key) {
+  match get(value, key) {
     Some(v) => as_i64(v)
     None => None
   }

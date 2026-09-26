@@ -95,7 +95,7 @@ fn data_of(env : Json) -> Json {
 
 ///|
 fn rows_of(data : Json) -> Array[Json] {
-  match data.value("rows") {
+  match @json.get(data, "rows") {
     Some(Json::Array(a)) => a
     _ => []
   }
@@ -110,7 +110,7 @@ fn record_count_of(data : Json) -> Int64 {
 fn page_has_instance(data : Json, iid : Int64) -> Bool {
   let mut hit = false
   for r in rows_of(data) {
-    let rid = match r.value("processInstanceId") {
+    let rid = match @json.get(r, "processInstanceId") {
       Some(v) => @json.as_str(v).unwrap_or("")
       None => ""
     }
@@ -144,7 +144,7 @@ fn history_of(task : @model.ProcessTask) -> Array[Json] {
 
 ///|
 fn hop_field(hop : Json, key : String) -> String {
-  match hop.value(key) {
+  match @json.get(hop, key) {
     Some(v) =>
       match @json.as_str(v) {
         Some(s) => s
@@ -299,9 +299,9 @@ async test "transfer 正向: 待办从 A 挪到 B + 三件留痕落持久值（s
     _ => ()
   }
   let row = target.unwrap()
-  let ext = row.value("ext").unwrap_or(@json.null_json())
-  assert_eq(@json.stringify(ext.value("submitType").unwrap()), "7")
-  match ext.value("tf_transferHistory") {
+  let ext = @json.get(row, "ext").unwrap_or(@json.null_json())
+  assert_eq(@json.stringify(@json.get(ext, "submitType").unwrap()), "7")
+  match @json.get(ext, "tf_transferHistory") {
     Some(Json::Array(h)) => {
       assert_eq(h.length(), 1)
       assert_eq(hop_field(h[0], "toActor"), "lisi")
@@ -388,7 +388,7 @@ async test "withdraw 正向: 发起人撤回 → 整单 30 + update_user 回写 
   let doing_id = doing_task_for(repo, iid, "leader").task_id
   let env = facade.flow("processInstance/withdraw", targs([("id", iid.to_string()), ("operator", "applicant")]))
   assert_eq(msg_of(env), "成功")
-  assert_true(env.value("data") is Some(Json::Null))
+  assert_true(@json.get(env, "data") is Some(Json::Null))
   let inst = repo.find_instance_by_id(iid).unwrap()
   assert_eq(inst.state, 30)
   // update_user 回写真实撤回人（不是缺省 user1）
@@ -404,13 +404,13 @@ async test "withdraw 正向: 发起人撤回 → 整单 30 + update_user 回写 
   // 出口读回（detail 的 state + tasks 行状态；update_user 的出口读回见 processInstance/page 行）
   let detail = data_of(facade.flow("processInstance/detail", targs([("id", iid.to_string())])))
   assert_eq(@json.get_i64(detail, "state").unwrap_or(-1L), 30L)
-  match detail.value("activeTaskList") {
+  match @json.get(detail, "activeTaskList") {
     Some(Json::Array(a)) => assert_eq(a.length(), 0)
     _ => assert_true(false)
   }
   let mut withdrawn_rows = 0
   let mut finished_rows = 0
-  match detail.value("tasks") {
+  match @json.get(detail, "tasks") {
     Some(Json::Array(a)) =>
       for r in a {
         match @json.get_i64(r, "taskState") {
@@ -442,7 +442,7 @@ async test "withdraw 正向: 进行中任务参与者可撤整单（判据 2）/
   )
   let mut row_update_user = "<none>"
   for r in rows_of(page) {
-    if @json.as_str(r.value("id").unwrap_or(@json.null_json())).unwrap_or("") == iid.to_string() {
+    if @json.as_str(@json.get(r, "id").unwrap_or(@json.null_json())).unwrap_or("") == iid.to_string() {
       row_update_user = @json.get_str(r, "updateUser").unwrap_or("<null>")
     }
   }
@@ -782,7 +782,7 @@ async test "回归红线: 转办绝不覆写任务 actor_id/operator 列" {
   assert_true(back.actor_id is None)
   // 出口读回同样是 null
   let latest = data_of(facade.flow("processTask/latest", targs([("processInstanceId", iid.to_string())])))
-  assert_true(latest.value("operator") is Some(Json::Null))
+  assert_true(@json.get(latest, "operator") is Some(Json::Null))
   // "办理人记谁"由 update_user + 账本 operator 承载
   assert_eq(back.update_user.unwrap_or("<null>"), "leader")
   assert_eq(hop_field(history_of(back)[0], "operator"), "leader")

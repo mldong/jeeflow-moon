@@ -353,7 +353,7 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
   }
   // nodes
   let nodes : Array[NodeModel] = []
-  match root.value("nodes") {
+  match @json.get(root, "nodes") {
     Some(nodes_val) =>
       match nodes_val {
         Json::Array(items) =>
@@ -364,13 +364,13 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
             let display_name = match @json.get_str(node_val, "displayName") {
               Some(s) => Some(s)
               None =>
-                match node_val.value("text") {
+                match @json.get(node_val, "text") {
                   Some(t) => @json.get_str(t, "value")
                   None => None
                 }
             }
             let properties : Map[String, Json] = Map([])
-            match node_val.value("properties") {
+            match @json.get(node_val, "properties") {
               Some(props) =>
                 match props {
                   Json::Object(m) =>
@@ -389,7 +389,7 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
   }
   // edges
   let edges : Array[EdgeModel] = []
-  match root.value("edges") {
+  match @json.get(root, "edges") {
     Some(edges_val) =>
       match edges_val {
         Json::Array(items) =>
@@ -397,12 +397,12 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
             let id = @json.get_str(edge_val, "id").unwrap_or("")
             let source_node_id = @json.get_str(edge_val, "sourceNodeId").unwrap_or("")
             let target_node_id = @json.get_str(edge_val, "targetNodeId").unwrap_or("")
-            let label = match edge_val.value("text") {
+            let label = match @json.get(edge_val, "text") {
               Some(t) => @json.get_str(t, "value")
               None => None
             }
             let properties : Map[String, Json] = Map([])
-            match edge_val.value("properties") {
+            match @json.get(edge_val, "properties") {
               Some(props) =>
                 match props {
                   Json::Object(m) =>
