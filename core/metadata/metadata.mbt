@@ -274,3 +274,11 @@ pub fn HandlerRegistry::list_handler_types(self : HandlerRegistry) -> Array[Stri
 pub fn HandlerRegistry::all_handlers(self : HandlerRegistry) -> Array[HandlerMeta] {
   self.handlers
 }
+
+
+// ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
+// 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
+pub extend DictItem with Eq::{equal, not_equal}
+pub extend DictItem with Debug::{to_repr}
+pub extend HandlerMeta with Eq::{equal, not_equal}
+pub extend HandlerMeta with Debug::{to_repr}

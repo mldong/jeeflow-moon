@@ -143,3 +143,8 @@ pub impl DynamicTableWriter for InMemoryTableWriter with fn update_by_key(self, 
 pub impl DynamicTableWriter for InMemoryTableWriter with fn columns(self, _table_name, candidates) {
   candidates.copy()
 }
+
+
+// ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
+// 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
+pub extend InMemoryTableWriter with DynamicTableWriter::{columns, exists, exists_by_key, insert, update, update_by_key}

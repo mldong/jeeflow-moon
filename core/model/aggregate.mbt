@@ -572,3 +572,8 @@ pub fn ProcessTask::is_doing(self : ProcessTask) -> Bool {
 pub fn ProcessTask::is_finished(self : ProcessTask) -> Bool {
   self.task_state == TaskState::Finished.code()
 }
+
+
+// ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
+// 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
+pub extend ProcessDefine with Eq::{equal, not_equal}

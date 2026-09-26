@@ -10,7 +10,7 @@ pub(all) struct Facade[R, E] {
 }
 
 ///|
-pub fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::make(
+pub fn[R, E : @spi.ProcessExtRepository] Facade::make(
   ctx : @spi.Ctx[R, E]
 ) -> Facade[R, E] {
   let repo = ctx.repository()

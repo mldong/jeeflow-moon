@@ -165,3 +165,9 @@ pub fn fill_system_fields(
   data["update_time"] = @json.string_of(now)
   data["update_user"] = @json.string_of(operator)
 }
+
+
+// ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
+// 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
+pub extend PersistMode with Eq::{equal, not_equal}
+pub extend PersistMode with Debug::{to_repr}

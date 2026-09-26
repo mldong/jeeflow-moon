@@ -421,3 +421,12 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
   }
   { name, display_name, model_type, expire_time, persist_mode, rel_table_name, nodes, edges }
 }
+
+
+// ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
+// 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
+pub extend ProcessModel with Eq::{equal, not_equal}
+pub extend NodeType with Eq::{equal, not_equal}
+pub extend NodeType with Debug::{to_repr}
+pub extend NodeModel with Eq::{equal, not_equal}
+pub extend EdgeModel with Eq::{equal, not_equal}

@@ -254,3 +254,23 @@ pub fn FilterOp::from_str(s : String) -> FilterOp? {
     _ => None
   }
 }
+
+
+// ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
+// 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
+pub extend DefineState with Eq::{equal, not_equal}
+pub extend DefineState with Debug::{to_repr}
+pub extend InstanceState with Eq::{equal, not_equal}
+pub extend InstanceState with Debug::{to_repr}
+pub extend TaskState with Eq::{equal, not_equal}
+pub extend TaskState with Debug::{to_repr}
+pub extend TaskType with Eq::{equal, not_equal}
+pub extend TaskType with Debug::{to_repr}
+pub extend PerformType with Eq::{equal, not_equal}
+pub extend PerformType with Debug::{to_repr}
+pub extend CountersignType with Eq::{equal, not_equal}
+pub extend CountersignType with Debug::{to_repr}
+pub extend SubmitType with Eq::{equal, not_equal}
+pub extend SubmitType with Debug::{to_repr}
+pub extend FilterOp with Eq::{equal, not_equal}
+pub extend FilterOp with Debug::{to_repr}

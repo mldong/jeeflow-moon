@@ -507,3 +507,17 @@ pub fn UserInfo::post_id(self : UserInfo) -> String {
 pub fn UserInfo::post_name(self : UserInfo) -> String {
   self.post_name
 }
+
+
+// ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
+// 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
+pub extend ProcessDesign with Eq::{equal, not_equal}
+pub extend ProcessDesignHis with Eq::{equal, not_equal}
+pub extend ProcessSurrogate with Eq::{equal, not_equal}
+pub extend CcInstance with Eq::{equal, not_equal}
+pub extend TaskActor with Eq::{equal, not_equal}
+pub extend QueryFilter with Eq::{equal, not_equal}
+pub extend TaskRow with Eq::{equal, not_equal}
+pub extend InstanceRow with Eq::{equal, not_equal}
+pub extend DefineRow with Eq::{equal, not_equal}
+pub extend UserInfo with Eq::{equal, not_equal}

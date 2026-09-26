@@ -3,7 +3,7 @@
 // ═══ 流程定义 ═══
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::define_page(
+pub async fn[R : @spi.ProcessRepository, E] Facade::define_page(
   self : Facade[R, E],
   args : Map[String, Json]
 ) -> Json raise @error.JeeflowError {
@@ -15,7 +15,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::define_detail(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::define_detail(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let id = match arg_i64(args, "id") {
     Some(v) => v
     None => raise @error.Business("缺少id参数")
@@ -70,7 +70,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::deploy(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::deploy(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let content = match content_bytes(args) {
     Some(c) => c
     None => raise @error.Business("content 缺失")
@@ -105,7 +105,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::redeploy(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::redeploy(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let define_id = match arg_i64(args, "processDefineId") {
     Some(v) => v
     None => raise @error.Business("缺少processDefineId参数")
@@ -131,7 +131,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::define_remove(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::define_remove(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   for id in arg_ids(args) {
     (self.repo).remove_define(id)
   }
@@ -139,7 +139,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::define_up_and_down(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::define_up_and_down(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   // opType 优先，state 兜底（C15）
   let state = match arg_i64(args, "opType") {
     Some(v) => v.to_int()
@@ -156,7 +156,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::get_last_by_name(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::get_last_by_name(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let name = match arg_str(args, "processDefineName") {
     Some(s) => s
     None => raise @error.Business("缺少processDefineName参数")
@@ -191,7 +191,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 // ═══ 流程实例 ═══
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::instance_page(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::instance_page(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let page_num = arg_i64_or(args, "pageNum", 1L)
   let page_size = arg_i64_or(args, "pageSize", 20L)
   let filters = facade_parse_m_filters(args)
@@ -202,7 +202,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::instance_detail(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::instance_detail(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let id = match arg_id(args, ["id"]) {
     Some(v) => v
     None => raise @error.Business("缺少id参数")
@@ -341,7 +341,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::approval_record(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::approval_record(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let id = match arg_i64(args, "id") {
     Some(v) => v
     None => raise @error.Business("缺少id参数")
@@ -364,7 +364,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::get_assignee_text_data(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::get_assignee_text_data(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let id = match arg_i64(args, "id") {
     Some(v) => v
     None => raise @error.Business("缺少id参数")
@@ -392,7 +392,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::create_cc_instance(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::create_cc_instance(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let instance_id = match arg_i64(args, "processInstanceId") {
     Some(v) => v
     None => raise @error.Business("processInstanceId 缺失")
@@ -407,7 +407,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::update_cc_status(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::update_cc_status(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let instance_id = match arg_i64(args, "processInstanceId") {
     Some(v) => v
     None => raise @error.Business("processInstanceId 缺失")
@@ -418,7 +418,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::cc_list(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::cc_list(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let page_num = arg_i64_or(args, "pageNum", 1L)
   let page_size = arg_i64_or(args, "pageSize", 20L)
   let filters = facade_parse_m_filters(args)
@@ -431,7 +431,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 // ═══ 流程任务 ═══
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::todo_list(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::todo_list(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let page_num = arg_i64_or(args, "pageNum", 1L)
   let page_size = arg_i64_or(args, "pageSize", 20L)
   let filters = facade_parse_m_filters(args)
@@ -442,7 +442,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::done_list(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::done_list(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let page_num = arg_i64_or(args, "pageNum", 1L)
   let page_size = arg_i64_or(args, "pageSize", 20L)
   let filters = facade_parse_m_filters(args)
@@ -488,7 +488,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::task_detail(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::task_detail(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let id = match arg_id(args, ["processTaskId", "id"]) {
     Some(v) => v
     None => raise @error.Business("缺少id参数")
@@ -577,7 +577,7 @@ fn node_type_name(t : @parser.NodeType) -> String {
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::jump_able_task_name_list(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::jump_able_task_name_list(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let instance_id = match arg_i64(args, "processInstanceId") {
     Some(v) => v
     None => raise @error.Business("processInstanceId 缺失")
@@ -602,7 +602,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::candidate_page(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::candidate_page(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let task_id = match arg_id(args, ["processTaskId", "id"]) {
     Some(v) => v
     None => raise @error.Business("processTaskId 缺失")
@@ -705,7 +705,7 @@ fn split_comma(s : String) -> Array[String] {
 
 ///|
 /// 加签（addTaskActor=去重追加非全删全插，C14）
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::task_surrogate(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::task_surrogate(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let task_id = match arg_i64(args, "processTaskId") {
     Some(v) => v
     None => raise @error.Business("processTaskId/actorIds 缺失")
@@ -734,7 +734,7 @@ fn transfer_text(from_actor : String, to_actor : String, reason : String) -> Str
 /// 摘原人 → 加新人 → 同一 taskId 不新建 → 三件留痕（submitType=7 槽位 + tf_transferHistory
 /// 追加式账本 + tf_transferTo/tf_transferReason 便捷键 + 末跳 tf_approvalComment）→
 /// 去重/前置态四类明确报错。区别于 processTask/surrogate 加签的"只追加不动原人"。
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::task_transfer(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::task_transfer(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let task_id = match arg_i64(args, "processTaskId") {
     Some(v) => v
     None => raise @error.Business("缺少processTaskId参数")
@@ -807,7 +807,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::task_latest(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::task_latest(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let instance_id = match arg_i64(args, "processInstanceId") {
     Some(v) => v
     None => raise @error.Business("processInstanceId 缺失")

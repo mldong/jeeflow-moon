@@ -99,7 +99,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::find
 /// 不 trim 的后果不是显示差异而是**功能分叉**：`name=" 请假 "` 时拿带空白的串去
 /// `wf_process_surrogate.process_name` 做精确匹配必失配，只剩"全流程兜底"行能命中 ⇒
 /// 用户在该流程自己配的委托静默失效；而 name 仅空白时也不会回落定义行。
-fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::surrogate_process_name(
+fn[R, E] Engine::surrogate_process_name(
   self : Engine[R, E],
   exec : @exec.Execution
 ) -> String {

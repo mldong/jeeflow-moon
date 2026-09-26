@@ -120,7 +120,7 @@ fn in_range(create_time : String?, start : String?, end : String?) -> Bool {
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::stats_overview(
+pub async fn[R : @spi.ProcessRepository, E] Facade::stats_overview(
   self : Facade[R, E],
   args : Map[String, Json]
 ) -> Json raise @error.JeeflowError {
@@ -274,7 +274,7 @@ fn round4(v : Double) -> Double {
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::stats_trend(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::stats_trend(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let granularity = arg_str_or(args, "granularity", "")
   let start_s = parse_surrogate_time(arg_str(args, "start"))
   let end_s = parse_surrogate_time(arg_str(args, "end"))
@@ -440,7 +440,7 @@ fn bucket_key_of(time_str : String, granularity : String) -> String? {
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::stats_group(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::stats_group(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let start = parse_surrogate_time(arg_str(args, "start"))
   let end = parse_surrogate_time(arg_str(args, "end"))
   let dimension = arg_str_or(args, "dimension", "define")

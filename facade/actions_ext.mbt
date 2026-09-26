@@ -3,7 +3,7 @@
 // ═══ 流程设计（需扩展仓储）═══
 
 ///|
-fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::ext(self : Facade[R, E]) -> E raise @error.JeeflowError {
+fn[R : @spi.ProcessRepository, E] Facade::ext(self : Facade[R, E]) -> E raise @error.JeeflowError {
   self.ext_repo
 }
 
@@ -308,7 +308,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 
 ///|
 /// deploy 版本管理：按 name 最新 version+1 插入 state=1（java saveDeployedDefine）
-async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::save_deployed_define(self : Facade[R, E], model : @parser.ProcessModel, content : String) -> Int64 raise @error.JeeflowError {
+async fn[R : @spi.ProcessRepository, E] Facade::save_deployed_define(self : Facade[R, E], model : @parser.ProcessModel, content : String) -> Int64 raise @error.JeeflowError {
   let query = @model.PageQuery::new(1L, 1L)
   query.add_filter(@model.QueryFilter::make("t", @model.Eq, "name", model.name))
   let page = (self.repo).page_defines(query)
@@ -461,7 +461,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
-fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::apply_surrogate_fields(self : Facade[R, E], s : @model.ProcessSurrogate, args : Map[String, Json], operator : String) -> Unit raise @error.JeeflowError {
+fn[R, E] Facade::apply_surrogate_fields(self : Facade[R, E], s : @model.ProcessSurrogate, args : Map[String, Json], operator : String) -> Unit raise @error.JeeflowError {
   let _ = self
   match arg_str(args, "processName") {
     Some(v) => s.process_name = v
@@ -528,7 +528,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 // ═══ 视图：bizData / highLight ═══
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::biz_data(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::biz_data(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let instance_id = match arg_id(args, ["processInstanceId", "id"]) {
     Some(v) => v
     None => raise @error.Business("processInstanceId 缺失")
@@ -587,7 +587,7 @@ fn rel_fallback_name(meta : Json) -> String? {
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::high_light(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E] Facade::high_light(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let id = match arg_i64(args, "id") {
     Some(v) => v
     None => raise @error.Business("缺少id参数")

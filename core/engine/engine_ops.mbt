@@ -147,7 +147,7 @@ fn clone_map(src : Map[String, Json]) -> Map[String, Json] {
 
 ///|
 /// complete_task：rust 里聚合方法返回 Result 映射 Business；这里保持同语义
-fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::complete_task_in_aggregate(
+fn[R, E] Engine::complete_task_in_aggregate(
   self : Engine[R, E],
   instance : @model.ProcessInstance,
   task_id : Int64,
@@ -480,7 +480,7 @@ fn is_control_var_key(k : String) -> Bool {
 /// 退回上一步（血缘版，规范 04 · 退回上一步）：上一步来源＝当前行的 parent_task_id，
 /// 复活那条历史行；不按模型入边拓扑推。本栈 JeeflowError::code() 恒 99999999，
 /// 对外 msg 用固定中文文案、不含引擎内部码（两格语义由文案区分，HTTP 出口仍 99999999）。
-fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::rollback_to_parent(
+fn[R, E] Engine::rollback_to_parent(
   self : Engine[R, E], exec : @exec.Execution
 ) -> Unit raise @error.JeeflowError {
   let current = match exec.process_task {

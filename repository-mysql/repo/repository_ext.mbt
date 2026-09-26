@@ -275,3 +275,8 @@ async fn MysqlRepository::newest_surrogate(
     Some(map_surrogate(rows[0]))
   }
 }
+
+
+// ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
+// 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
+pub extend MysqlRepository with @spi.ProcessExtRepository::{find_design_by_id, find_surrogate_by_id, get_surrogate, list_design_his, page_designs, page_surrogates, remove_design, remove_surrogate, save_design, save_design_his, save_surrogate, update_design, update_surrogate}

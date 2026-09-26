@@ -549,3 +549,8 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn get_all_tasks(self)
   }
   out
 }
+
+
+// ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
+// 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
+pub extend MemoryRepository with @spi.ProcessRepository::{add_task_actor, count_todo_tasks, create_cc_instance, find_define_by_id, find_doing_tasks, find_done_tasks, find_history_tasks, find_instance_by_id, find_task_actors, find_task_by_id, get_all_instances, get_all_tasks, page_cc_instances, page_defines, page_done_tasks, page_instances, page_todo_tasks, remove_define, remove_task_actor, save_define, save_instance, save_task, update_cc_status, update_define, update_define_state, update_instance, update_task}
