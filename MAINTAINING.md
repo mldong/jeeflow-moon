@@ -427,20 +427,34 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
 
 ### 回拉验证（发版后必做）
 
-```bash
-mkdir -p /tmp/pull-verify && cd /tmp/pull-verify
-# 新建空模块 import 四包 @<当前版本>（引号包名格式 "mldong/jeeflow-core@0.1.5"，勿用裸 `name@ver` 空格写法）→ moon build --target wasm → 冒烟
-```
+执行件已固化：**`bash scripts/pull_verify.sh [版本号]`**（缺省读 `core/moon.mod` 的 version）。
+它在系统临时目录新建一个**与本源仓库无关**的工程，只从注册表装四包，跑两支判据：
+**正向** `processInstance/page` ⇒ code=0 且分页五键齐；**负向** 未知 action ⇒ 99999999；
+最后打印解析到的 `async`/`moondb`/`moonmysql` 版本——**发"依赖换代"那一版时，这三行才是
+"用户装到的到底是哪一代"的证据**（本地 `moon check` 走 workspace，永远证不到这一层）。
+`KEEP=1` 保留临时工程供人工复跑。三条踩过的注意：
 
+- **别再手写 `/tmp/pull-verify`**：MSYS 的 `/tmp` 与 Windows 侧临时目录不是一个地方，
+  且原生 python 看不见 `/g/...` 形状的路径（脚本里"相对路径 + 子 shell 里 cd"就是为了绕开它）。
+- 消费者工程里 **`moonbitlang/async` 必须模块级 `moon add`**，只在 `moon.pkg` 里 import 会报
+  "exists in global environment, but its containing module is not imported"。
+- `Json::Number(..)` 在新工具链是带 `repr~` 的只读类型，**不能直接构造**；构造入参一律走
+  `@json.parse_json` + `Json::Object(m)` 解构。`match` 的两个臂也要**分行写**，
+  同行 `None => abort(..) Some(_) => ..` 会 E3002。
 ### 发版前 checklist（缺一不包）
 
-1. `moon test --target wasm` 全绿（本地）
-2. T1 smoke ALL PASS（连库；`SKIP_MYSQL=1` 仅限无网开发机，发版机 fail）
-3. `bash scripts/smoke_t2.sh` ALL PASS（demo 起着）
-4. `node scripts/check-action-manifest.mjs` PASS
-5. `consistency/moon.json` 与六语言逐字段比对（固定钟确定化）
-6. 四模块 `moon.mod` version 一致且与 tag 一致
-
+1. `moon check` 全工程 **0 error**（警告数与上一版对齐，涨了就要归因；残留 11 条见 §1.3）
+2. `moon test --target wasm` 全绿（本地，T0）
+3. T1 `moon run --target wasm repository-mysql/smoke` ALL PASS（连真库；`SKIP_MYSQL=1`
+   仅限无网开发机，发版机 fail）
+4. T1-F `moon run --target wasm demo/cmd/t1_mysql` ALL PASS（门面级真机对拍）
+5. `bash scripts/smoke_t2.sh` ALL PASS（demo 起着）
+6. `node scripts/check-action-manifest.mjs` PASS（46 action 双向无差集）
+7. `consistency/moon.json` 载荷逐字节等值（**按载荷比、不按文件字节比**：本工具链
+   `moon run` 的 stdout 末尾多一个 `
+`，见 §1「依赖版本」）
+8. 四模块 `moon.mod` version 一致且与 tag 一致；**升过 registry 依赖时，互依赖 pin 也要同步抬号**
+9. 发版后 `bash scripts/pull_verify.sh` 绿（消费者视角，正负两支 + 依赖代次读数）
 ## 4. 代决策日志（decisions-log）
 
 > 约定（方案 §9 尾注）：契约语义冲突（R1）永远硬停，不适用代决策；本表只记**工程实现类**代决策。
