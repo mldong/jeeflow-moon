@@ -5,3 +5,7 @@ target/
 *.wasm
 _build/
 moon_diag_sites.tsv
+
+# 施工期产物
+__pycache__/
+w4_need_attempt.tsv
