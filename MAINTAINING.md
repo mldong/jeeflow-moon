@@ -134,6 +134,18 @@ owner 让先查上游是否已修，再定 A/B/C。实测结论：**B 不成立�
    而被调链上的效应是未闭合的 `Error.`。 ⇒ 只标几个公开函数不够，要把 vendored 两个文件
    **自底向上做成效应显式**（体内每一层调用都要闭合，粗量 30~60 处标注/转换）。
 
+**A 的落点已量清（关键省力发现）**：`vendored/moon_mysql_client/driver.mbt:49-50` 里上游
+**自己已经做过同类收口** —— `fn to_db_error(e : Error) -> @moondb.DbError`，且 `Driver` 的
+trait impl（`execute/query/begin/commit/rollback`）全都标了 `raise @moondb.DbError`。
+缺的只是 **`conn.mbt` 里那批 `MysqlConn` inherent 方法**（`connect/query/execute/
+begin/commit/rollback/close` 等）没做同样的闭合，而我们 `repo/conn.mbt`/`tx.mbt` 正是
+直接调这批方法。实测效应入口只有 **6 处** socket 调用（`@socket.Addr::resolve`、
+`@socket.Tcp::connect`、`tcp.read_exactly`、`write_bytes`），文件共 20 个函数。
+⇒ A 不是发明偏离，而是**把上游在 driver 边界已用的 `to_db_error` 模式补到 conn 方法上**，
+风格与上游一致、将来 re-vendor 好合。执行顺序：先闭合 vendored conn.mbt（含内部
+`read_packet/write_*` 的传导标注）→ `moon check` 该包 0 error → 再落 63 个 `try?` 站点
+（SPI 闭包与 parse 族可先走，已在副本试算过形状）→ 其余 4 类警告 → 全门禁 → 发版。
+
 因此 A 的执行形状：单独一轮"vendored 效应显式化"，验收口径 =
 `repository-mysql/vendored/moon_mysql_client/*` 与上游的 diff **只允许**
 ① 去 `supported_targets` 行、② 新增的 `raise`/错误转换；sha 基线重核并把两侧 diff 落档，
