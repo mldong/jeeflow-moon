@@ -384,6 +384,23 @@ cd ../repository-mysql && moon publish # 3. mldong/jeeflow-repository-mysql
 cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
 ```
 
+### publish 链的可重入性（2026-09-26 v0.1.13 实发事故）
+
+四个模块在**同一条 workflow**里顺序 publish，而 `moon publish` 的"包体校验"要把依赖解析到
+**registry 里的版本**——core 刚发完几秒，索引还没刷新，persist 就报
+`Failed to resolve registry dependency mldong/jeeflow-core: no version satisfies`，
+整条链卡在第二步，而 **core 已经在注册表里了**：此时无论 Re-run 原 run（用 tag 那个旧 commit，
+拿不到任何修复）还是重打 tag，都会先撞 core 的重复发布。 ⇒ 三重准备：
+
+1. 模块间 pin 必须指向"**registry 里已经存在**"的版本（本仓历史上钉的是上一代，
+   这是接力式 pin 的常态，不是 bug）；
+2. `publish.yml` 每步走 `.github/scripts/publish-if-absent.sh`：先 `moon update` 拉新索引，
+   再按索引决定"发 / 跳"（已在注册表 ⇒ 跳过）⇒ 整条链可重入，不必 bump 版本号绕；
+3. 事后一定**读索引复核**，别拿 CLI 退出码当结论（上传成功后的环节报错也会给非零码）。
+
+索引位置：`$MOON_HOME/registry/index/user/mldong/<mod>.index`（JSON Lines，`name` 与
+`version` 在同一行 ⇒ 可整行 grep）。
+
 ### 回拉验证（发版后必做）
 
 ```bash
