@@ -98,7 +98,7 @@ async test "c27: executing abandoned task fails (negative)" {
   let args = new_args()
   args.insert_i64("submitType", 20L)
   let _ = engine.execute_task_async(user_a.task_id, "userA", args)
-  let outcome = try? engine.execute_task_async(user_b_id, "userB", new_args())
+  let outcome = engine.execute_task_async(user_b_id, "userB", new_args())
   assert_true(outcome is Err(_))
 }
 
@@ -295,7 +295,7 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
     Some(0L) => ()
     other => fail("前置条件：发起那条 parent 应为 0L")
   }
-  let r07 = try? engine.execute_and_jump_async(apply.task_id, "applicant", @json.FlowData::new(), None)
+  let r07 = engine.execute_and_jump_async(apply.task_id, "applicant", @json.FlowData::new(), None)
   match r07 {
     Ok(_) => fail("无血缘（parent=0L）必须报错，不得静默不建单")
     Err(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
@@ -306,7 +306,7 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
   let apply_b = repo.find_doing_tasks(inst_b.instance_id, [])[0]
   apply_b.parent_task_id = None
   repo.update_task(apply_b)
-  let r07b = try? engine.execute_and_jump_async(apply_b.task_id, "applicant", @json.FlowData::new(), None)
+  let r07b = engine.execute_and_jump_async(apply_b.task_id, "applicant", @json.FlowData::new(), None)
   match r07b {
     Ok(_) => fail("parent=None 的老行必须报错，不得静默不建单")
     Err(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
@@ -318,7 +318,7 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
   let apply_c = repo.find_doing_tasks(inst_c.instance_id, [])[0]
   apply_c.parent_task_id = Some(9223372036854775807L)
   repo.update_task(apply_c)
-  let r07c = try? engine.execute_and_jump_async(apply_c.task_id, "applicant", @json.FlowData::new(), None)
+  let r07c = engine.execute_and_jump_async(apply_c.task_id, "applicant", @json.FlowData::new(), None)
   match r07c {
     Ok(_) => fail("parent 指不到真实行时必须报错，不得静默不建单")
     Err(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
@@ -356,7 +356,7 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
     None => fail("前置条件：分支行 parent 应已由 P1 写入")
   }
   let who2 = if br.actor_ids.length() > 0 { br.actor_ids[0] } else { "applicant" }
-  let r08 = try? engine2.execute_and_jump_async(br.task_id, who2, @json.FlowData::new(), None)
+  let r08 = engine2.execute_and_jump_async(br.task_id, who2, @json.FlowData::new(), None)
   match r08 {
     Ok(_) => fail("血缘前驱跨不过 fork 时必须被守卫拦下")
     Err(e) => assert_true(e.message() == "无法驳回至上一步处理，请确认上一步骤并非fork、join、suprocess以及会签任务")
@@ -404,7 +404,7 @@ async test "submitType negative: non-actor execute rejected (99999999 path)" {
   let did = save_flow_define(repo, "stneg", load_flow("01-simple"))
   let iid = start_and_apply(engine, repo, did)
   let task = find_doing_for(repo, iid, "leader")
-  let outcome = try? engine.execute_task_async(task.task_id, "intruder", new_args())
+  let outcome = engine.execute_task_async(task.task_id, "intruder", new_args())
   match outcome {
     Ok(_) => assert_true(false)
     Err(e) => assert_eq(e.code(), @error.ERR_BUSINESS)

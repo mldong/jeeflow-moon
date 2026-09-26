@@ -49,9 +49,19 @@ test "model: finish wrong actor and double finish (负向)" {
   let define_info = make_define(1L, "test")
   let inst = @model.ProcessInstance::create(define_info, "user1", @json.FlowData::new())
   let task = inst.create_task("task1", "Task 1", ["user1"], "user1", @model.Major, @model.Normal, None, None)
-  assert_true((try? task.finish("user2")) is Err(_))
+  let wrong_actor = try task.finish("user2") catch {
+    _ => true
+  } noraise {
+    _ => false
+  }
+  assert_true(wrong_actor) // 非参与者办理 ⇒ 必须 raise
   let _ = task.finish("user1")
-  assert_true((try? task.finish("user1")) is Err(_))
+  let double_finish = try task.finish("user1") catch {
+    _ => true
+  } noraise {
+    _ => false
+  }
+  assert_true(double_finish) // 重复办理 ⇒ 必须 raise
 }
 
 ///|

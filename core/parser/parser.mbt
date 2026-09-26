@@ -212,9 +212,10 @@ pub fn NodeModel::perform_type(self : NodeModel) -> Int {
           if upper == "1" || upper == "ALL" || upper == "COUNTERSIGN" {
             1
           } else {
-            match (try? @string.parse_int(s)) {
-              Ok(n) => if n == 1 { 1 } else { 0 }
-              Err(_) => 0
+            try @string.parse_int(s) catch {
+              _ => 0
+            } noraise {
+              n => if n == 1 { 1 } else { 0 }
             }
           }
         }

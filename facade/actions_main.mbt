@@ -649,7 +649,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     for actor in candidates {
       let info = match self.engine.context().user_provider {
         Some(get_user) =>
-          match (try? (get_user)(actor)) {
+          match ((get_user)(actor)) {
             Ok(Some(u)) => u.real_name()
             _ => ""
           }

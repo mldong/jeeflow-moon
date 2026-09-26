@@ -39,16 +39,19 @@ pub fn as_i64(value : Json) -> Int64? {
     Json::Number(n, repr~) =>
       match repr {
         Some(s) =>
-          match (try? @string.parse_int64(s)) {
-            Ok(v) => Some(v)
-            Err(_) => Some(n.to_int64())
-          }
+          // 有 repr 就按原文精确解析；解析失败回退 double 分量（>2^53 会取整，故 repr 优先）
+          Some(try @string.parse_int64(s) catch {
+            _ => n.to_int64()
+          } noraise {
+            v => v
+          })
         None => Some(n.to_int64())
       }
     Json::String(s) =>
-      match (try? @string.parse_int64(s)) {
-        Ok(v) => Some(v)
-        Err(_) => None
+      try @string.parse_int64(s) catch {
+        _ => None
+      } noraise {
+        v => Some(v)
       }
     _ => None
   }
@@ -59,9 +62,10 @@ pub fn as_f64(value : Json) -> Double? {
   match value {
     Json::Number(n, ..) => Some(n)
     Json::String(s) =>
-      match (try? @string.parse_double(s)) {
-        Ok(v) => Some(v)
-        Err(_) => None
+      try @string.parse_double(s) catch {
+        _ => None
+      } noraise {
+        v => Some(v)
       }
     _ => None
   }
@@ -97,9 +101,10 @@ pub fn get_i64(value : Json, key : String) -> Int64? {
 
 ///|
 pub fn null_json() -> Json {
-  match (try? @cjson.parse("null")) {
-    Ok(v) => v
-    Err(_) => abort("unreachable: literal null parse")
+  try @cjson.parse("null") catch {
+    _ => abort("unreachable: literal null parse")
+  } noraise {
+    v => v
   }
 }
 
@@ -107,9 +112,10 @@ pub fn null_json() -> Json {
 pub fn number_of(n : Int64) -> Json {
   // Int64::to_json() 在 core 里输出字符串（大整数安全惯例）；本仓契约数字键走
   // parse 原文 → Number 且 repr 保留原文（>2^53 安全），信封 code/pageNum 等保持 number
-  match (try? @cjson.parse(n.to_string())) {
-    Ok(v) => v
-    Err(_) => number_f_of(0.0)
+  try @cjson.parse(n.to_string()) catch {
+    _ => number_f_of(0.0)
+  } noraise {
+    v => v
   }
 }
 
@@ -130,17 +136,19 @@ pub fn bool_of(b : Bool) -> Json {
 
 ///|
 pub fn empty_object() -> Json {
-  match (try? @cjson.parse("{}")) {
-    Ok(v) => v
-    Err(_) => abort("unreachable: literal {} parse")
+  try @cjson.parse("{}") catch {
+    _ => abort("unreachable: literal {} parse")
+  } noraise {
+    v => v
   }
 }
 
 ///|
 pub fn empty_array() -> Json {
-  match (try? @cjson.parse("[]")) {
-    Ok(v) => v
-    Err(_) => abort("unreachable: literal [] parse")
+  try @cjson.parse("[]") catch {
+    _ => abort("unreachable: literal [] parse")
+  } noraise {
+    v => v
   }
 }
 

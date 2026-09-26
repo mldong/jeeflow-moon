@@ -247,7 +247,7 @@ pub fn parse_graph(content : String) -> Json? {
   if t.is_empty() {
     return None
   }
-  match (try? @json.parse_json(t)) {
+  match (@json.parse_json(t)) {
     Ok(v) => Some(v)
     Err(_) => None
   }
@@ -260,7 +260,7 @@ pub fn parse_json_map(s : String?) -> Map[String, Json] {
     Some(raw) => {
       let t = raw.trim(chars=" \t\r\n").to_string()
       if !t.is_empty() {
-        match (try? @json.parse_json(t)) {
+        match (@json.parse_json(t)) {
           Ok(Json::Object(m)) =>
             for k, v in m {
               out[k] = v

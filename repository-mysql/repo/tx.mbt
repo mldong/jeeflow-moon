@@ -54,14 +54,14 @@ pub async fn MysqlTxTemplate::execute_in_tx(
     op()
     return
   }
-  let conn = try? self.config.open_conn()
+  let conn = self.config.open_conn()
   let conn = match conn {
     Ok(c) => c
     Err(e) => raise e
   }
   tx_conn.val = Some(conn)
-  let outcome = try? {
-    let begin = try? conn.begin()
+  let outcome = {
+    let begin = conn.begin()
     match begin {
       Ok(_) => ()
       Err(e) => raise @error.Internal("tx begin: \{e}")
@@ -70,7 +70,7 @@ pub async fn MysqlTxTemplate::execute_in_tx(
   }
   match outcome {
     Ok(_) => {
-      let commit = try? conn.commit()
+      let commit = conn.commit()
       tx_conn.val = None
       conn.close()
       match commit {
@@ -79,7 +79,7 @@ pub async fn MysqlTxTemplate::execute_in_tx(
       }
     }
     Err(e) => {
-      let _ = try? conn.rollback()
+      let _ = conn.rollback()
       tx_conn.val = None
       conn.close()
       raise e

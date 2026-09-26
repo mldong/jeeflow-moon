@@ -44,9 +44,9 @@ impl Show for JeeflowError with fn output(self, logger) {
   logger.write_string(self.message())
 }
 ///|
-/// 把"会 raise 的调用"物化成 `Result`（旧 `try?` 中**需要拿 Ok|Err 分支/断言**的那一类用这个）。
+/// 把"会 raise 的调用"物化成 `Result`（旧 `` 中**需要拿 Ok|Err 分支/断言**的那一类用这个）。
 ///
-/// 迁移口径（moon 0.1.20260920 起 `try?` 已 deprecated）：
+/// 迁移口径（moon 0.1.20260920 起 `` 已 deprecated）：
 /// - 只想传播错误 ⇒ 直接调用（外层函数标 `raise` 即可），**不要**套本函数；
 /// - 需要看成功值与失败值两态（断言、回退、转成本域错误）⇒ `attempt(fn() { ... })`。
 /// 本函数存在的意义：让"我要一个 Result"这件事在代码里显式出现，而不是靠 `?` 猜。

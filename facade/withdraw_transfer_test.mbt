@@ -239,7 +239,7 @@ async fn done_page(
 
 ///|
 fn parse_iid(s : String) -> Int64 {
-  match (try? @string.parse_int64(s)) {
+  match (@string.parse_int64(s)) {
     Ok(v) => v
     Err(_) => abort("非法实例 id: \{s}")
   }

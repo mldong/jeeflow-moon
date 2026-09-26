@@ -17,7 +17,7 @@ async fn handle(app : @demo.App, req : @http.Request, body : &@io.Reader, conn :
     conn.end_response()
     return
   }
-  let outcome = try? app.handle(method_of(req), path, "", body_text)
+  let outcome = app.handle(method_of(req), path, "", body_text)
   match outcome {
     Ok((status, payload)) => {
       conn.send_response(status, "application/json")
@@ -50,7 +50,7 @@ fn method_of(req : @http.Request) -> String {
 
 ///|
 async fn main {
-  let outcome = try? @demo.App::create()
+  let outcome = @demo.App::create()
   match outcome {
     Err(e) => {
       println("demo 启动失败: \{e}")

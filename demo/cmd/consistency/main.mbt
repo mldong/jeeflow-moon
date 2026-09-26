@@ -207,7 +207,7 @@ async fn stats_call(
   action : String,
   args : Map[String, Json]
 ) -> Unit raise {
-  let outcome = try? f.flow(action, args)
+  let outcome = f.flow(action, args)
   match outcome {
     Ok(v) => out.push((label, v))
     Err(e) => {

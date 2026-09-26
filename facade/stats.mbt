@@ -8,9 +8,9 @@ pub fn parse_epoch_secs(s : String) -> Int64? {
   if t.length() < 10 {
     return None
   }
-  let y = (try? @string.parse_int(t.substring(start=0, end=4).to_string()))
-  let mo = (try? @string.parse_int(t.substring(start=5, end=7).to_string()))
-  let d = (try? @string.parse_int(t.substring(start=8, end=10).to_string()))
+  let y = (@string.parse_int(t.substring(start=0, end=4).to_string()))
+  let mo = (@string.parse_int(t.substring(start=5, end=7).to_string()))
+  let d = (@string.parse_int(t.substring(start=8, end=10).to_string()))
   let (y, mo, d) = match (y, mo, d) {
     (Ok(a), Ok(b), Ok(c)) => (a, b, c)
     _ => return None
@@ -19,15 +19,15 @@ pub fn parse_epoch_secs(s : String) -> Int64? {
   let mut mi = 0
   let mut ss = 0
   if t.length() >= 19 {
-    match (try? @string.parse_int(t.substring(start=11, end=13).to_string())) {
+    match (@string.parse_int(t.substring(start=11, end=13).to_string())) {
       Ok(v) => hh = v
       Err(_) => ()
     }
-    match (try? @string.parse_int(t.substring(start=14, end=16).to_string())) {
+    match (@string.parse_int(t.substring(start=14, end=16).to_string())) {
       Ok(v) => mi = v
       Err(_) => ()
     }
-    match (try? @string.parse_int(t.substring(start=17, end=19).to_string())) {
+    match (@string.parse_int(t.substring(start=17, end=19).to_string())) {
       Ok(v) => ss = v
       Err(_) => ()
     }

@@ -190,7 +190,7 @@ async fn t1_m4_tx_rollback() -> Unit raise {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   let tpl = @repo.MysqlTxTemplate::from_env()
-  let outcome = try? tpl.execute_in_tx(fn() {
+  let outcome = tpl.execute_in_tx(fn() {
     let conn = @repo.current_tx_conn().unwrap()
     let _ = @repo.x(
       conn,
@@ -224,9 +224,9 @@ async fn t1_m5_idempotent() -> Unit raise {
   let inst = engine.start_async(990001L, "user9x", @json.FlowData::new())
   let tasks = repo.find_doing_tasks(inst.instance_id, [])
   check(tasks.length() == 1, "办理前 1 个 DOING")
-  let first = try? engine.execute_task_async(tasks[0].task_id, "user9x", @json.FlowData::new())
+  let first = engine.execute_task_async(tasks[0].task_id, "user9x", @json.FlowData::new())
   check(first is Ok(_), "第一次办理成功")
-  let second = try? engine.execute_task_async(tasks[0].task_id, "user9x", @json.FlowData::new())
+  let second = engine.execute_task_async(tasks[0].task_id, "user9x", @json.FlowData::new())
   let mut code_ok = false
   match second {
     Ok(_) => code_ok = false

@@ -63,7 +63,7 @@ test "args: dual string/number id (C2) + 非法id报错 (C3)" {
   args["id"] = @json.number_of(1001L)
   assert_eq(@facade.arg_i64(args, "id").unwrap(), 1001L)
   args["id"] = @json.string_of("not-a-number")
-  let outcome : Result[Int64?, @error.JeeflowError] = try? @facade.arg_i64(args, "id")
+  let outcome : Result[Int64?, @error.JeeflowError] = @facade.arg_i64(args, "id")
   assert_true(outcome is Err(_))
 }
 
@@ -76,7 +76,7 @@ test "args: ids/id dual + empty explicit error (C15)" {
   single["id"] = @json.number_of(7L)
   assert_true(@facade.arg_ids(single) == [7L])
   let empty : Map[String, Json] = Map([])
-  let outcome : Result[Array[Int64], @error.JeeflowError] = try? @facade.arg_ids(empty)
+  let outcome : Result[Array[Int64], @error.JeeflowError] = @facade.arg_ids(empty)
   match outcome {
     Ok(_) => assert_true(false)
     Err(e) => assert_eq(e.message(), "id 缺失或非法")

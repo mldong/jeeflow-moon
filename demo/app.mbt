@@ -98,7 +98,7 @@ pub fn apply_clock_from_env() -> Unit {
 }
 
 ///|
-/// 纯数字解析。本工具链的 `@string.parse_int` 是 raise 形态（旧写法 `(try? ...)` 配 Ok/Err
+/// 纯数字解析。本工具链的 `@string.parse_int` 是 raise 形态（旧写法 `(...)` 配 Ok/Err
 /// 在两代编译器间含义不同），而这里偏移量只允许十进制数字，自己扫更直白。
 fn digits_to_int(s : String) -> Int? {
   let cs = s.to_array()
@@ -269,7 +269,7 @@ pub async fn App::handle(self : App, method : String, path : String, query_strin
     let parsed = if trimmed.is_empty() {
       Ok(@json.empty_object())
     } else {
-      try? @json.parse_json(trimmed)
+      @json.parse_json(trimmed)
     }
     let args : Map[String, Json] = match parsed {
       Ok(Json::Object(m)) => {

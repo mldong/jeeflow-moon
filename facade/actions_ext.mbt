@@ -210,7 +210,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     ext.save_design_his(h)
   }
   // 同步基本信息 + 置未部署
-  let outcome = try? @parser.parse_model(content)
+  let outcome = @parser.parse_model(content)
   match outcome {
     Ok(model) => {
       design.name = model.name
@@ -548,7 +548,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   // metaTableReader 未注册显式报错（issues/28）
   match self.engine.context().biz_data_reader {
     Some(reader) => {
-      let outcome = try? (reader)(table, instance_id)
+      let outcome = (reader)(table, instance_id)
       match outcome {
         Ok(rows) => match rows {
           Some(row) => obj_json(row)
@@ -612,7 +612,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   let edges : Array[String] = []
   match define_info {
     Some(d) => {
-      let outcome = try? @parser.parse_model(d.content)
+      let outcome = @parser.parse_model(d.content)
       match outcome {
         Ok(model) => {
           build_node_progress(model, history, node_progress)

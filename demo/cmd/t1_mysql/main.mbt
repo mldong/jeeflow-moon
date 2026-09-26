@@ -241,7 +241,7 @@ fn env_data(env : Json) -> Json {
 ///|
 fn iid_of(env : Json) -> Int64 {
   let s = @json.get_str(env_data(env), "processInstanceId").unwrap_or("0")
-  match (try? @string.parse_int64(s)) {
+  match (@string.parse_int64(s)) {
     Ok(v) => v
     Err(_) => abort("非法实例 id 出口值: \{s}")
   }

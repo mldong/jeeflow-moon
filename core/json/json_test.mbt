@@ -33,8 +33,18 @@ test "json: roundtrip" {
 
 ///|
 test "json: invalid json raises" {
-  assert_true((try? @json.parse_json("{invalid}")) is Err(_))
-  assert_true((try? @json.parse_json("[1,2,")) is Err(_))
+  let bad_object = try @json.parse_json("{invalid}") catch {
+    _ => true
+  } noraise {
+    _ => false
+  }
+  assert_true(bad_object) // 非法 JSON ⇒ 必须 raise（旧写法是物化 Result 判 Err）
+  let bad_array = try @json.parse_json("[1,2,") catch {
+    _ => true
+  } noraise {
+    _ => false
+  }
+  assert_true(bad_array)
 }
 
 ///|

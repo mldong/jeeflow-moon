@@ -31,7 +31,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   action : String,
   args : Map[String, Json]
 ) -> Json raise {
-  let outcome = try? self.dispatch(action, args)
+  let outcome = self.dispatch(action, args)
   match outcome {
     Ok(data) => transform_output(ok_data(data))
     Err(e) => transform_output(err(e.message()))

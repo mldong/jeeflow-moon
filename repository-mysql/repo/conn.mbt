@@ -15,9 +15,10 @@ pub fn MysqlConfig::from_env() -> MysqlConfig raise {
   let host = @env.get_env_var("JEFFLOW_DB_HOST").unwrap_or("192.168.1.160")
   let port = match @env.get_env_var("JEFFLOW_DB_PORT") {
     Some(s) =>
-      match (try? @string.parse_int(s)) {
-        Ok(p) => p
-        Err(_) => 3306
+      try {
+        @string.parse_int(s)
+      } catch {
+        _ => 3306
       }
     None => 3306
   }
@@ -29,20 +30,20 @@ pub fn MysqlConfig::from_env() -> MysqlConfig raise {
 
 ///|
 async fn open_conn(self : MysqlConfig) -> @client.MysqlConn raise @error.JeeflowError {
-  let outcome = try? @client.MysqlConn::connect(self.host, self.port, self.user, self.password, self.database)
-  match outcome {
-    Ok(conn) => conn
-    Err(e) => raise @error.Internal("mysql connect: \{e}")
+  try {
+    @client.MysqlConn::connect(self.host, self.port, self.user, self.password, self.database)
+  } catch {
+    e => raise @error.Internal("mysql connect: \{e}")
   }
 }
 
 ///|
 /// 打开连接（错误归一；事务态复用环境连接且不 close，见 tx.mbt）
 async fn open(self : MysqlRepository) -> @client.MysqlConn raise @error.JeeflowError {
-  let outcome = try? self.config.open_conn()
-  match outcome {
-    Ok(conn) => conn
-    Err(e) => raise e
+  try {
+    self.config.open_conn()
+  } catch {
+    e => raise e
   }
 }
 
@@ -62,10 +63,10 @@ pub async fn q(
   sql : String,
   params : Array[@moondb.Value]
 ) -> Array[@moondb.Row] raise @error.JeeflowError {
-  let outcome = try? conn.query(sql, params)
-  match outcome {
-    Ok(rows) => rows
-    Err(e) => raise @error.Internal("mysql query: \{e}")
+  try {
+    conn.query(sql, params)
+  } catch {
+    e => raise @error.Internal("mysql query: \{e}")
   }
 }
 
@@ -76,10 +77,10 @@ pub async fn x(
   sql : String,
   params : Array[@moondb.Value]
 ) -> @moondb.ExecResult raise @error.JeeflowError {
-  let outcome = try? conn.execute(sql, params)
-  match outcome {
-    Ok(r) => r
-    Err(e) => raise @error.Internal("mysql execute: \{e}")
+  try {
+    conn.execute(sql, params)
+  } catch {
+    e => raise @error.Internal("mysql execute: \{e}")
   }
 }
 
@@ -145,9 +146,10 @@ pub fn row_i64(r : @moondb.Row, col : String) -> Int64 {
         Int(n) => n.to_int64()
         Double(d) => d.to_int64()
         Text(s) =>
-          match (try? @string.parse_int64(s)) {
-            Ok(n) => n
-            Err(_) => 0L
+          try {
+            @string.parse_int64(s)
+          } catch {
+            _ => 0L
           }
         _ => 0L
       }
@@ -164,9 +166,10 @@ fn row_opt_i64(r : @moondb.Row, col : String) -> Int64? {
       Int(n) => n.to_int64()
       Double(d) => d.to_int64()
       Text(s) =>
-        match (try? @string.parse_int64(s)) {
-          Ok(n) => n
-          Err(_) => 0L
+        try {
+          @string.parse_int64(s)
+        } catch {
+          _ => 0L
         }
       _ => 0L
     })
@@ -232,12 +235,17 @@ fn parse_flow_data(s : String?) -> @json.FlowData {
   let fd = @json.FlowData::new()
   match s {
     Some(text) => {
-      let outcome = try? @json.parse_json(text)
-      match outcome {
-        Ok(Json::Object(m)) =>
-          for k, v in m {
-            fd.insert(k, v)
-          }
+      // 坏 JSON 静默回空（对齐 rust parse_flow_data）：成功臂的嵌套模式挪进块内 match，
+      // 失败与"不是对象"两路都落到不填值
+      try {
+        match @json.parse_json(text) {
+          Json::Object(m) =>
+            for k, v in m {
+              fd.insert(k, v)
+            }
+          _ => ()
+        }
+      } catch {
         _ => ()
       }
     }

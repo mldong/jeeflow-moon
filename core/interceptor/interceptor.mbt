@@ -17,7 +17,7 @@ fn OrgAssignBase::dept_id_of(self : OrgAssignBase, user_id : String) -> String {
   }
   match self.user {
     Some(get_user) =>
-      match (try? (get_user)(user_id)) {
+      match ((get_user)(user_id)) {
         Ok(u) =>
           match u {
             Some(info) => info.dept_id()
@@ -36,7 +36,7 @@ fn OrgAssignBase::by_dept(self : OrgAssignBase, dept_id : String, main : Bool) -
   }
   match self.org {
     Some(org) => {
-      let outcome = try? (if main {
+      let outcome = (if main {
         (org.find_dept_main_leaders)(dept_id)
       } else {
         (org.find_dept_leaders)(dept_id)
@@ -114,7 +114,7 @@ pub fn task_role_assignee_handler(
         match org {
           None => ""
           Some(o) => {
-            let outcome = try? (o.find_by_role)(node.id)
+            let outcome = (o.find_by_role)(node.id)
             match outcome {
               Ok(v) => if v.length() > 0 { v.join(",") } else { "" }
               Err(_) => ""

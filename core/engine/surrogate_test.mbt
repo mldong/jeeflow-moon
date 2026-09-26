@@ -200,7 +200,7 @@ async test "批次D 条款1: 办理推进 / 跳转两条路径都应用委托" {
   let t2 = sg_task(repo, inst.instance_id, "n2")
   sg_has(repo.find_task_actors(t2.task_id), "li", "办理推进路径：新单参与者含代理人")
   // 跳转（jump / rollback / 退回发起人共用同一条落库收口）
-  let jumped = try? engine.execute_and_jump_async(t2.task_id, "zhang", @json.FlowData::new(), Some("n3"))
+  let jumped = engine.execute_and_jump_async(t2.task_id, "zhang", @json.FlowData::new(), Some("n3"))
   match jumped {
     Ok(tasks) => {
       sg_check(!tasks.is_empty(), "跳转应产出目标节点任务")

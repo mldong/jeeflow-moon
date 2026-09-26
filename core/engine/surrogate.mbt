@@ -78,7 +78,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::find
   now : String
 ) -> @model.ProcessSurrogate? raise @error.JeeflowError {
   let ext = self.ctx.ext_repository()
-  let outcome : Result[@model.ProcessSurrogate?, @error.JeeflowError] = try? (ext).get_surrogate(
+  let outcome : Result[@model.ProcessSurrogate?, @error.JeeflowError] = (ext).get_surrogate(
     actor,
     process_name,
     now,

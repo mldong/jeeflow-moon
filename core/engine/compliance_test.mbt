@@ -130,14 +130,14 @@ async test "engine: start_async creates instance" {
 ///|
 async test "engine: start_async define not found" {
   let (engine, _repo) = make_test_engine()
-  let outcome = try? engine.start_async(99999L, "user1", new_args())
+  let outcome = engine.start_async(99999L, "user1", new_args())
   assert_true(outcome is Err(_))
 }
 
 ///|
 async test "engine: execute task not found" {
   let (engine, _repo) = make_test_engine()
-  let outcome = try? engine.execute_task_async(99999L, "user1", new_args())
+  let outcome = engine.execute_task_async(99999L, "user1", new_args())
   assert_true(outcome is Err(_))
 }
 
@@ -148,7 +148,7 @@ async test "engine: execute task permission denied" {
   let instance = engine.start_async(define_id, "user1", new_args())
   let tasks = repo.find_doing_tasks(instance.instance_id, [])
   assert_true(!tasks.is_empty())
-  let outcome = try? engine.execute_task_async(tasks[0].task_id, "user999", new_args())
+  let outcome = engine.execute_task_async(tasks[0].task_id, "user999", new_args())
   assert_true(outcome is Err(_))
 }
 
@@ -180,7 +180,7 @@ async test "engine: no ext repository design path errors" {
   let repo = @mem.MemoryRepository::new()
   let ctx = @spi.Ctx::new(repo, @spi.NoExtRepository::new())
   let engine = @engine.Engine::make(ctx)
-  let outcome = try? engine.context().ext_repository().find_design_by_id(1L)
+  let outcome = engine.context().ext_repository().find_design_by_id(1L)
   match outcome {
     Ok(r) => assert_true(r is None)
     Err(_) => assert_true(false)
@@ -428,7 +428,7 @@ async test "c09: non-actor permission denied" {
   let iid = start_and_apply(engine, repo, did)
   let tasks = repo.find_doing_tasks(iid, [])
   if !(tasks.is_empty()) {
-    let outcome = try? engine.execute_task_async(tasks[0].task_id, "unauthorized_user", new_args())
+    let outcome = engine.execute_task_async(tasks[0].task_id, "unauthorized_user", new_args())
     assert_true(outcome is Err(_))
   }
 }
@@ -456,7 +456,7 @@ async test "c12: flow.auto can execute any task" {
   let iid = start_and_apply(engine, repo, did)
   let tasks = repo.find_doing_tasks(iid, [])
   assert_true(!tasks.is_empty())
-  let outcome = try? engine.execute_task_async(tasks[0].task_id, "flow.auto", new_args())
+  let outcome = engine.execute_task_async(tasks[0].task_id, "flow.auto", new_args())
   assert_true(outcome is Ok(_))
 }
 

@@ -47,7 +47,7 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::add_user_i
   }
   match self.ctx.user_provider {
     Some(get_user) => {
-      let outcome : Result[@model.UserInfo?, @error.JeeflowError] = try? (get_user)(operator)
+      let outcome : Result[@model.UserInfo?, @error.JeeflowError] = (get_user)(operator)
       match outcome {
         Ok(Some(user)) => {
           args.insert_str("u_userId", user.user_id())
@@ -102,7 +102,7 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::resolve_as
     Some(handler_name) =>
       match self.ctx.find_assignment_handler(handler_name) {
         Some(handler) => {
-          let outcome = try? (handler)(exec)
+          let outcome = (handler)(exec)
           match outcome {
             Ok(result) => if !result.is_empty() { return split_actors(result) }
             Err(_) => ()
@@ -339,7 +339,7 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::evaluate_e
       for k, v in exec.args.inner() {
         vars[k] = v
       }
-      let outcome = try? (eval)(expr, vars)
+      let outcome = (eval)(expr, vars)
       match outcome {
         Ok(v) =>
           match v {
@@ -399,8 +399,8 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::simple_eva
 ///|
 /// 比较：数值优先，字符串兜底 → Some(-1/0/1) / None（不可解析）
 fn compare_values(left : String, right : String) -> Int? {
-  let l = (try? @string.parse_double(left))
-  let r = (try? @string.parse_double(right))
+  let l = (@string.parse_double(left))
+  let r = (@string.parse_double(right))
   match (l, r) {
     (Ok(lv), Ok(rv)) =>
       if lv < rv {

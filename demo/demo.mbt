@@ -194,7 +194,7 @@ pub async fn seed_memory(repo : @memory.MemoryRepository) -> Unit raise {
 
 ///|
 fn flow_display_name(content : String, fallback : String) -> String {
-  match (try? @json.parse_json(content)) {
+  match (@json.parse_json(content)) {
     Ok(v) => @json.get_str(v, "displayName").unwrap_or(fallback)
     Err(_) => fallback
   }

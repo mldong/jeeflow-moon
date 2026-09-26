@@ -134,7 +134,7 @@ test "parser: node properties" {
 
 ///|
 test "parser: invalid json raises" {
-  let outcome = try? @parser.parse_model("not json")
+  let outcome = @parser.parse_model("not json")
   assert_true(outcome is Err(_))
 }
 
