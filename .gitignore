@@ -9,3 +9,6 @@ moon_diag_sites.tsv
 # 施工期产物
 __pycache__/
 w4_need_attempt.tsv
+
+# 迁移期诊断产物（渲染 panic 绕行用）
+.tmp/
