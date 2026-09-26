@@ -19,7 +19,7 @@ pub fn[R, E] Engine::context(self : Engine[R, E]) -> @spi.Ctx[R, E] {
 ///|
 fn[R, E : @spi.ProcessExtRepository] Engine::repo(
   self : Engine[R, E]
-) -> R raise @error.JeeflowError {
+) -> R {
   self.ctx.repository()
 }
 
@@ -40,7 +40,7 @@ pub fn[R, E] Engine::notify_cc_create(self : Engine[R, E], instance_id : Int64, 
 
 ///|
 /// 注入用户信息变量（u_userId/u_realName/…；C25：仅 start 注入一次）
-fn[R, E] Engine::add_user_info(self : Engine[R, E], args : @json.FlowData, operator : String) -> Unit raise @error.JeeflowError {
+fn[R, E] Engine::add_user_info(self : Engine[R, E], args : @json.FlowData, operator : String) -> Unit {
   if operator == "flow.auto" || operator == "flow.admin" {
     return
   }
@@ -77,7 +77,7 @@ fn gen_auto_title(args : @json.FlowData, display_name : String) -> String {
 
 ///|
 /// 参与人解析（优先级：tf_nextNodeOperator → assignee 字面量/变量 → assignmentHandler → candidateUsers）
-fn[R, E] Engine::resolve_assignee(self : Engine[R, E], exec : @exec.Execution, node : @parser.NodeModel) -> Array[String] raise @error.JeeflowError {
+fn[R, E] Engine::resolve_assignee(self : Engine[R, E], exec : @exec.Execution, node : @parser.NodeModel) -> Array[String] {
   // 1. tf_nextNodeOperator
   match exec.args.get_str("tf_nextNodeOperator") {
     Some(next_op) =>
@@ -330,7 +330,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
 }
 
 ///|
-fn[R, E] Engine::evaluate_decision(self : Engine[R, E], _exec : @exec.Execution, _node : @parser.NodeModel) -> String? raise @error.JeeflowError {
+fn[R, E] Engine::evaluate_decision(self : Engine[R, E], _exec : @exec.Execution, _node : @parser.NodeModel) -> String? {
   // rust 同款：命名目标路由暂未启用，交由边表达式求值
   let _ = self
   None

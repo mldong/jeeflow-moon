@@ -206,7 +206,7 @@ async fn stats_call(
   label : String,
   action : String,
   args : Map[String, Json]
-) -> Unit raise {
+) -> Unit {
   // flow 自己就把引擎错误转成 err 信封（不再返回 Result）；这里的 catch 只兜门面之外的意外，
   // 仍按同一 {code:99999999,msg,data} 形状入册 ⇒ 快照两态可比、且不因迁移漂移。
   let outcome = try {

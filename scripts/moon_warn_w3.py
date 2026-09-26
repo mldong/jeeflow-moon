@@ -49,9 +49,15 @@ def write(path, lines, eols, tail):
         "".join(l + e for l, e in zip(lines, eols)) + tail)
 
 
-def scoped_check(pkg):
-    """跑包级 check，返回该包里 CLASS 警告总数与 error 总数。"""
-    p = subprocess.run([MOON, "check", "--target", "wasm", pkg, "--output-json"],
+def scoped_check(pkg=None):
+    """跑 check（默认**全工程**）→ (CLASS 警告数, error 数, 退出码)。
+
+    实测教训：包级 scoped check 会**少报**这一类——`moon check core/engine` 里把
+    `Engine::repo` 的 E 约束摘掉，error 明明是 0、CLASS 数却不动，于是贪心以为"这条不该摘"，
+    手工复核证明该摘。⇒ 判据必须走全工程 check，别图快用包级。
+    """
+    argv = [MOON, "check", "--target", "wasm"] + ([pkg] if pkg else []) + ["--output-json"]
+    p = subprocess.run(argv,
                        capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env=ENV, cwd=ROOT)
     warns = errs = 0
@@ -106,7 +112,7 @@ def main():
     for path in targets:
         pkg = "/".join(path.split("/")[:2])
         lines, eols, tail = read(path)
-        base_warns, base_errs, _ = scoped_check(pkg)
+        base_warns, base_errs, _ = scoped_check()
         print("### %s（该包 %s=%d，err=%d）" % (path, CLASS, base_warns, base_errs))
         for i, slots in decl_lines(lines):
             for name, trait, s, e in slots:
@@ -119,7 +125,7 @@ def main():
                     continue                     # 该槽本来就没约束
                 lines[i] = trial
                 write(path, lines, eols, tail)
-                w, err, _ = scoped_check(pkg)
+                w, err, _ = scoped_check()
                 if err > base_errs:
                     lines[i] = lines[i][:s] + seg + lines[i][s + len(name):]
                     write(path, lines, eols, tail)

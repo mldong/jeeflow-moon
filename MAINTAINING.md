@@ -87,20 +87,22 @@ registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）
 - 新工具链下 `moonbitlang/async` 可升到 **0.22.4**（干净重建 49 tasks / 0 error / test 通过）；
   旧 core（0.10.12）没有 `eprintln` 才被迫钉 0.20.3，该偏斜已不存在。
 
-### 1.2 零警告施工台账（进行中，431 条待清）与一条拦路发现
+### 1.2 零警告施工台账（第一轮，进行中→见 §1.3）与一条拦路发现
 
 已完成（每步都 `moon check` 0 error + `moon test` 全通过）：机械改名归一 96 行、
 `Map::new()`→`Map([])` 89 站点、保留词 `define`→`define_info` / `alias`→`table_alias` 165 行、
 `derive(Eq, Show)`→Debug 13 处、测试限定名 20 处。629→431。
 工具：`scripts/moon_diag_inventory.py`（吃 `--output-json`）、`scripts/moon_migrate_w{1,2,3}.py`、
-`scripts/moon_try_fix.py`、`scripts/moon_patch.py`（本仓部分 .mbt 的 blob 带 `
+`scripts/moon_try_fix.py`、`scripts/moon_patch.py`（本仓部分 .mbt 的 blob 带 `
 `，
 普通多行字符串匹配会落空，补丁必须容忍式并断言恰好命中 1 次）。
 
 踩过的两个坑（都靠"编译器当裁判"兜住）：
 1. 照 `moon check` 的 `unused_package` 删 import 会**删过头**——该诊断不含测试编译通道，
    把 `_test.mbt` / `for "test"` 要用的 `id_gen`/`@json`/`async` 判成未用（一次 38 个 error）。
-   正确口径：check 与 test **两个通道都报未用**才删。
+   ~~正确口径：check 与 test **两个通道都报未用**才删。~~
+   **该口径 09-26 已被证伪，见下方"零警告第二轮 · 位置与判据"第 3 条**：两个通道都报未用的
+   `@id_gen` 删掉照样 11 个 error。现在的口径是**一条一验**（每删一条跑一遍全工程 check）。
 2. `try?` 迁移（77 处）不是纯语法活：真实牵出 63 个 error 站点，根因是
    **`repository-mysql` 的 DB 层错误处理建在被废弃的"效应推断"上**——
    vendored `moon_mysql_client.MysqlConn::connect` 的签名是 `-> MysqlConn`
@@ -151,7 +153,9 @@ owner 让先查上游是否已修，再定 A/B/C。实测结论：**B 不成立�
 上游未标注 + `supported_targets="native"` 两条仍然成立（D-M0-2 的 vendored 继续保留、
 真升 0.7.2 基线是另一轮），只是它们不再阻塞 `try?` 清零。
 
-**A 的落点已量清（关键省力发现）**：`vendored/moon_mysql_client/driver.mbt:49-50` 里上游
+**A 的落点已量清（关键省力发现）**（⚠ 本节是"A 案作废"之前的量路记录，保留作参考：
+最终没有走 vendored 效应显式化，`try?` 站点全部按上一节的 `try { 块 } catch { 臂 }` 收口）：
+`vendored/moon_mysql_client/driver.mbt:49-50` 里上游
 **自己已经做过同类收口** —— `fn to_db_error(e : Error) -> @moondb.DbError`，且 `Driver` 的
 trait impl（`execute/query/begin/commit/rollback`）全都标了 `raise @moondb.DbError`。
 缺的只是 **`conn.mbt` 里那批 `MysqlConn` inherent 方法**（`connect/query/execute/
@@ -167,6 +171,61 @@ begin/commit/rollback/close` 等）没做同样的闭合，而我们 `repo/conn.
 `repository-mysql/vendored/moon_mysql_client/*` 与上游的 diff **只允许**
 ① 去 `supported_targets` 行、② 新增的 `raise`/错误转换；sha 基线重核并把两侧 diff 落档，
 D-M6-1 的"逐字节原样拷贝"改写为"仅允许这两类偏离"。之后 63 个 `try?` 站点才有落点。
+（↑ 这段是"A 案作废"之前的量路记录，保留作参考；实际没有走 vendored 效应显式化。）
+
+### 1.3 零警告第二轮（2026-09-26，629→57）：位置锁不住，就把编译器当验收人
+
+上一节把 error 清零后，警告从 360 一路清到 57。这一轮真正的收获不是体力，
+是三条**方法论**，下次谁再做工具链迁移，直接照这三条做：
+
+1. **诊断的行号不可信，列号可信。** 本仓 .mbt 的 blob 行尾是 `\r\r\n`
+   （`.gitattributes` 里 `* -text` 不做转换，103 个跟踪文本文件里 102 个带 CR），
+   moon 的行计数器对这种行尾会给出偏大的行号（实测 `core/engine/engine.mbt`
+   报 145、真实是 112），而**诊断 context 的行号窗口跟着这个偏号走** ⇒
+   想"按位置改"就锁不准。第一版按报告行号 + 单调指针配对，把
+   `fn[R : X, E : Y]` 剪成 `fn[RE` 这类语法碎块，71 个 error 是编译器替我抓的。
+   可用的三种配对法，按强度排：① 报告行 == 真行时（被前几轮重写过的区段行尾已回 CRLF/LF，
+   这些文件报的行号就是真行号）用"行 + 列整对"；② 用"该列唯一命中目标 token"；
+   ③ 两者都不可判 ⇒ **报歧义交人工**，不猜（W9 实跑 12/12 无歧义）。
+2. **判"改对没有"的唯一裁判是改完再跑一次编译器**，而且必须是**全工程** check：
+   包级 `moon check <pkg>` 会少报 `unused_trait_bound`，实测把该摘的约束判成"不该摘"。
+   驱动器：`scripts/moon_warn_oracle.py`（先整批试一次，不过再逐站试多形态，
+   每站只保留"0 error 且目标类警告数真降"的那版）、`scripts/moon_warn_w3.py`（约束摘除专用，
+   同样以编译器为验收人）、`scripts/moon_warn_w5.py`（import 一条一验）。
+3. **"两个编译通道都报未用"不能当准绳。** 上一节沉淀的那条口径本轮被证伪：
+   check 与 test 两个通道都报 `@id_gen` 未用，删掉即 11 个 error；`core/handler`、
+   `repository-mysql/query` 的 `@json` 同病。改成一条一验后的结果是
+   **删成 17 条、拒 3 条**（`core/engine` 的 `@id_gen`、`core/handler` 的 `@json`、
+   `query` 的 `@json`）——这三条以后别再照诊断删。
+
+语言层的六条事实（都在这一轮踩出来，写代码时照这个形状写）：
+
+| 事实 | 后果 / 正确写法 |
+|---|---|
+| 闭集 `raise E` 的调用放进 `try { }` ⇒ catch 绑定就是 `E` | `.message()`/`.code()` 直接可用，出口文案一字不用改 |
+| **try 块里出现 `fail`/`abort`** | 它把 `Failure` 并进同一 raise 集 ⇒ 绑定退化成 open `Error`，判文案的站点集体报 "Type Error has no method message"。"没抛错就该红"这条判据必须写在 try 外面 |
+| `impl Trait for T` 的方法**不再隐式提升**为常规方法 | 补 `pub extend T with Trait::{…}`；vendored 两文件要保逐字一致 ⇒ extend 落在同包的**本仓自有新文件** `vendored/moon_mysql_client/extend_driver.mbt` |
+| `substring` 的返回类型跟着接收者走（String→String、StringView→StringView） | 同一串文本两种改法 ⇒ 整批正则必翻车（W6b 37 站全报 "String has no method to_owned"）；替代写法是切片 `s[a:b]` |
+| 收尾型 `try { … } catch { e => { 收尾; raise e } }` | 换 `errdefer { 收尾 }`；工具链已声明 try/catch 将来不再捕获异步取消。事务模板 `execute_in_tx` 已换，T1 的回滚三格仍绿 |
+| `try? f()` 机械换形会留下 `try { f() } catch { e => raise e }` **空壳** | fragile_catch_all 点的就是它，删包装即可（本仓 5 处）；另 1 处是真正的收尾逻辑 |
+
+还有一条**编译器完全无声**的坑，值得单独记：把 `flow` 的成功臂从
+`transform_output(ok_data(data))` 改成 `transform_output(outcome)` 时漏了 `ok_data` 一层，
+类型照样是 `Json`、check 0 error，是 **T0 的「委托台账保存成功（msg=<无 msg 键>）」把它抓出来的**。
+⇒ 批量改写型作业必须配一个"diff 里被删掉、却没在新增行里回来"的调用清单，
+这里是 `scripts/audit_lost_calls.py`（本轮 3 条，逐条判过并记在站点注释里）。
+
+**CI 侧的连带发现**：`Native Probe` 在 master 上是红的，崩因是 ariadne 渲染 warning 时 panic
+（`Label start is after its end`），不是编译错误——本机 `moon test`/`moon run` 不带
+`--output-json` 同样以 101 崩给用户看。⇒ **零警告顺带解掉 CI**；
+发版前那一道"native 不带 --output-json 也要过"是自证这条的门禁，别省。
+
+**残留判断**（写在这里免得下轮又当新发现）：`unused_error_type` 与 `unused_trait_bound`
+两类呈**守恒**特征——摘掉 A 处的那一个，B 处冒出一个新的（实测：摘 `Engine::repo` 的
+`E : ProcessExtRepository` ⇒ 21:11 那条消失、engine.mbt:532 与 engine_ops.mbt:193 各新增一条）。
+逐点贪心因此不收敛，只能做**集合级不动点**。剩下的这几条要么整族重排签名（会动已发布的
+门面效应声明形状），要么带 `// 约束留着是 API 文档` 的例外记档 —— 属发版前的口径决定，
+不要顺手改。
 
 ## 2. 测试指南（T0/T1/T2 + 构建目标维度）
 

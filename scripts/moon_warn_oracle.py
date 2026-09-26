@@ -92,6 +92,14 @@ RECIPES = {
             ("get(%s, %s)" % (m["recv"], m["arg"])),          # core/json 自己包内直呼
         ],
     ),
+    # unused_error_type：函数声明了 raise 却一处不抛 ⇒ 把 ` raise` 摘掉。
+    # 只匹配"签名末尾紧跟 {" 的那一个（`-> T raise {` / `-> T raise @error.JeeflowError {`），
+    # 不碰语句里的 raise。摘了会不会有连锁（调用方的 try 变空）——交给验收人说谎不了。
+    "noer": dict(
+        cls="unused_error_type",
+        site=re.compile(r" raise(?: @error\.JeeflowError)?(?= \{)"),
+        variants=lambda m: [""],
+    ),
     "jasm": dict(
         cls="deprecated",
         site=re.compile(r"(?P<recv>[A-Za-z_@][\w.]*?)\.as_(string|bool|number|array)\(\)"),

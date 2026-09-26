@@ -82,7 +82,7 @@ pub fn InMemoryMetaProvider::register(self : InMemoryMetaProvider, meta : TableM
 pub fn InMemoryMetaProvider::get_table_meta(
   self : InMemoryMetaProvider,
   table_name : String
-) -> TableMeta? raise @error.JeeflowError {
+) -> TableMeta? {
   self.tables.get(table_name)
 }
 

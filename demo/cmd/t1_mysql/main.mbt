@@ -239,7 +239,7 @@ fn env_data(env : Json) -> Json {
 }
 
 ///|
-fn iid_of(env : Json) -> Int64 raise {
+fn iid_of(env : Json) -> Int64 {
   let s = @json.get_str(env_data(env), "processInstanceId").unwrap_or("0")
   // parse_int64 是 `-> Int64 raise`：出口值坏掉仍旧 abort（旧 Err 臂）；
   // abort 在 catch 臂里 ⇒ 不污染 try 的 raise 集，但函数自己得声明 raise。

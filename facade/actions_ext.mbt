@@ -3,7 +3,7 @@
 // ═══ 流程设计（需扩展仓储）═══
 
 ///|
-fn[R : @spi.ProcessRepository, E] Facade::ext(self : Facade[R, E]) -> E raise @error.JeeflowError {
+fn[R : @spi.ProcessRepository, E] Facade::ext(self : Facade[R, E]) -> E {
   self.ext_repo
 }
 

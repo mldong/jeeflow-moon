@@ -10,7 +10,7 @@
 fn sg_facade(
   repo : @mem.MemoryRepository,
   auto_apply~ : Bool = true
-) -> @facade.Facade[@mem.MemoryRepository, @mem.MemoryRepository] raise {
+) -> @facade.Facade[@mem.MemoryRepository, @mem.MemoryRepository] {
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx = @spi.Ctx::new(repo, repo).with_id_generator(fn() { gen.next_id() })
   @facade.Facade::make(ctx.with_surrogate_auto_apply(auto_apply))
