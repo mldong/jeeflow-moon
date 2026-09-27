@@ -20,14 +20,13 @@ pub fn to_underscore(camel : String) -> String {
 /// 解析请求参数里的 m_* 键：
 /// - m_EQ_taskName  → (t, EQ, task_name)
 /// - m_t_EQ_taskName → (t, EQ, task_name)（pd 等别名直达 join 表，如 m_pd_state_EQ）
-/// 值为空（空串/null/空数组）跳过（Java isEmpty 同款）
+/// 值为空（空串/null/空数组）跳过（Java isEmpty 同款）——
+/// issues/129 案 A 唯一的例外：归属谓词列（见 is_ownership_column）的 EQ 空值不跳过，
+/// 放行给 build_m_where 收成 AND 1=0（空页），绝不落到「这条条件不加」= 读全库
 pub fn parse_m_params(args : Map[String, Json]) -> Array[@model.QueryFilter] {
   let filters : Array[@model.QueryFilter] = []
   for key, value in args {
     if !key.has_prefix("m_") {
-      continue
-    }
-    if is_empty_value(value) {
       continue
     }
     let suffix = key[2:].to_owned()
@@ -41,7 +40,18 @@ pub fn parse_m_params(args : Map[String, Json]) -> Array[@model.QueryFilter] {
       (parts[0], parts[1], to_underscore(parts[2]))
     }
     match @model.FilterOp::from_str(op) {
-      Some(parsed) => filters.push(@model.QueryFilter::make(table_alias, parsed, column, value_to_string(value)))
+      Some(parsed) => {
+        if is_empty_value(value) {
+          // issues/129 案 A：空值放行只留给**可选过滤**（m_LIKE_* 等，按「没填」忽略，
+          // 行为与改前逐字一致）；归属谓词列的 EQ 空值放行给 build_m_where 收成
+          // AND 1=0（空页）——那里的「这条条件不加」等于丢掉归属过滤 = 读全库。
+          if parsed is Eq && is_ownership_column(table_alias, column) {
+            filters.push(@model.QueryFilter::make(table_alias, parsed, column, ""))
+          }
+        } else {
+          filters.push(@model.QueryFilter::make(table_alias, parsed, column, value_to_string(value)))
+        }
+      }
       None => continue
     }
   }
@@ -72,6 +82,26 @@ fn is_empty_value(v : Json) -> Bool {
     Json::Array(items) => items.is_empty()
     _ => false
   }
+}
+
+///|
+/// 归属谓词列（issues/129 案 A 第二层 · spec 06-facade §2.5 口径表）：本栈四条「我的」
+/// 分页出口各自的过滤列，别名按本栈 SQL 实际写法（t=wf_process_task /
+/// pi=wf_process_instance / ta=wf_process_task_actor / cc=wf_process_cc_instance），
+/// 对齐 java 的 t.operator / pi.operator / pta.actor_id / cc.actor_id 四列，仅换别名拼写。
+/// 只有这四列受下面的空值兜底约束。
+fn is_ownership_column(table_alias : String, column : String) -> Bool {
+  let qualified = table_alias + "." + column
+  qualified == "t.operator" ||
+  qualified == "pi.operator" ||
+  qualified == "ta.actor_id" ||
+  qualified == "cc.actor_id"
+}
+
+///|
+/// 空白值判定（含全空白串，与门面 operator_arg 同档，issues/129 案 A）
+fn blank_value_text(s : String) -> Bool {
+  s.trim(chars=" \t\r\n").is_empty()
 }
 
 ///|
@@ -106,6 +136,15 @@ pub fn build_m_where(filters : Array[@model.QueryFilter]) -> (String, Array[@moo
   let params : Array[@moondb.Value] = []
   for f in filters {
     let col = f.table_alias() + "." + f.column()
+    // issues/129 案 A 第二层（仓储兜底）：归属谓词列拿到空值 ⇒ 空页，绝不允许
+    // 「这条条件不加」（那等于把「我是谁」丢了 ⇒ 读全库）。门面正常路径不会传空
+    // （facade.operator_arg 已把空串归一化成缺省 user1），这一层防的是直连仓储 /
+    // 自定义 SPI 与后续门面改动绕过归一化。非归属列（m_LIKE_* 等可选过滤）的空值
+    // 仍按「没填」忽略——那是 PageQuery 的既有通用放行，不在收口范围内。
+    if f.op() is Eq && blank_value_text(f.value()) && is_ownership_column(f.table_alias(), f.column()) {
+      b.write_string(" AND 1=0")
+      continue
+    }
     match f.op() {
       Eq => {
         b.write_string(" AND " + col + " = ?")

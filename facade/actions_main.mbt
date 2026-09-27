@@ -50,7 +50,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     Some(v) => v
     None => raise @error.Business("缺少processDefineId参数")
   }
-  let operator = arg_str_or(args, "operator", "user1")
+  let operator = operator_arg(args)
   let flow_args = args_to_flow_data(args, ["processDefineId", "operator"])
   let inst = (self.engine).start_async(define_id, operator, flow_args)
   // 自动完成申请节点（assignee=applicant → 发起人）
@@ -196,7 +196,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::instance_page(self : Facade[
   let page_size = arg_i64_or(args, "pageSize", 20L)
   let filters = facade_parse_m_filters(args)
   let query = @model.PageQuery::new(page_num, page_size)
-  query.set_operator(Some(arg_str_or(args, "operator", "user1")))
+  query.set_operator(Some(operator_arg(args)))
   let page = (self.repo).page_instances(query)
   finalize_page(page, instance_row_to_json, filters, page_num, page_size)
 }
@@ -397,7 +397,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::create_cc_instance(self : Fa
     Some(v) => v
     None => raise @error.Business("processInstanceId 缺失")
   }
-  let operator = arg_str_or(args, "operator", "user1")
+  let operator = operator_arg(args)
   let actors = arg_actor_ids(args)
   if actors.is_empty() {
     raise @error.Business("actorIds 缺失")
@@ -412,7 +412,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::update_cc_status(self : Faca
     Some(v) => v
     None => raise @error.Business("processInstanceId 缺失")
   }
-  let operator = arg_str_or(args, "operator", "user1")
+  let operator = operator_arg(args)
   (self.repo).update_cc_status(instance_id, operator)
   @json.null_json()
 }
@@ -423,7 +423,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::cc_list(self : Facade[R, E],
   let page_size = arg_i64_or(args, "pageSize", 20L)
   let filters = facade_parse_m_filters(args)
   let query = @model.PageQuery::new(page_num, page_size)
-  query.set_operator(Some(arg_str_or(args, "operator", "user1")))
+  query.set_operator(Some(operator_arg(args)))
   let page = (self.repo).page_cc_instances(query)
   finalize_page(page, instance_row_to_json, filters, page_num, page_size)
 }
@@ -436,7 +436,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::todo_list(self : Facade[R, E
   let page_size = arg_i64_or(args, "pageSize", 20L)
   let filters = facade_parse_m_filters(args)
   let query = @model.PageQuery::new(page_num, page_size)
-  query.set_operator(Some(arg_str_or(args, "operator", "user1")))
+  query.set_operator(Some(operator_arg(args)))
   let page = (self.repo).page_todo_tasks(query)
   finalize_page(page, task_row_to_json, filters, page_num, page_size)
 }
@@ -447,7 +447,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::done_list(self : Facade[R, E
   let page_size = arg_i64_or(args, "pageSize", 20L)
   let filters = facade_parse_m_filters(args)
   let query = @model.PageQuery::new(page_num, page_size)
-  query.set_operator(Some(arg_str_or(args, "operator", "user1")))
+  query.set_operator(Some(operator_arg(args)))
   let page = (self.repo).page_done_tasks(query)
   finalize_page(page, task_row_to_json, filters, page_num, page_size)
 }
@@ -459,7 +459,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     Some(v) => v
     None => raise @error.Business("缺少processTaskId参数")
   }
-  let operator = arg_str_or(args, "operator", "user1")
+  let operator = operator_arg(args)
   let submit_type = arg_i64_or(args, "submitType", 1L)
   let flow_args = args_to_flow_data(args, ["processTaskId", "operator"])
   flow_args.insert_i64("submitType", submit_type)
@@ -493,7 +493,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::task_detail(self : Facade[R,
     Some(v) => v
     None => raise @error.Business("缺少id参数")
   }
-  let operator = arg_str_or(args, "operator", "user1")
+  let operator = operator_arg(args)
   let task = match (self.repo).find_task_by_id(id) {
     Some(t) => t
     None => raise @error.TaskNotFound(id)

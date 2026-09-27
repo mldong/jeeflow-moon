@@ -201,6 +201,22 @@ pub fn arg_str_or(args : Map[String, Json], key : String, default : String) -> S
 }
 
 ///|
+/// operator 归一化（issues/129 案 A · spec 06-facade §2.5）：**空串与缺键同档**——
+/// `{"operator":""}`（含全空白串）视同未传，一并回落本栈 demo 缺省 `user1`。
+/// 缺这一层时空串会被下游当真实值比对 ⇒「我的列表」悄悄变空页（160 实测 moon 空串档 0 行）。
+/// ⚠️ 刻意不改通用取值函数 `arg_str_or`：那是各 key 共用的，「空串本身就是合法值」的 key 不许被吞。
+/// ⚠️ 非空白时返回**原串**（不 trim），与 java `JeeflowFacade.operatorArg` 逐字同形；
+///    issues/114 的 `arg_required_str`（operator 硬必填、缺失即报错、返回 trim 后值）是另一档语义，别混用。
+pub fn operator_arg(args : Map[String, Json]) -> String {
+  let s = arg_str(args, "operator").unwrap_or("")
+  if s.trim(chars=" \t\r\n").is_empty() {
+    "user1"
+  } else {
+    s
+  }
+}
+
+///|
 pub fn arg_i64_or(args : Map[String, Json], key : String, default : Int64) -> Int64 raise @error.JeeflowError {
   match arg_i64(args, key) {
     Some(v) => v

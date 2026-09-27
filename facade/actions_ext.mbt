@@ -69,7 +69,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 ///|
 pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::design_save(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let ext = self.ext()
-  let operator = arg_str_or(args, "operator", "user1")
+  let operator = operator_arg(args)
   let id = arg_i64(args, "id")
   let design : @model.ProcessDesign = match id {
     None => {
@@ -422,7 +422,7 @@ fn parse_surrogate_time(s : String?) -> String? {
 ///|
 pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::surrogate_save(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let ext = self.ext()
-  let operator = arg_str_or(args, "operator", "user1")
+  let operator = operator_arg(args)
   let id = arg_i64(args, "id")
   let surrogate : @model.ProcessSurrogate = match id {
     None => {
@@ -489,7 +489,7 @@ fn[R, E] Facade::apply_surrogate_fields(self : Facade[R, E], s : @model.ProcessS
 ///|
 pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::surrogate_update(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let ext = self.ext()
-  let operator = arg_str_or(args, "operator", "user1")
+  let operator = operator_arg(args)
   let id = match arg_i64(args, "id") {
     Some(v) => v
     None => raise @error.Business("id 缺失")
