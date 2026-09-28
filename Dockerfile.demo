@@ -1,7 +1,11 @@
 # jeeflow-moon demo（native 形态）
-# 对齐 rust 先例（jeeflow-rust/Dockerfile.demo）：CI ubuntu 构建，托管机 docker 常驻。
-# 与 rust 的差异：本仓 demo 是 MoonBit native 产物（wasm 形态见 demo/cmd/main，由 moonrun 宿主）。
-FROM ubuntu:22.04
+# 多阶段构建（2026-09-28 对齐 jeeflow-go demo-deploy 先例：小底座 + 二进制 + flows）：
+# builder 层装工具链编译，运行层只带 ubuntu 底 + 产物二进制 + flows。
+# 此前单阶段把 gcc/moon 工具链/_build 全留在镜像里（~1GB），scp 传镜像成为部署瓶颈
+# （2026-09-28 服务器网络抖动时 Upload 卡死，run 36385242925 已取消）。
+# 不直接照抄 goframe 的 alpine 底：moon native 产物动态链接 glibc，musl 有风险，
+# 运行层沿用 ubuntu:22.04 与旧镜像同底座，保行为一致。
+FROM ubuntu:22.04 AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates git gcc libc-dev \
@@ -30,5 +34,13 @@ RUN BIN=$(find _build target -type f -name 'main*' -perm -u+x 2>/dev/null | head
     && cp "$BIN" /usr/local/bin/jeeflow-demo-bin \
     || (echo "=== binary not found, target tree:"; find _build target -type f -perm -u+x 2>/dev/null | head -40; exit 1)
 
+# ---- 运行层 ----
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /usr/local/bin/jeeflow-demo-bin /usr/local/bin/jeeflow-demo-bin
+WORKDIR /app
+# flows 路径约定不变：resolver 候选 /flows
+COPY flows /flows
 EXPOSE 8092
 CMD ["/usr/local/bin/jeeflow-demo-bin"]
