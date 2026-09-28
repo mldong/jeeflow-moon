@@ -673,14 +673,14 @@ fn build_node_progress(
     }
     // 会签全量办理人：任务变量 operatorList_{node} 优先（C9/issues/93），否则 actorIds 并集
     let mut members : Array[String] = []
-    let op_key = "csv_\{name}_operatorList"
+    // issues/131：名册是任务变量 `operatorList_{node}` 里的**数组**（java ProcessInstance.java:257
+    // 存的就是 List）。逗号串那一支有意不兜——存量兼容不做（owner 2026-09-28）。
+    let op_key = "operatorList_" + name
     for t in ts {
-      match t.variables.get_str(op_key) {
-        Some(list) => {
-          members = split_comma(list)
-          break
-        }
-        None => ()
+      let got = t.variables.get_string_array(op_key)
+      if got.length() > 0 {
+        members = got
+        break
       }
     }
     if members.is_empty() {

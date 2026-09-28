@@ -37,6 +37,41 @@ pub fn FlowData::get_i64(self : FlowData, key : String) -> Int64? {
 }
 
 ///|
+///|
+/// 数组形态的字符串列表读取（issues/131：会签名册 `operatorList_{node}` 是数组，
+/// 与 java `ProcessInstance.java:257` 存的 List 同形）。缺键/非数组 ⇒ 空表；
+/// 有意**不兜**旧的逗号串——存量兼容不做（owner 2026-09-28：demo 重启即重建、pro 是 goframe 版本）。
+///|
+/// 数组形态的字符串列表写入（issues/131：会签名册 operatorList_{node} 存数组，
+/// 与 java `ProcessInstance.java:257` 的 List 同形；写侧收在 json 包里，
+/// 引擎侧不必引用 Json 类型名）。
+pub fn FlowData::insert_string_array(self : FlowData, key : String, items : Array[String]) -> Unit {
+  let arr = empty_array()
+  for s in items {
+    arr_push(arr, string_of(s))
+  }
+  self.inner[key] = arr
+}
+
+pub fn FlowData::get_string_array(self : FlowData, key : String) -> Array[String] {
+  let out : Array[String] = []
+  match self.inner.get(key) {
+    Some(v) =>
+      match as_array(v) {
+        Some(items) =>
+          for it in items {
+            match as_str(it) {
+              Some(s) => if s != "" { out.push(s) }
+              None => ()
+            }
+          }
+        None => ()
+      }
+    None => ()
+  }
+  out
+}
+
 pub fn FlowData::get_str_or(self : FlowData, key : String, default : String) -> String {
   match self.get_str(key) {
     Some(s) => s

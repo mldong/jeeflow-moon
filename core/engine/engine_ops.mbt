@@ -256,15 +256,15 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
       self.abandon_countersign_remaining(exec, node_id)
       exec.is_merged = true
     } else if is_sequential {
-      let op_list_key = "csv_\{node_id}_operatorList"
-      let lc_key = "csv_\{node_id}_loopCounter"
-      let op_list_str = exec.process_instance.variables.get_str_or(op_list_key, "")
-      let operator_list = split_actors(op_list_str)
-      let lc = exec.process_instance.variables.get_i64_or(lc_key, 0L)
+      // issues/131：名册与序号从**刚完成那一条任务的变量**读——java CountersignHandler.java:71-77
+      // 读的正是 completed.getVariables()；实例变量 csv_* 那一支整体删除（存量兼容不做）。
+      let roster_key = "operatorList_" + node_id
+      let lc_key = "loopCounter_" + node_id
+      let operator_list = _task.variables.get_string_array(roster_key)
+      let lc = _task.variables.get_i64_or(lc_key, 0L)
       if lc + 1L < operator_list.length().to_int64() {
         // 未到最后一任：建下一串行任务，不下钻边
         let next_lc = lc + 1L
-        exec.process_instance.variables.insert_i64(lc_key, next_lc)
         let new_tasks = exec.process_instance.create_countersign_tasks(
           node_id,
           node_ref.display_name,
@@ -274,6 +274,11 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
           node_ref.form_key(),
           None,
         )
+        // 三件重写在新任务上（java CountersignHandler.java:154-157）：名册原样带过去、序号 +1、
+        // 总数不变 ⇒ 代理人只扩"当一步"的参与者，改不了票数。
+        if new_tasks.length() > 0 {
+          seed_countersign_bookkeeping(new_tasks[0], node_id, operator_list, next_lc)
+        }
         for t in new_tasks {
           exec.new_tasks.push(t)
         }

@@ -146,6 +146,17 @@ fn split_actors(s : String) -> Array[String] {
 }
 
 ///|
+/// issues/131（案 A）：串行会签簿记三件写进成员任务的变量。
+/// 判据基准逐字取 java：写 ProcessInstance.java:257-259；读与推进 CountersignHandler.java:71-84,154-157。
+fn seed_countersign_bookkeeping(
+  task : @model.ProcessTask, node : String, roster : Array[String], loop_counter : Int64
+) -> Unit {
+  task.variables.insert_string_array("operatorList_" + node, roster)
+  task.variables.insert_i64("loopCounter_" + node, loop_counter)
+  task.variables.insert_i64("nrOfInstances_" + node, roster.length().to_int64())
+}
+
+///|
 /// 执行节点（async 递归：start 沿边驱动全图）
 async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::execute_node(self : Engine[R, E], exec : @exec.Execution, node : @parser.NodeModel) -> Unit raise @error.JeeflowError {
   exec.current_node = Some(node)
@@ -278,14 +289,10 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
     let cs_type = node.countersign_type()
     let cs_upper = cs_type.to_upper()
     if cs_upper == "SEQUENTIAL" || cs_upper == "SERIAL" {
-      // 串行：只建第一人任务（issues/94），全量名单存实例变量
+      // 串行：只建第一人任务（issues/94）；名册簿记搬到任务变量（issues/131，见下方 seed）
       if actor_ids.is_empty() {
         return
       }
-      let op_list_key = "csv_\{node.id}_operatorList"
-      exec.process_instance.variables.insert_str(op_list_key, actor_ids.join(","))
-      let lc_key = "csv_\{node.id}_loopCounter"
-      exec.process_instance.variables.insert_i64(lc_key, 0L)
       let tasks = exec.process_instance.create_countersign_tasks(
         node.id,
         node.display_name,
@@ -295,6 +302,14 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
         node.form_key(),
         None,
       )
+      // issues/131（案 A，以 java 为准）：簿记三件写在首位成员任务的变量上——
+      // java ProcessInstance.java:257-259 就是往那一条任务塞 operatorList/loopCounter/nrOfInstances。
+      // MoonBit 的 struct 是引用 ⇒ 改 tasks[0] 就是改聚合根里那一份（rust 的克隆要写两份，这里不用）。
+      // 名单必须是 JSON 数组：门禁 L2-23 按 len(值) 数成员，逗号串会被数成字符串长度。
+      if tasks.length() > 0 {
+        seed_countersign_bookkeeping(tasks[0], node.id, actor_ids, 0L)
+      }
+
       // TASK_START 不在此 fire（id 尚为 0，issues/13）——统一在 persist_tasks 落库后 fire
       for t in tasks {
         exec.new_tasks.push(t)

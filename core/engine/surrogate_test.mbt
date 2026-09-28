@@ -237,10 +237,21 @@ $|
   sg_has(repo.find_task_actors(step1.task_id), "li", "第一步任务并入代理人")
   sg_absent(step1.actor_ids, "other", "串行会签第一步仍只有第一人 + 其代理人")
   // 投票名册不得被扩（扩了就是改票数）
+  // issues/131（案 A，以 java 为准）：名册落在**成员任务的变量**上、且是 JSON 数组——
+  // 键名与容器一起搬家，旧落点必须彻底不存在（存量兼容有意不做：demo 重启即重建）。
+  let roster = step1.variables.get_string_array("operatorList_cs")
+  sg_check(
+    roster.length() == 2,
+    "条款1.3：operatorList_cs 须在任务变量上且为数组（成员数须 2；逗号串会被数成字符串长度）：实得 \{roster.length()}",
+  )
+  sg_check(
+    roster[0] == "zhang" && roster[1] == "other",
+    "条款1.3：名册仍是原名单，不得被代理人扩写（改了就是改了票数）",
+  )
   let saved = repo.find_instance_by_id(inst.instance_id).unwrap()
   sg_check(
-    saved.variables.get_str_or("csv_cs_operatorList", "<缺失>") == "zhang,other",
-    "条款1.3：csv_cs_operatorList 必须仍是原名单（实际=\{saved.variables.get_str_or("csv_cs_operatorList", "<缺失>")})",
+    saved.variables.get_str_or("csv_cs_operatorList", "<缺失>") == "<缺失>",
+    "条款1.3：旧落点（实例变量 csv_cs_operatorList）不该再存在",
   )
   // 第二步（另一人）不沾前一个人的委托
   let _ = engine.execute_task_async(step1.task_id, "zhang", @json.FlowData::new())
