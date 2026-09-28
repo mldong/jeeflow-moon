@@ -3,14 +3,57 @@ name: Demo Deploy
 # moon demo 常驻部署（对齐 jeeflow-rust demo-deploy 先例）：
 # tag v* / 手动触发 → CI ubuntu native 构建 → docker 镜像 → 托管机 16086:8092 → healthz 验证。
 # 部署后需 nginx /moon-api/ 段（deploy/nginx-moon-api.conf）指向 localhost:16086。
+#
+# 2026-09-28 增持续集成分：master push → 只跑 check-test 作业（检查/构建/测试，
+# wasm + native 双档）；tag push / 手动触发 → check-test 绿后照旧走部署。
 on:
   push:
+    branches: [master]
     tags: ['v*.*.*']
   workflow_dispatch:
 
 jobs:
+  check-test:
+    name: Check / Build / Test (wasm + native)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MoonBit toolchain (latest)
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Toolchain version + workspace deps
+        run: |
+          moon version --all
+          moon update
+
+      # --no-render：同 native-probe.yml——仓内现存 11 条告警（MAINTAINING §1.3
+      # 已逐条证伪"可摘"），0.1.20260920 的 ariadne 渲染器在有告警时会 panic
+      # （Label start is after its end），裸文本诊断不受影响
+      - name: Check (wasm)
+        run: moon check --target wasm --no-render
+
+      - name: Build (wasm + native)
+        run: |
+          moon build --target wasm --no-render
+          moon build --target native --no-render
+
+      # 只跑 moon test（T0，内存仓储，零外部依赖）。T1（repository-mysql/smoke）与
+      # T1-F（demo/cmd/t1_mysql）需要真 MySQL（JEFFLOW_DB_* + 先建库），CI 构建环境
+      # 没有数据库，不在本链路；repository-mysql/query_test.mbt 是纯单元测试
+      # （m_ 参数解析 / WHERE 拼装，不连库），随 moon test 一并跑。
+      - name: Test (wasm + native)
+        run: |
+          moon test --target wasm --no-render
+          moon test --target native --no-render
+
   build-and-deploy:
     name: Build & Deploy Moon demo
+    needs: check-test
+    # 部署只跟 tag 或手动触发（手动保留原有再部署能力）；master push 只做持续集成，不打扰线上
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
