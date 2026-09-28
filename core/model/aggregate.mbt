@@ -238,7 +238,23 @@ pub fn ProcessInstance::pending(self : ProcessInstance) -> Unit {
 /// 撤回：实例 30 WITHDRAW + 全部 DOING 任务 30（C28：任务 30 非 45）
 /// issues/114（spec/06 §withdraw）：`operator` = 真实撤回人，聚合根负责把实例与**被撤的**
 /// 进行中任务的 `update_user` 回写为它；已完成(20)/已终止(40) 任务行不经本方法，天然不被改写。
-pub fn ProcessInstance::withdraw(self : ProcessInstance, operator : String) -> Unit {
+///
+/// issues/134 案 A（owner 2026-09-28 拍板，八栈逐字同形）：撤回只允许**进行中(10)** 的实例。
+/// 实例不是 10（已完成 20 / 已撤回 30 / 强行终止 40 / 已拒绝 45 / 挂起 50 / 已废弃 99）⇒ 抛内部码
+/// **20010009**，本栈形状 = `@error.Business(固定文案)`（与 20010007/20010008 同款——引擎只发明
+/// 99999999 一个失败码，细粒度原因由 msg 承载，spec/06 §2.2）。守卫排在下面的任务行循环**之前**
+/// ⇒ 被拒时一行都不改、不落库；否则已办结实例会被静默改写成 30（已办列表与按状态聚合的统计凭空
+/// 改历史，而调用方看不到任何报错）。文案逐字 `流程实例非进行中，无法撤回`，门面沿用 issues/121
+/// 口径内部码不进 msg ⇒ 出口 `code=99999999` ＋ 这句原文，不拼码、不加前缀。任务行层面的既有保护
+/// （spec/06「已完成(20)/已终止(40) 的任务行不得被撤回改写」）保持原样。
+pub fn ProcessInstance::withdraw(
+  self : ProcessInstance,
+  operator : String
+) -> Unit raise @error.JeeflowError {
+  // issues/134 案 A 实例状态守卫：非进行中(10) 一律拒，且不改写任何行（八栈同形）
+  if self.state != InstanceState::Doing.code() {
+    raise @error.Business("流程实例非进行中，无法撤回")
+  }
   for t in self.tasks {
     if t.task_state == TaskState::Doing.code() {
       t.withdraw(operator)

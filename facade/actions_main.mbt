@@ -330,6 +330,8 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
     raise @error.Business("无权限撤回该流程实例")
   }
   // C28：实例 30 + 进行中任务 30（级联持久化）；已完成(20)/已终止(40) 行不经聚合根下发，不被改写
+  // issues/134 案 A：实例状态守卫（非进行中(10) ⇒ 内部码 20010009 + 固定文案）在聚合根 withdraw 内，
+  // 排在任务行循环之前 ⇒ 被拒时这里一行都没改，下面的 update_task/update_instance 一次都不执行（不落库）。
   inst.withdraw(operator)
   for t in inst.tasks {
     if t.task_state == @model.TaskState::Withdraw.code() {
