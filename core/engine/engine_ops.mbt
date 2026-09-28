@@ -279,6 +279,11 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
         if new_tasks.length() > 0 {
           seed_countersign_bookkeeping(new_tasks[0], node_id, operator_list, next_lc)
         }
+        // issues/126 案 A 写点④＝§1.8 更正补的那一处：串行会签推进出的**下一位成员**。
+        // 这一支绕过 create_task_with_assignment 直建任务行；基准侧 boot2 的串行推进是回调
+        // createCountersignTask（ProcessTaskServiceImpl:485，内含 :524 那处到期写）
+        // ⇒ 不补就是"首成员有到期、第二三位没有"。java 同款落点见 cb541d4 applyNodeExpireTime。
+        apply_node_expire_time(exec, node_ref, new_tasks)
         for t in new_tasks {
           exec.new_tasks.push(t)
         }
@@ -562,7 +567,7 @@ fn[R, E] Engine::rollback_to_parent(
     actor_id: None,                     // 进行中任务该列恒无值
     actor_ids: [actor],
     finish_time: None,
-    expire_time: history.expire_time,
+    expire_time: None,  // issues/126：修前是 history.expire_time（『抄上一行』），改按下方表达式算
     form_key: history.form_key,
     parent_task_id: Some(carry),
     variables: vars,
@@ -570,6 +575,17 @@ fn[R, E] Engine::rollback_to_parent(
     create_user: history.create_user,
     update_time: None,
     update_user: None,
+  }
+  // issues/126 案 A 写点⑤（回退/跳转新建）：到期时间按**被回退掉的那个节点**（＝当前节点）的
+  // 表达式**重算**，变量源＝随行拷贝那份 `vars`。基准逐字＝boot2 ProcessTaskServiceImpl.java:384-387
+  // （`((TaskModel)current).getExpireTime()` + `hisVariable`），jeeflow-java rejectTask 同形。
+  // 修前形状是上面那行 `expire_time: history.expire_time`——那是"抄上一行"（上一行本栈从来没
+  // 算过 ⇒ 恒空），不是"按节点表达式算"，两者在"该不该有值"上给出不同答案。
+  match exec.process_model.get_node(current.task_name) {
+    Some(cur_node) => @model.apply_expire_time(
+      nt, cur_node.prop_str(@model.expire_time_prop), vars
+    )
+    None => ()
   }
   exec.new_tasks.push(nt)
 }

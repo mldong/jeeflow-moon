@@ -157,6 +157,23 @@ fn seed_countersign_bookkeeping(
 }
 
 ///|
+/// issues/126 案 A · 建单路径共用的到期写点（普通建单 / 串行会签首位 / 并行会签全员 /
+/// 串行会签**推进出的下一位成员**——§1.8 更正后的第五处）。
+/// 表达式取自任务节点属性 `expireTime`（parser 已把 properties 逐键搬进 NodeModel）；
+/// 变量源＝**实例变量**（java `ProcessInstance.applyExpireTime` 的 `this.variables`
+/// ＝ boot2 的 `execution.getArgs()`）。
+/// 刻意用 `prop_str` 取表达式：非字符串档（JSON null / 数字）一律当"没配"，不会把"没配"
+/// 伪造成"配了个算不出的表达式"（两档终局同为 NULL，但后者会白走一遍求值档）。
+fn apply_node_expire_time(
+  exec : @exec.Execution, node : @parser.NodeModel, tasks : Array[@model.ProcessTask]
+) -> Unit {
+  let expr = node.prop_str(@model.expire_time_prop)
+  for t in tasks {
+    @model.apply_expire_time(t, expr, exec.process_instance.variables)
+  }
+}
+
+///|
 /// 执行节点（async 递归：start 沿边驱动全图）
 async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::execute_node(self : Engine[R, E], exec : @exec.Execution, node : @parser.NodeModel) -> Unit raise @error.JeeflowError {
   exec.current_node = Some(node)
@@ -309,6 +326,8 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
       if tasks.length() > 0 {
         seed_countersign_bookkeeping(tasks[0], node.id, actor_ids, 0L)
       }
+      // issues/126 案 A 写点②：串行会签**首位成员**按节点表达式算到期时间
+      apply_node_expire_time(exec, node, tasks)
 
       // TASK_START 不在此 fire（id 尚为 0，issues/13）——统一在 persist_tasks 落库后 fire
       for t in tasks {
@@ -325,6 +344,8 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
         node.form_key(),
         None,
       )
+      // issues/126 案 A 写点③：并行会签**全员**逐条按节点表达式算到期时间
+      apply_node_expire_time(exec, node, tasks)
       for t in tasks {
         exec.new_tasks.push(t)
       }
@@ -340,6 +361,9 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
       node.form_key(),
       None,
     )
+    // issues/126 案 A 写点①：普通建单按节点表达式算到期时间；
+    // 节点没配 ⇒ 这一列保持 NULL（不写 now()、不写 ''、不写 0）
+    apply_node_expire_time(exec, node, [task])
     exec.new_tasks.push(task)
   }
 }
