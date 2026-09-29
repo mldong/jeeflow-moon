@@ -310,13 +310,17 @@ async test "memory: instancePage/ccList operator『我的』过滤 (issues/108)"
   let pagec = repo.page_cc_instances(qc)
   assert_eq(pagec.record_count(), 1L)
   assert_eq(pagec.rows().length(), 1)
-  assert_eq(pagec.rows()[0].operator, "leader")
+  // issues/138 行形状三要件·要件 3：这一列是**实例的 operator＝流程发起人**（instA 的 user1），
+  // 不是被抄送人 leader —— 旧断言写 leader 正是 spec 06 §ccList 点名的错法 ①（投 cc.actor_id
+  // ⇒ 在被抄送人自己的查询里恒等于他本人，"非空"类判据永远照不出来）。
+  assert_eq(pagec.rows()[0].operator, "user1")
   // ccList 负向：operator=user1 → 只见抄给 user1 的行（排除 leader/user2 的）
   let qc2 = @model.PageQuery::new(1L, 10L)
   qc2.set_operator(Some("user1"))
   let pagec2 = repo.page_cc_instances(qc2)
   assert_eq(pagec2.record_count(), 1L)
-  assert_eq(pagec2.rows()[0].operator, "user1")
+  // issues/138·要件 3 同上：instB 的发起人是 leader ⇒ operator 取 leader，不是查询者 user1。
+  assert_eq(pagec2.rows()[0].operator, "leader")
   // 回归：不带 operator（None）→ 全量 3 行 cc
   let qc3 = @model.PageQuery::new(1L, 10L)
   let pagec3 = repo.page_cc_instances(qc3)

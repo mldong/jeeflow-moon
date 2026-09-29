@@ -56,6 +56,26 @@ fn instance_row_of_mysql(r : @moondb.Row) -> @model.InstanceRow {
 }
 
 ///|
+/// 实例行的列清单（issues/138：pageInstances 与 pageCcInstances 共用**同一份**投影 ⇒
+/// 「rows 同 processInstance/page 行结构」由构造保证，不再两处各自漂移）。对齐 Java
+/// JdbcProcessRepository.pageInstances 的 `SELECT ... t.*`（行源＝实例表 t）与 PHP PDO 侧
+/// pageCcInstances 共用 instanceRow()。列名与顺序取自本栈旧 pageInstances 行、逐字未动
+/// ⇒ 该支拼出的 SQL 零变化。三要件落在这份清单上：
+/// 要件 1 主键列 `pi.id`（经 instance_row_of_mysql 读成行上的 `id`，值＝实例 id）；
+/// 要件 2+3 `pi.operator`＝实例 operator＝流程发起人，**不是** `cc.actor_id`／`cc.create_user`。
+pub fn instance_select_columns() -> String {
+  "pi.id, pi.parent_id, pi.process_define_id, pi.state, pi.parent_node_name, pi.business_no, pi.operator, pi.expire_time, pi.variable, pi.create_time, pi.create_user, pi.update_time, pi.update_user, pd.name AS define_name, pd.display_name AS define_display_name, pd.version AS define_version"
+}
+
+///|
+/// ccList 的投影＝实例投影（issues/138 行形状三要件，spec 06-facade.md §processInstance/ccList）。
+/// cc 表只做归属过滤/关联：谓词列 `cc.actor_id = ?`（spec 06 §2.5 口径表钉死）留在 WHERE，
+/// **不进投影**。旧写法在这一支投 `cc.actor_id AS operator` + `NULL AS variable` +
+/// `cc.create_*`/`cc.update_*` ⇒ 被抄送人自己的查询里 operator 恒等于他本人，
+/// 非空判据照不出来（要件 3 病灶）；行主键虽叫 id 但混着 cc 侧列，形状不再等于实例行。
+pub fn cc_instance_select_columns() -> String { instance_select_columns() }
+
+///|
 pub impl @spi.ProcessRepository for MysqlRepository with fn page_todo_tasks(self, query) {
   let (page_num, page_size, offset) = page_bounds(query)
   let (m_where, m_params) = @query.build_m_where(query.filters())
@@ -162,7 +182,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_instances(self,
   }
   let count_rows = q(conn, count_sql, count_params)
   let total = if count_rows.is_empty() { 0L } else { row_i64(count_rows[0], "cnt") }
-  let sql = "SELECT pi.id, pi.parent_id, pi.process_define_id, pi.state, pi.parent_node_name, pi.business_no, pi.operator, pi.expire_time, pi.variable, pi.create_time, pi.create_user, pi.update_time, pi.update_user, pd.name AS define_name, pd.display_name AS define_display_name, pd.version AS define_version FROM wf_process_instance pi LEFT JOIN wf_process_define pd ON pd.id = pi.process_define_id WHERE 1=1" + m_where + (match operator {
+  let sql = "SELECT " + instance_select_columns() + " FROM wf_process_instance pi LEFT JOIN wf_process_define pd ON pd.id = pi.process_define_id WHERE 1=1" + m_where + (match operator {
       Some(_op) => " AND pi.operator = ?"
       None => ""
     }) + " ORDER BY pi.id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()
@@ -199,7 +219,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_cc_instances(se
   }
   let count_rows = q(conn, count_sql, count_params)
   let total = if count_rows.is_empty() { 0L } else { row_i64(count_rows[0], "cnt") }
-  let sql = "SELECT DISTINCT pi.id, pi.parent_id, pi.process_define_id, pi.state, pi.parent_node_name, pi.business_no, cc.actor_id AS operator, pi.expire_time, NULL AS variable, cc.create_time, cc.create_user, cc.update_time, cc.update_user, pd.name AS define_name, pd.display_name AS define_display_name, pd.version AS define_version FROM wf_process_cc_instance cc JOIN wf_process_instance pi ON pi.id = cc.process_instance_id LEFT JOIN wf_process_define pd ON pd.id = pi.process_define_id WHERE 1=1" + (match operator {
+  let sql = "SELECT DISTINCT " + cc_instance_select_columns() + " FROM wf_process_cc_instance cc JOIN wf_process_instance pi ON pi.id = cc.process_instance_id LEFT JOIN wf_process_define pd ON pd.id = pi.process_define_id WHERE 1=1" + (match operator {
       Some(_) => " AND cc.actor_id = ?"
       None => ""
     }) + " ORDER BY pi.id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()

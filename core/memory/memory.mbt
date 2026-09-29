@@ -453,40 +453,31 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_cc_instances(s
     if !operator_eq(query, cc.actor_id) {
       continue
     }
-    let inst = self.instances.get(cc.process_instance_id)
-    let define_info = match inst {
-      Some(i) => self.defines.get(i.define_id)
-      None => None
-    }
-    let row = @model.InstanceRow::new_empty()
-    row.id = cc.id
-    row.parent_id = None
-    row.process_define_id = match inst {
-      Some(i) => i.define_id
-      None => 0L
-    }
-    row.state = cc.state
-    row.parent_node_name = None
-    row.business_no = match inst {
-      Some(i) => i.business_no
-      None => None
-    }
-    row.operator = cc.actor_id
-    row.expire_time = None
-    row.variable = None
-    row.create_time = cc.create_time
-    row.create_user = cc.create_user
-    row.update_time = cc.update_time
-    row.update_user = cc.update_user
-    match define_info {
-      Some(d) => {
-        row.define_name = Some(d.name)
-        row.define_display_name = Some(d.display_name)
-        row.define_version = Some(d.version)
+    // issues/138 行形状三要件（spec 06-facade.md §processInstance/ccList，基准＝boot2 内置版）：
+    // ccList 的行**来自实例表**，cc 行只当过滤（上一句谓词按 spec 06 §2.5 钉的 `cc.actor_id`，本轮不动）。
+    // 与 pageInstances 共用 instance_row_of ⇒「rows 同 processInstance/page 行结构」由构造保证 ——
+    // 对齐 Java JdbcProcessRepository.pageInstances(query, cc=true)（行源 `FROM wf_process_instance t`
+    // + `SELECT t.*`，cc 表退成 LEFT JOIN 过滤）与 PHP PDO 侧 pageCcInstances 共用 instanceRow()。
+    // 旧写法逐列投 cc（id=cc.id、operator=cc.actor_id、parent_id/expire_time/variable 置空、
+    // state 取 cc.state）正是条文点名的错法 ①＋③：operator＝被抄送人＝查询者本人，
+    // 「operator 非空」这类判据在他自己的查询里恒真、永远照不出来；主键值也不是实例 id。
+    match self.instances.get(cc.process_instance_id) {
+      Some(i) => rows.push(instance_row_of(i, self.defines.get(i.define_id)))
+      None => {
+        // 悬挂 cc 行（实例已不在）：行源仍算实例侧 ⇒ 主键给**实例 id**（要件 1）；
+        // 发起人无从可取 ⇒ 留空串，**不回落到 cc.actor_id**（要件 3：operator 不得是查询者本人）。
+        // 本轮只改投影，计数口径维持已发布语义（该 cc 行照旧出行，不收「实例不在就不出行」那一档）。
+        let row = @model.InstanceRow::new_empty()
+        row.id = cc.process_instance_id
+        row.state = cc.state
+        row.operator = ""
+        row.create_time = cc.create_time
+        row.create_user = cc.create_user
+        row.update_time = cc.update_time
+        row.update_user = cc.update_user
+        rows.push(row)
       }
-      None => ()
     }
-    rows.push(row)
   }
   let total = rows.length().to_int64()
   @model.PageResult::new(query.page_num(), query.page_size(), total, page_slice(rows, query.page_num(), query.page_size()))
