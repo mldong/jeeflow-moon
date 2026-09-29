@@ -270,9 +270,11 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
     exec.instance_finished = true
     // 持久化
     (self.repo()).update_instance(exec.process_instance)
-    // fire 结束事件
-    let event = @event.ProcessEvent::make(@event.ProcessInstanceEnd, exec.process_instance.instance_id)
-    @event.notify(event, self.ctx.event_listeners())
+    // fire 结束事件：载荷 instanceId + state（§11.3 code 2，「state＝落库后的实例状态整数」）。
+    // 取的就是上面 update_instance 刚落库的那个值，不在这里二次推演。
+    self.notify_instance_end(
+      exec.process_instance.instance_id, exec.process_instance.state
+    )
     self.fire_post_interceptors(exec)
   } else if node.node_type is @parser.SubProcess {
     // 子流程简化处理（rust 同款：不做完整子流程展开）
@@ -637,8 +639,10 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::pers
     if !task.actor_ids.is_empty() {
       (self.repo()).add_task_actor(task.task_id, task.actor_ids)
     }
-    let event = @event.ProcessEvent::make(@event.ProcessTaskStart, task.task_id)
-    @event.notify(event, self.ctx.event_listeners())
+    // 载荷 instanceId/taskId/actors（§11.3 code 3）。⚠️ instanceId 是硬要求：本支 sourceId 是 taskId，
+    // 集成层 L2-30 的事件流水 sink 只能靠载荷里的 instanceId 把一条流的流水归到一个键下；
+    // 缺它则被拆成多个 taskId 键、顺序读不全（rust 栈同一个病）。
+    self.notify_task_start(instance.instance_id, task.task_id, task.actor_ids)
   }
 }
 

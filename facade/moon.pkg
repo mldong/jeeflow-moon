@@ -12,5 +12,6 @@ import {
   "mldong/jeeflow-facade" @facade,
   "mldong/jeeflow-core/memory" @mem,
   "mldong/jeeflow-core/id_gen" @id_gen,
+  "mldong/jeeflow-core/event" @event,
   "moonbitlang/async",
 } for "test"
