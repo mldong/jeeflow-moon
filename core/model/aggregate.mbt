@@ -346,6 +346,13 @@ pub fn ProcessInstance::create_countersign_tasks(
 
 ///|
 /// 历史任务（custom 节点用，直接 FINISHED）
+/// ⚠️ issues/137 B：**引擎侧零调用者**（grep create_history_task 只命中本定义与 core/model
+/// 的单测，core/engine、facade、persist 无人调），但承担**契约形状义务**——它钉的是
+/// "自动节点落一条 FINISHED 行"的行形状：state=FINISHED(20) + actor_id=处理人 +
+/// actor_ids=[处理人]，前两条与主路径 ProcessTask::finish 写的列同判据；差异只有办理
+/// 审计三列（finish_time/update_time/update_user），自动节点本无办理人 ⇒ 不写。
+/// owner 2026-09-29 拍板**不删**（删除会踩既有测试、收益低），直调行为由
+/// i137b_zero_caller_create_test.mbt 逐字段钉住。
 pub fn ProcessInstance::create_history_task(
   self : ProcessInstance,
   task_name : String,
@@ -370,6 +377,14 @@ pub fn ProcessInstance::create_history_task(
 
 ///|
 /// 退回上一步：为新节点建待办任务
+/// ⚠️ issues/137 B：**真·零调用者**（连单测都没有；grep reject_task 全仓只命中本定义）。
+/// 引擎的"退回上一步"支在 core/engine/engine_ops.mbt 里用结构体字面量手搓复活行
+/// （随行拷贝 history 各列 + parent_task_id=Some(carry) + 按当前节点表达式重算
+/// expire_time），没走这里 ⇒ 本函数无人调。
+/// 仍承担**契约形状义务**：它＝主路径建单 create_task(task_name, display_name,
+/// actor_ids, operator, Major, Normal, None, Some(parent_task_id)) 的具名别名，
+/// 逐字段同形（i137b_zero_caller_create_test.mbt 用 == 钉住）。
+/// owner 2026-09-29 拍板**不删**。
 pub fn ProcessInstance::reject_task(
   self : ProcessInstance,
   task_name : String,

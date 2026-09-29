@@ -365,16 +365,16 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
     }
     None => ()
   }
-  // 11. 任务级抄送（tf_ccActors）
-  match exec.args.get_str("tf_ccActors") {
-    Some(cc_actors) => {
-      let actors = split_actors(cc_actors)
-      if !actors.is_empty() {
-        (self.repo()).create_cc_instance(exec.process_instance.instance_id, operator, actors)
-        self.notify_cc_create(exec.process_instance.instance_id, actors)
-      }
-    }
-    None => ()
+  // 11. 任务级抄送（tf_ccActors，issues/141 G6）
+  // 与发起路径 f_ccActors（上面第 8 步）**同一个解析器** parse_cc_actors：
+  // 逗号串与 JSON 数组两种形态等价。此前这一支只走 get_str（仅认 String 形态），
+  // 传 ["userB","userC"] 时取不到值 ⇒ 不建 cc 行、不 fire 码 4，而同一份定义在 java 等栈会建
+  // （java JeeflowEngineImpl.handleCcActors 两形态通吃）。
+  // 逗号串形态的切分口径与旧 split_actors 逐字相同（按 , 切 / trim / 丢空段）⇒ 无行为变化。
+  let cc_actors = parse_cc_actors(exec.args.get("tf_ccActors"))
+  if !cc_actors.is_empty() {
+    (self.repo()).create_cc_instance(exec.process_instance.instance_id, operator, cc_actors)
+    self.notify_cc_create(exec.process_instance.instance_id, cc_actors)
   }
   // 12. 落库
   self.persist_tasks(exec)
