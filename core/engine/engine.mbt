@@ -652,7 +652,14 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::pers
 }
 
 ///|
-/// 解析发起时抄送人（issues/56 E28）：JSON 数组 / 逗号串 / 空三形态
+/// 解析抄送人（issues/56 E28）：JSON 数组 / 逗号串 / 空三形态 —— 发起 `f_ccActors`、办理
+/// `tf_ccActors`（issues/141 G6 两腿同器）与子流程发起腿三条入口共用的**唯一漏斗**。
+///
+/// issues/141 G10（spec 06-facade §2.10「空抄送人不建 cc 行」）：两形态的产物一律过
+/// `@model.normalize_cc_actors` 收口 —— 空串/纯空白/数组里的空元素丢弃、**值取 trim 后的串**、
+/// 同一次调用内的重复折叠；丢完为空 ⇒ 调用方不建 cc 行也不 fire 码 4。归一不在这里各抄一份：
+/// 逗号腿与数组腿只负责"切成元素"（此前数组腿只丢 `""`、不 trim ⇒ `["  "]` 原样进写侧、
+/// `[" a "]` 落成与 `"a"` 不同的两个人），空值判据只在 `@model` 那一处。
 pub fn parse_cc_actors(v : Json?) -> Array[String] {
   let out : Array[String] = []
   match v {
@@ -660,7 +667,7 @@ pub fn parse_cc_actors(v : Json?) -> Array[String] {
     Some(Json::Array(items)) =>
       for it in items {
         match it {
-          Json::String(s) => if !s.is_empty() { out.push(s) }
+          Json::String(s) => out.push(s)
           // id 字符串化走 repr 原文优先（>2^53 防 double 取整，D-M5-3）
           Json::Number(n, repr~) =>
             match repr {
@@ -674,13 +681,11 @@ pub fn parse_cc_actors(v : Json?) -> Array[String] {
       }
     Some(Json::String(s)) => {
       for part in s.split(",") {
-        let t = part.to_owned().trim(chars=" \t\r\n").to_owned()
-        if !t.is_empty() {
-          out.push(t)
-        }
+        out.push(part.to_owned())
       }
     }
     Some(_) => ()
   }
-  out
+  // issues/141 G10 判据单点：空值丢弃 + trim + 同调用折叠只在 @model.normalize_cc_actors 写一次
+  @model.normalize_cc_actors(out)
 }

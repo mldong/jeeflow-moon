@@ -13,6 +13,14 @@
 ///   不重置未读 state、不更新原行时间，并且**不 fire CC_CREATE（码 4）**；建 cc 的三条入口一律改调
 ///   `create_cc_instance_if_absent` 并拿它返回的**实际新建子集**去 fire，子集为空整支不发。
 ///   查询侧不引入去重、历史重复行不清理（owner 2026-09-29 拍）。
+/// · **G10 空抄送人不建 cc 行**（spec 06-facade §2.10，owner 2026-09-29 拍「空不创建行」；基准＝java
+///   `5fbd5ac`）：`create_cc_instance` 与 `create_cc_instance_if_absent` 的入参里**空串、纯空白一律丢弃**，
+///   落库与比较值取 **trim 后的串**（`" 123 "` 与 `"123"` 是同一个人 ⇒ 与上面的 G2 判重咬合，
+///   不 trim 就会让同一人落两行）；判据单点在 `@model.normalize_cc_actors`。
+///   ⚠️ **写侧这一层必须实现方自己挡**：引擎漏斗（`parse_cc_actors`）与门面手动腿都归一，但绕过它们
+///   直连仓储的调用方（集成层、第三方仓储消费者）照样能把空归属值灌进 `actor_id` —— 那正是 issues/129
+///   那族"空 operator 读全库"的病根。丢完为空 ⇒ 一行不建、也不 fire CC_CREATE（码 4）。
+///   反向哨兵：`"0"` 这类"看起来像空"的正常 id 是有效值，**不得**被当空值丢掉。
 pub(open) trait ProcessRepository {
   async fn find_define_by_id(Self, Int64) -> @model.ProcessDefine? raise @error.JeeflowError
   async fn save_define(Self, @model.ProcessDefine) -> Unit raise @error.JeeflowError

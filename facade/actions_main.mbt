@@ -403,7 +403,11 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::create_cc_instance(self : Fa
     None => raise @error.Business("processInstanceId 缺失")
   }
   let operator = operator_arg(args)
-  let actors = arg_actor_ids(args)
+  // issues/141 G10（spec 06 §2.10「空抄送人不建 cc 行」）：手动腿与引擎腿走同一支归一
+  // @model.normalize_cc_actors —— 空串/纯空白/数组里的空元素一律丢弃，值取 trim 后的串
+  // （此前数组形态 ["  "] 会原样建一行 actor_id="  "，[" a "] 与 "a" 判成两个人）。
+  // 丢完为空 ⇒ 与下面这条既有的"空集合"档同判（沿用 `actorIds 缺失`，不新造错误码/文案）。
+  let actors = @model.normalize_cc_actors(arg_actor_ids(args))
   if actors.is_empty() {
     raise @error.Business("actorIds 缺失")
   }

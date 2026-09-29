@@ -131,12 +131,14 @@ async test "i141-G6: 办理路径 单元素两形态等价（userB vs [userB]）
 }
 
 ///|
-async test "i141-G6: 办理路径 空串与空数组两形态互相等价（不擅断 java 的空段口径，待 issues/141 拍）" {
-  // ⚠️ 本格**只**钉"两形态在 moon 内部一致"，不钉"空 ⇒ 建不建行"：
-  // java handleCcActors 对 "" 会 split 出一个空元素并建一行 ""（Collection 侧 [""] 同理），
-  // 本仓 parse_cc_actors 走的是"空段丢弃"（既有 c30 格已按此钉住 f_ccActors 一侧）。
-  // 办理路径统一到同一个解析器后继承该口径 ⇒ 与 java 在 ""/[""] 这一格上仍有偏差，
-  // 是否改判"空也建一行"由 owner 在 issues/141 拍，此处不替 owner 立规。
+async test "i141-G6: 办理路径 空串与空数组两形态⇒零行零 fire（issues/141 G10 已拍「空不创建行」）" {
+  // 判据升级（owner 2026-09-29 拍 G10，spec 06-facade §2.10；基准＝java `5fbd5ac`）：
+  // 本格原先只钉"两形态在 moon 内部一致"——两形态都是空 ⇒ 一致是恒真的，照不出"空到底建不建行"，
+  // 属"只比自等"的假判据（§8 记的待办就是把这一格升成正判据）。现在钉**绝对读数**：
+  // `""`（逗号串形态）与 `[""]`（数组形态）都必须 **0 行 + 0 个码 4**，两形态等价由"同为 0"推出。
+  // 历史留痕：java 旧形状 `"".split(",")` 得一个空元素 ⇒ 真落一条 actor_id='' 的行，按本条更正
+  // （空归属值正是 issues/129 那族"空 operator 读全库"的病根）；本仓漏斗早就丢空段，
+  // 本轮把"丢空"延长到"丢纯空白 + 落库取 trim 后的值"，并补上两仓储的写侧那一层。
   let repo_a = @mem.MemoryRepository::new()
   let ctx_a = @spi.Ctx::new(repo_a, repo_a)
   let gen_a = @id_gen.AtomicIdGenerator::new(1L)
@@ -163,6 +165,12 @@ async test "i141-G6: 办理路径 空串与空数组两形态互相等价（不�
   let args_b = new_args()
   args_b.insert("tf_ccActors", @json.array_of([@json.string_of("")]))
   let _ = engine_b.execute_task_async(tasks_b[0].task_id, "user1", args_b)
+  // 正判据：两形态各自都必须零行零 fire（不许只比互相一致）
+  assert_eq(cc_rows_of(repo_a), 0L)
+  assert_eq(cc_rows_of(repo_b), 0L)
+  assert_eq(cc_fired_actors(events_a).length(), 0)
+  assert_eq(cc_fired_actors(events_b).length(), 0)
+  // 两形态同判据（升级后的等价由上面四个绝对读数承住，这里保留作回归钉）
   assert_eq(cc_rows_of(repo_a), cc_rows_of(repo_b))
   assert_eq(cc_fired_actors(events_a).length(), cc_fired_actors(events_b).length())
 }

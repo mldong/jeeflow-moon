@@ -548,6 +548,36 @@ pub fn cc_fresh_subset(existing : Array[String], requested : Array[String]) -> A
   fresh
 }
 
+///|
+/// issues/141 G10（spec 06-facade §2.10「空抄送人不建 cc 行」，owner 2026-09-29 拍「空不创建行」；
+/// 基准＝java `5fbd5ac` 的 `StringUtils.normalizeCcActors`）：抄送人集合归一 —— 逐元素 **trim**、
+/// **空串与纯空白一律丢弃**、同一次调用内的重复折叠（顺序保持）。
+///
+/// **判据只有这一份**，三层都调它（两层都挡 ⇒ 绕过引擎/门面直连仓储的调用方同样灌不进空值）：
+/// - 漏斗层：`core/engine` 的 `parse_cc_actors`（发起 `f_ccActors`／办理 `tf_ccActors`／子流程发起腿
+///   三条入口共用同一个解析器，逗号串与数组两形态在这一层汇流）；
+/// - 门面手动腿：`processInstance/createCCInstance`（丢完为空 ⇒ 与该仓既有"空集合"档同判，
+///   沿用 `actorIds 缺失` 文案，本函数只归一集合、不新造错误语义）；
+/// - 写侧层：内存仓与 MySQL 仓的 `create_cc_instance` / `create_cc_instance_if_absent`。
+///
+/// 为什么必须带 trim（G2 与 G10 的咬合点）：`" 123 "` 与 `"123"` 是同一个人，落库与比较都取 trim
+/// 后的值，否则 `cc_fresh_subset` 的写侧判重会被空白化差异绕开、同一人落两行（issues/141 G2 被打穿）。
+///
+/// ⚠️ **反向哨兵**：判据是「trim 后 `is_empty()`」，不是 falsy —— `"0"` 这类"看起来像空"的正常 id
+/// 必须保留，不得被当空值丢掉。
+///
+/// 丢完为空 ⇒ 调用方不得建任何 cc 行、也不得 fire CC_CREATE（码 4）（spec §11.2 原则 1「码=事实」）。
+pub fn normalize_cc_actors(raw : Array[String]) -> Array[String] {
+  let out : Array[String] = []
+  for actor_id in raw {
+    let t = actor_id.trim(chars=" \t\r\n").to_owned()
+    if !t.is_empty() && !out.contains(t) {
+      out.push(t)
+    }
+  }
+  out
+}
+
 
 // ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
 // 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。

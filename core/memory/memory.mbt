@@ -272,7 +272,10 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn create_cc_instance(
   // 重复抄送同一个人**不是**"再提醒一次"（owner 2026-09-29 明确「不需要重置」）。判重在写侧，
   // 查询侧不去重、历史重复行不清理。
   let existing = self.find_cc_actors(instance_id)
-  for actor_id in @model.cc_fresh_subset(existing, actor_ids) {
+  // issues/141 G10（spec 06 §2.10「空抄送人不建 cc 行」）第二层兜底：绕过引擎漏斗/门面**直连仓储**的
+  // 调用方同样建不出空值行 —— 空串/纯空白先由 @model.normalize_cc_actors 丢弃，落库值取 trim 后的串
+  // （" 123 " 与 "123" 判为同一人，与下一行的写侧判重同一条尺子）。判据单点在 @model，此处不各抄一份。
+  for actor_id in @model.cc_fresh_subset(existing, @model.normalize_cc_actors(actor_ids)) {
     self.cc_instances.push({
       id: self.next_id(),
       process_instance_id: instance_id,
@@ -304,7 +307,10 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn find_cc_actors(self
 /// （顺序与入参一致，同一次调用内的重复也折叠）。子集为空 ⇒ 调用方不得 fire CC_CREATE（码 4）。
 /// 建行本身仍走 `create_cc_instance`（那一层也判重，两层同判据 ⇒ 直连旧方法的调用方也不会重复建行）。
 pub impl @spi.ProcessRepository for MemoryRepository with fn create_cc_instance_if_absent(self, instance_id, creator, actor_ids) {
-  let fresh = @model.cc_fresh_subset(self.find_cc_actors(instance_id), actor_ids)
+  // issues/141 G10：返回的子集也必须先归一 —— 三条入口拿这个子集去 fire CC_CREATE（码 4），
+  // 子集里留一个空值就等于给空抄送人发了一次知会。
+  let fresh =
+    @model.cc_fresh_subset(self.find_cc_actors(instance_id), @model.normalize_cc_actors(actor_ids))
   if !fresh.is_empty() {
     self.create_cc_instance(instance_id, creator, fresh)
   }

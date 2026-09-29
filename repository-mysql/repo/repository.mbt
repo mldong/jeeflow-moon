@@ -425,6 +425,20 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn remove_task_actor(se
 }
 
 ///|
+/// issues/141 G10（spec 06-facade §2.10「空抄送人不建 cc 行」）+ G2（§4 写侧判重）合起来的那一支：
+/// 本仓**实际会 INSERT 的 actor 序** = 先 `@model.normalize_cc_actors`（空串/纯空白丢弃、值取 trim
+/// 后的串、同调用折叠），再 `@model.cc_fresh_subset`（已有 cc 行的人跳过）。
+///
+/// 抽成 pub 纯函数有两个理由：① 判据仍只在 `@model` 那一处（本函数只组合，不另写规则）；
+/// ② 本仓 T0 档不连真库（真库档 T1 需 JEFFLOW_DB_* 且 native 编译要 cc），写侧这一层的行为面
+/// 否则只能靠"内存腿同判据"间接推定 —— 有这一支，`create_cc_instance` 与
+/// `create_cc_instance_if_absent` 循环/返回的实际就是它的返回值，测试能直接照到 MySQL 写侧
+/// （还原这里 ⇒ 本格当场红，不必等真库）。
+pub fn cc_actor_ids_to_insert(existing : Array[String], actor_ids : Array[String]) -> Array[String] {
+  @model.cc_fresh_subset(existing, @model.normalize_cc_actors(actor_ids))
+}
+
+///|
 pub impl @spi.ProcessRepository for MysqlRepository with fn create_cc_instance(self, instance_id, creator, actor_ids) {
   let conn = self.open_or_tx()
   // issues/141 G2 写侧判重＝幂等空操作（spec 06 §4）：同一 (实例, 被抄送人) 已有 cc 行 ⇒ 整条跳过——
@@ -432,7 +446,9 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn create_cc_instance(s
   // 判重在写侧，查询侧不引入去重、历史重复行也不清理（owner 2026-09-29 拍）。
   // 判据与内存仓共用 @model.cc_fresh_subset 这一份；同一次调用内的重复也一并折叠。
   let existing = cc_actor_ids_of_rows(cc_actor_ids_query(conn, instance_id))
-  for actor_id in @model.cc_fresh_subset(existing, actor_ids) {
+  // issues/141 G10：写侧第二层兜底（绕过引擎漏斗/门面直连仓储的调用方也建不出 actor_id='' 的行，
+  // 那正是 issues/129 那族"空归属值读全库"的病根）；trim 后的值才进 INSERT，与判重同一条尺子。
+  for actor_id in cc_actor_ids_to_insert(existing, actor_ids) {
     let _ = x(conn, 
       cc_insert_sql(),
       [
@@ -492,7 +508,8 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_cc_actors(self,
 /// issues/141 G2（spec 06 §4 · spec §11.2 原则 1）：幂等建 cc 行，返回**实际新建**的子集
 /// （顺序与入参一致，同一次调用内的重复也折叠）。子集为空 ⇒ 调用方不得 fire CC_CREATE（码 4）。
 pub impl @spi.ProcessRepository for MysqlRepository with fn create_cc_instance_if_absent(self, instance_id, creator, actor_ids) {
-  let fresh = @model.cc_fresh_subset(self.find_cc_actors(instance_id), actor_ids)
+  // issues/141 G10：返回子集同样先归一（三条入口拿它去 fire 码 4，子集里不许留空值）。
+  let fresh = cc_actor_ids_to_insert(self.find_cc_actors(instance_id), actor_ids)
   if !fresh.is_empty() {
     self.create_cc_instance(instance_id, creator, fresh)
   }
