@@ -357,9 +357,12 @@ pub fn ProcessInstance::create_countersign_tasks(
 /// 这一步」；但这条 DONE 行在用户面上要经 `processTask/doneList`（`task_state<>10 AND
 /// operator=?`）与 `processInstance/approvalRecord` 查得到，那两支都按 operator＋finish_time
 /// 取数 ⇒ 缺完成时间的留痕等于没落过（与第 1 条「查不到的留痕＝没留痕」同一把尺子）。
-/// 反过来 `update_time`/`update_user` **继续不写**（记录类没有「办理」那一次更新），
-/// `expire_time` 也留 None（spec/02 §6 的 custom 属性字典无 expireTime）。
-/// ⇒ 两列写、两列不写，别顺手一起补。直调行为由
+/// `expire_time` **必须留 None**（spec/02 §6 的 custom 属性字典无 expireTime，
+/// 写它就得臆造属性，也与 issues/126 owner 口径「节点没配就保持 NULL」同向）——
+/// 条文里「两列写、一列不写」说的就是 expire_time 这一列，别顺手把时间列全补上。
+/// 另：`update_time`/`update_user` 本栈建单（create_task）本就不写，与 java
+/// `ProcessTask.create` 顺手写这两列不同形，属本栈既有形状、不在本条判据内。
+/// 直调行为由
 /// i137b_zero_caller_create_test.mbt 逐字段钉住（该用例跟着本裁定改判）。
 pub fn ProcessInstance::create_history_task(
   self : ProcessInstance,

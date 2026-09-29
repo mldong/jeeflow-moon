@@ -184,7 +184,8 @@ async test "i142: custom 记录腿落 task_state=20 历史行，且**真落库**
     Some(t) => assert_true(!t.is_empty())
     None => fail("§6.2 1bis：留痕行必须写 finish_time，实得 None")
   }
-  // 反过来两列不写：update_* 是办理审计，expire_time 记录类无表达式可算（"两列写、两列不写"）
+  // update_* 两列本栈建单就不写（aggregate 的 create_task 形状，与 java ProcessTask.create
+  // 顺手写 update_time/update_user 不同）⇒ 钉的是本栈既有形状，不是 §6.2 的判据。
   assert_eq(hist.update_time, None)
   assert_eq(hist.update_user, None)
   assert_eq(hist.expire_time, None)

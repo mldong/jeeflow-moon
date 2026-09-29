@@ -1000,7 +1000,8 @@ async fn t1_f118_custom_history_row() -> Unit raise {
     // 而内存仓整行存 ⇒ 单测全绿。判据必须读**库里的列**。
     let fin = task_cell(repo, tid, "finish_time")
     check(fin != "<NULL>" && !fin.is_empty(), "\{name} 库里 finish_time 已写（1bis），实际=<\{fin}>")
-    // 反过来 expire_time 留 NULL（记录类无到期表达式）：条文是"两列写、两列不写"，
+    // 反过来 expire_time 必须留 NULL：§6.2 1bis 明写「记录类没有到期表达式可算，
+    // 写它就得臆造属性」，也与 issues/126 owner 口径「节点没配就保持 NULL」同向。
     // 只断 finish_time 非空不足以挡住"顺手把时间列全补上"。
     check_eq(task_cell(repo, tid, "expire_time"), "<NULL>", "\{name} expire_time 留 NULL")
     // ② 建单不变量：task_parent_id ＝刚办结的 apply 行；行级 isFirstTaskNode 随 variable 列落库
