@@ -267,7 +267,12 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn remove_task_actor(s
 
 ///|
 pub impl @spi.ProcessRepository for MemoryRepository with fn create_cc_instance(self, instance_id, creator, actor_ids) {
-  for actor_id in actor_ids {
+  // issues/141 G2 写侧判重＝幂等空操作（spec 06 §4），与 MySQL 仓同一条判据（共用 @model.cc_fresh_subset）：
+  // 同一 (实例, 被抄送人) 已有 cc 行 ⇒ 跳过——①不新增行 ②不重置未读 state ③不更新原行时间，
+  // 重复抄送同一个人**不是**"再提醒一次"（owner 2026-09-29 明确「不需要重置」）。判重在写侧，
+  // 查询侧不去重、历史重复行不清理。
+  let existing = self.find_cc_actors(instance_id)
+  for actor_id in @model.cc_fresh_subset(existing, actor_ids) {
     self.cc_instances.push({
       id: self.next_id(),
       process_instance_id: instance_id,
@@ -279,6 +284,31 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn create_cc_instance(
       update_user: None,
     })
   }
+}
+
+///|
+/// issues/141 G2：某实例已有 cc 行的 actor id（写侧判重的读侧）。重复行照原样返回（不去重），
+/// 与 MySQL 仓 `find_cc_actors` 的 `SELECT actor_id FROM wf_process_cc_instance WHERE ...` 同形状。
+pub impl @spi.ProcessRepository for MemoryRepository with fn find_cc_actors(self, instance_id) {
+  let out : Array[String] = []
+  for cc in self.cc_instances {
+    if cc.process_instance_id == instance_id {
+      out.push(cc.actor_id)
+    }
+  }
+  out
+}
+
+///|
+/// issues/141 G2（spec 06 §4 · spec §11.2 原则 1）：幂等建 cc 行，返回**实际新建**的子集
+/// （顺序与入参一致，同一次调用内的重复也折叠）。子集为空 ⇒ 调用方不得 fire CC_CREATE（码 4）。
+/// 建行本身仍走 `create_cc_instance`（那一层也判重，两层同判据 ⇒ 直连旧方法的调用方也不会重复建行）。
+pub impl @spi.ProcessRepository for MemoryRepository with fn create_cc_instance_if_absent(self, instance_id, creator, actor_ids) {
+  let fresh = @model.cc_fresh_subset(self.find_cc_actors(instance_id), actor_ids)
+  if !fresh.is_empty() {
+    self.create_cc_instance(instance_id, creator, fresh)
+  }
+  fresh
 }
 
 ///|
@@ -447,6 +477,12 @@ fn instance_row_of(
 
 ///|
 pub impl @spi.ProcessRepository for MemoryRepository with fn page_cc_instances(self, query) {
+  // issues/141 G1 归属条件必填（spec 06-facade §2.5）：归属列 cc.actor_id（本栈取值通道＝PageQuery.operator）
+  // 缺键 / 空串 / 全空白 ⇒ **空页**，不得退化成"这条不加"= 返回全部有 cc 行的实例。判据与 MySQL 仓
+  // 共用 @model.cc_ownership_operator 这一份 ⇒ 同一栈两个仓储同答案（issues/117 场景 27 那把尺子延长到 ccList）。
+  if @model.cc_ownership_operator(query) is None {
+    return @model.PageResult::new(query.page_num(), query.page_size(), 0L, [])
+  }
   let rows : Array[@model.InstanceRow] = []
   for cc in self.cc_instances {
     // ccList「我的」：只留抄给我的行（cc.actor_id = operator），total 为过滤后计数
@@ -544,4 +580,4 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn get_all_tasks(self)
 
 // ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
 // 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
-pub extend MemoryRepository with @spi.ProcessRepository::{add_task_actor, count_todo_tasks, create_cc_instance, find_define_by_id, find_doing_tasks, find_done_tasks, find_history_tasks, find_instance_by_id, find_task_actors, find_task_by_id, get_all_instances, get_all_tasks, page_cc_instances, page_defines, page_done_tasks, page_instances, page_todo_tasks, remove_define, remove_task_actor, save_define, save_instance, save_task, update_cc_status, update_define, update_define_state, update_instance, update_task}
+pub extend MemoryRepository with @spi.ProcessRepository::{add_task_actor, count_todo_tasks, create_cc_instance, create_cc_instance_if_absent, find_cc_actors, find_define_by_id, find_doing_tasks, find_done_tasks, find_history_tasks, find_instance_by_id, find_task_actors, find_task_by_id, get_all_instances, get_all_tasks, page_cc_instances, page_defines, page_done_tasks, page_instances, page_todo_tasks, remove_define, remove_task_actor, save_define, save_instance, save_task, update_cc_status, update_define, update_define_state, update_instance, update_task}

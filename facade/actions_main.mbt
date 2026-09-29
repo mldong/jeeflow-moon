@@ -407,11 +407,17 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::create_cc_instance(self : Fa
   if actors.is_empty() {
     raise @error.Business("actorIds 缺失")
   }
-  (self.repo).create_cc_instance(instance_id, operator, actors)
+  // issues/141 G2 写侧判重＝幂等空操作（spec 06 §4）：手动腿与引擎腿同一条判据
+  // （spec §11.7「三条入口共用一支」）——已有 cc 行的 (实例, 人) 跳过，不新增行、不重置未读、
+  // 不更新原行时间；只有**实际新建的子集**拿去 fire。
+  let created = (self.repo).create_cc_instance_if_absent(instance_id, operator, actors)
   // issues/127·132 事件代码腿：手动 createCCInstance 也 fire CC_CREATE（spec §11.2 原则1
   // ——「新增一条抄送记录」这一事实成立；§4.5 原话：java 不 fire 是缺，本栈按基准补齐）。
   // cc 行已在上一行落库 ⇒ 逐抄送人 fire（与发起 f_ccActors／办理 tf_ccActors 同 notify_cc_create 通道）。
-  (self.engine).notify_cc_create(instance_id, actors)
+  // 入参＝实际新建子集（issues/141 G2）：重复抄送没发生"创建"⇒ 不发码 4，子集为空整支不发。
+  if !created.is_empty() {
+    (self.engine).notify_cc_create(instance_id, created)
+  }
   @json.null_json()
 }
 

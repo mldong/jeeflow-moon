@@ -19,10 +19,12 @@ fn cc_fired_actors(events : Array[@event.ProcessEvent]) -> Array[String] {
 }
 
 ///|
-/// cc 行数（PageQuery 不设 operator ⇒ memory 侧 operator_eq 恒真 ⇒ 全量 cc 行；
-/// 与 compliance_test.mbt 的 record_count 计数口径一致）
-async fn cc_rows_of(repo : @mem.MemoryRepository) -> Int64 raise {
-  (repo.page_cc_instances(@model.PageQuery::new(1L, 100L))).record_count()
+/// cc 行数（读仓储真相 cc 行数组，口径与 compliance_test.mbt 的 record_count 一致）。
+/// issues/141 G1 之前这一支走的是 `page_cc_instances` **不设 operator** ⇒ memory 侧
+/// operator_eq 恒真 ⇒ 全量 cc 行；G1 把"零条件也返行"这条退路关成空页（归属条件必填，
+/// spec 06-facade §2.5），所以 helper 换成合法读法 —— 调用点五格的**断言值一字未动**。
+fn cc_rows_of(repo : @mem.MemoryRepository) -> Int64 {
+  repo.cc_instances.length().to_int64()
 }
 
 ///|

@@ -31,6 +31,11 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::next_id(se
 ///|
 /// 抄送知会事件（CC_CREATE / issues/102·104）：逐抄送人 fire，cc_actor_id 直传事件体。
 /// 无监听器装配时零副作用。
+///
+/// **入参一律是"实际新建的 actor 子集"**（issues/141 G2 · spec 06 §4）：调用点先走
+/// `ProcessRepository#create_cc_instance_if_absent` 拿到子集，子集为空整支不 fire——
+/// spec §11.2 原则 1「码=事实」，重复抄送没发生"创建"就不该发码 4，严禁照旧按原始请求全量 fire。
+/// 三条入口（发起 f_ccActors／办理 tf_ccActors／门面手动 createCCInstance）共用这一支（§11.7）。
 pub fn[R, E] Engine::notify_cc_create(self : Engine[R, E], instance_id : Int64, cc_actors : Array[String]) -> Unit {
   for actor in cc_actors {
     let event = @event.ProcessEvent::make(CcCreate, instance_id).with_cc_actor_id(actor)

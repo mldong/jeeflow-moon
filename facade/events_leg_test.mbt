@@ -54,9 +54,9 @@ async test "i132-events: 手动 createCCInstance 逐人 fire CC_CREATE（§4.5·
   assert_eq(cc[1].cc_actor_id(), Some("cc2"))
   assert_eq(cc[0].source_id(), iid)
   assert_eq(cc[1].source_id(), iid)
-  // fire 在落库之后：cc 行确实已写入
-  let page = repo.page_cc_instances(@model.PageQuery::new(1L, 10L))
-  assert_eq(page.record_count(), 2L)
+  // fire 在落库之后：cc 行确实已写入。issues/141 G1 归属条件必填 ⇒ 零条件分页已改判空页，
+  // 这里换成仓储真相读法，断言值 2L 一字未动（java JeeflowFullTest:507 同处理方式）。
+  assert_eq(repo.cc_instances.length().to_int64(), 2L)
 }
 
 ///|

@@ -427,9 +427,14 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn remove_task_actor(se
 ///|
 pub impl @spi.ProcessRepository for MysqlRepository with fn create_cc_instance(self, instance_id, creator, actor_ids) {
   let conn = self.open_or_tx()
-  for actor_id in actor_ids {
+  // issues/141 G2 写侧判重＝幂等空操作（spec 06 §4）：同一 (实例, 被抄送人) 已有 cc 行 ⇒ 整条跳过——
+  // ①不新增行 ②不重置未读 state（保持原值）③不更新原行时间（不发 UPDATE，create_time/update_time 逐字不变）。
+  // 判重在写侧，查询侧不引入去重、历史重复行也不清理（owner 2026-09-29 拍）。
+  // 判据与内存仓共用 @model.cc_fresh_subset 这一份；同一次调用内的重复也一并折叠。
+  let existing = cc_actor_ids_of_rows(cc_actor_ids_query(conn, instance_id))
+  for actor_id in @model.cc_fresh_subset(existing, actor_ids) {
     let _ = x(conn, 
-      "INSERT INTO wf_process_cc_instance (id, process_instance_id, actor_id, state, create_time, create_user) VALUES (?, ?, ?, 0, ?, ?)",
+      cc_insert_sql(),
       [
         @moondb.Int64(next_snowflake_id()),
         @moondb.Int64(instance_id),
@@ -440,6 +445,58 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn create_cc_instance(s
     )
   }
   close_conn(conn)
+}
+
+///|
+/// cc 读侧 SQL（issues/141 G2 写侧判重的读侧）：某实例已有 cc 行的 actor_id。
+/// **不去重**（与查询侧同口径：DISTINCT 不许顺手加在这里，历史重复行不清理）。
+pub fn cc_actor_ids_sql() -> String {
+  "SELECT actor_id FROM wf_process_cc_instance WHERE process_instance_id = ?"
+}
+
+///|
+/// cc 建行 SQL（issues/141 G2）：逐行 INSERT、state 恒 0（未读）；重复人不在这条语句的管辖内，
+/// 由上层 @model.cc_fresh_subset 先过滤 ⇒ 本语句一旦执行就是"真的新建了一行"。
+pub fn cc_insert_sql() -> String {
+  "INSERT INTO wf_process_cc_instance (id, process_instance_id, actor_id, state, create_time, create_user) VALUES (?, ?, ?, 0, ?, ?)"
+}
+
+///|
+/// 读某实例的 cc actor_id 行（事务态复用环境连接，非事务态新开；调用方负责 close）
+async fn cc_actor_ids_query(
+  conn : @client.MysqlConn,
+  instance_id : Int64
+) -> Array[@moondb.Row] raise @error.JeeflowError {
+  q(conn, cc_actor_ids_sql(), [@moondb.Int64(instance_id)])
+}
+
+///|
+fn cc_actor_ids_of_rows(rows : Array[@moondb.Row]) -> Array[String] {
+  let out : Array[String] = []
+  for r in rows {
+    out.push(row_text(r, "actor_id", ""))
+  }
+  out
+}
+
+///|
+/// issues/141 G2：某实例已有 cc 行的 actor id（写侧判重的读侧公开口）。
+pub impl @spi.ProcessRepository for MysqlRepository with fn find_cc_actors(self, instance_id) {
+  let conn = self.open_or_tx()
+  let rows = cc_actor_ids_query(conn, instance_id)
+  close_conn(conn)
+  cc_actor_ids_of_rows(rows)
+}
+
+///|
+/// issues/141 G2（spec 06 §4 · spec §11.2 原则 1）：幂等建 cc 行，返回**实际新建**的子集
+/// （顺序与入参一致，同一次调用内的重复也折叠）。子集为空 ⇒ 调用方不得 fire CC_CREATE（码 4）。
+pub impl @spi.ProcessRepository for MysqlRepository with fn create_cc_instance_if_absent(self, instance_id, creator, actor_ids) {
+  let fresh = @model.cc_fresh_subset(self.find_cc_actors(instance_id), actor_ids)
+  if !fresh.is_empty() {
+    self.create_cc_instance(instance_id, creator, fresh)
+  }
+  fresh
 }
 
 ///|

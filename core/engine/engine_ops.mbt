@@ -39,8 +39,14 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   // 8. 抄送人（发起路径 f_ccActors，issues/56 E28 数组/逗号串双收）
   let cc_actors = parse_cc_actors(full_args.inner().get("f_ccActors"))
   if !cc_actors.is_empty() {
-    (self.repo()).create_cc_instance(instance.instance_id, operator, cc_actors)
-    self.notify_cc_create(instance.instance_id, cc_actors)
+    // issues/141 G2 写侧判重＝幂等空操作（spec 06 §4）：改走 create_cc_instance_if_absent，
+    // fire 的入参换成它返回的**实际新建子集**——重复抄送没发生"创建" ⇒ 不发码 4（spec §11.2 原则 1
+    // 「码=事实」），子集为空整支不发（不空转、也不照旧按原始请求全量 fire）。
+    // 解析器 parse_cc_actors 的语义一字未动（两形态等价由 issues/141 G6 钉住），判重只落在建行那一层。
+    let created = (self.repo()).create_cc_instance_if_absent(instance.instance_id, operator, cc_actors)
+    if !created.is_empty() {
+      self.notify_cc_create(instance.instance_id, created)
+    }
   }
   // 9. 从 start 节点执行
   let exec = @exec.Execution::make(instance.clone(), model, define_info, operator, full_args)
@@ -373,8 +379,14 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   // 逗号串形态的切分口径与旧 split_actors 逐字相同（按 , 切 / trim / 丢空段）⇒ 无行为变化。
   let cc_actors = parse_cc_actors(exec.args.get("tf_ccActors"))
   if !cc_actors.is_empty() {
-    (self.repo()).create_cc_instance(exec.process_instance.instance_id, operator, cc_actors)
-    self.notify_cc_create(exec.process_instance.instance_id, cc_actors)
+    // issues/141 G2 写侧判重＝幂等空操作（spec 06 §4）：改走 create_cc_instance_if_absent，
+    // fire 的入参换成它返回的**实际新建子集**——重复抄送没发生"创建" ⇒ 不发码 4（spec §11.2 原则 1
+    // 「码=事实」），子集为空整支不发（不空转、也不照旧按原始请求全量 fire）。
+    // 解析器 parse_cc_actors 的语义一字未动（两形态等价由 issues/141 G6 钉住），判重只落在建行那一层。
+    let created = (self.repo()).create_cc_instance_if_absent(exec.process_instance.instance_id, operator, cc_actors)
+    if !created.is_empty() {
+      self.notify_cc_create(exec.process_instance.instance_id, created)
+    }
   }
   // 12. 落库
   self.persist_tasks(exec)
@@ -639,8 +651,14 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   self.notify_instance_start(instance.instance_id)
   let cc_actors = parse_cc_actors(full_args.inner().get("f_ccActors"))
   if !cc_actors.is_empty() {
-    (self.repo()).create_cc_instance(instance.instance_id, operator, cc_actors)
-    self.notify_cc_create(instance.instance_id, cc_actors)
+    // issues/141 G2 写侧判重＝幂等空操作（spec 06 §4）：改走 create_cc_instance_if_absent，
+    // fire 的入参换成它返回的**实际新建子集**——重复抄送没发生"创建" ⇒ 不发码 4（spec §11.2 原则 1
+    // 「码=事实」），子集为空整支不发（不空转、也不照旧按原始请求全量 fire）。
+    // 解析器 parse_cc_actors 的语义一字未动（两形态等价由 issues/141 G6 钉住），判重只落在建行那一层。
+    let created = (self.repo()).create_cc_instance_if_absent(instance.instance_id, operator, cc_actors)
+    if !created.is_empty() {
+      self.notify_cc_create(instance.instance_id, created)
+    }
   }
   let exec = @exec.Execution::make(instance.clone(), model, define_info, operator, full_args)
   match exec.process_model.get_start() {

@@ -509,6 +509,46 @@ pub fn UserInfo::post_name(self : UserInfo) -> String {
 }
 
 
+///|
+/// issues/141 G1（spec 06-facade §2.5「抄送分页归属条件必填」）：ccList 归属列 `cc.actor_id` 的
+/// **有效条件**判定。本栈该列的取值通道是 `PageQuery.operator`（门面 ccList 恒挂这条；SQL 仓拿它拼
+/// `AND cc.actor_id = ?`，内存仓拿它比对 `cc.actor_id`）：
+/// · 缺键（None）／空串／去空白后为空 ⇒ **无效**（等同"这条没给"）；
+/// · 其余 ⇒ 有效，返回**原值**（不拿空白化后的值去比对，避免改动既有匹配语义）。
+/// 判据只有这一份，两仓储（`core/memory/memory.mbt` 与 `repository-mysql/repo/repository_page.mbt`）
+/// 都调它 ⇒「同一栈两个仓储两个答案」由构造堵死（issues/117 场景 27 那把尺子延长到 ccList）。
+/// 判据无效 ⇒ `page_cc_instances` 必须返回**空页**，严禁退化成"这条不加"而放出全部实例。
+/// 非归属列（m_ 可选过滤）的空值放行不在本函数管辖内，维持既有通用放行不变。
+pub fn cc_ownership_operator(query : PageQuery) -> String? {
+  match query.operator() {
+    Some(op) =>
+      if op.trim(chars=" \t\r\n").is_empty() {
+        None
+      } else {
+        Some(op)
+      }
+    None => None
+  }
+}
+
+///|
+/// issues/141 G2（spec 06 §4「抄送写侧判重＝幂等空操作」）：从请求的抄送人里挑出**实际会新建**的子集 ——
+/// 已经有 cc 行的人跳过（①不新增行 ②不重置未读 state ③不更新原行时间），**同一次调用内的重复也折叠**，
+/// 顺序与入参一致。判重落在写侧：查询侧不引入去重、历史重复行也不清理（owner 2026-09-29 拍）。
+/// 为什么返回子集而不是 Unit：spec §11.2 原则 1「码值表达发生了什么事实」⇒ 重复抄送没发生"创建"，
+/// 就不得 fire CC_CREATE（码 4）。建 cc 的三条入口（发起 `f_ccActors`／办理 `tf_ccActors`／
+/// 门面手动 `createCCInstance`）一律拿这个子集去 fire，子集为空 ⇒ 整支不发。
+pub fn cc_fresh_subset(existing : Array[String], requested : Array[String]) -> Array[String] {
+  let fresh : Array[String] = []
+  for actor_id in requested {
+    if !existing.contains(actor_id) && !fresh.contains(actor_id) {
+      fresh.push(actor_id)
+    }
+  }
+  fresh
+}
+
+
 // ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
 // 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
 pub extend ProcessDesign with Eq::{equal, not_equal}

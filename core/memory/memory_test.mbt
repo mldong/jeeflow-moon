@@ -59,8 +59,9 @@ async test "memory: cc instances" {
   let repo = @memory.MemoryRepository::new()
   repo.create_cc_instance(1L, "user1", ["user2", "user3"])
   repo.update_cc_status(1L, "user2")
-  let page = repo.page_cc_instances(@model.PageQuery::new(1L, 10L))
-  assert_eq(page.record_count(), 2L)
+  // issues/141 G1 归属条件必填 ⇒ 零条件分页现在是空页（旧形状"无过滤=全量"已关）。
+  // 断言值 2L 一字未动，只把读法换成仓储真相；"缺条件⇒空页"新档见 i141_g1_cc_ownership_test.mbt。
+  assert_eq(repo.cc_instances.length().to_int64(), 2L)
 }
 
 ///|
@@ -321,8 +322,8 @@ async test "memory: instancePage/ccList operator『我的』过滤 (issues/108)"
   assert_eq(pagec2.record_count(), 1L)
   // issues/138·要件 3 同上：instB 的发起人是 leader ⇒ operator 取 leader，不是查询者 user1。
   assert_eq(pagec2.rows()[0].operator, "leader")
-  // 回归：不带 operator（None）→ 全量 3 行 cc
-  let qc3 = @model.PageQuery::new(1L, 10L)
-  let pagec3 = repo.page_cc_instances(qc3)
-  assert_eq(pagec3.record_count(), 3L)
+  // issues/141 G1 改判的正是这一档：不带 operator（None）→ **空页**（旧形状"无过滤=全量"是旁路）。
+  // 断言值 3L 一字未动，读法换成仓储真相（"确实存在 3 行 cc"）；新契约的"缺条件⇒空页"由
+  // i141_g1_cc_ownership_test.mbt 专门钉住，两仓同判据。
+  assert_eq(repo.cc_instances.length().to_int64(), 3L)
 }

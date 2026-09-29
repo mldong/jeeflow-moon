@@ -206,28 +206,23 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_instances(self,
 ///|
 pub impl @spi.ProcessRepository for MysqlRepository with fn page_cc_instances(self, query) {
   let (page_num, page_size, offset) = page_bounds(query)
-  let operator = query.operator()
-  let conn = self.open_or_tx()
-  let count_sql = "SELECT COUNT(DISTINCT pi.id) AS cnt FROM wf_process_cc_instance cc JOIN wf_process_instance pi ON pi.id = cc.process_instance_id WHERE 1=1" + (match operator {
-      Some(_) => " AND cc.actor_id = ?"
-      None => ""
-    })
-  let count_params : Array[@moondb.Value] = []
-  match operator {
-    Some(op) => count_params.push(@moondb.Text(op))
-    None => ()
+  // issues/141 G1 归属条件必填（spec 06-facade §2.5）：cc.actor_id 无有效条件（缺键/空串/全空白）⇒ **空页**。
+  // 旧形状是「没给 operator 就不拼这条」= LEFT/INNER JOIN 放出全部实例（php PDO 那面反面教材），
+  // 而同栈内存仓只放"有 cc 行的实例"——同一栈两个仓储两个答案正是 issues/117 场景 27 立过法的那一类，
+  // 所以 SQL 仓与内存仓钉在同一条判据上（共用 @model.cc_ownership_operator，两仓同答案由构造保证）。
+  // 空值档另由 @query.build_m_where 的归属列兜底（issues/129）；这一格关的是"条件整条没给"。
+  let ownership = @model.cc_ownership_operator(query)
+  if ownership is None {
+    return @model.PageResult::new(page_num, page_size, 0L, [])
   }
+  let operator = ownership.unwrap()
+  let conn = self.open_or_tx()
+  let count_sql = cc_page_count_sql()
+  let count_params : Array[@moondb.Value] = [@moondb.Text(operator)]
   let count_rows = q(conn, count_sql, count_params)
   let total = if count_rows.is_empty() { 0L } else { row_i64(count_rows[0], "cnt") }
-  let sql = "SELECT DISTINCT " + cc_instance_select_columns() + " FROM wf_process_cc_instance cc JOIN wf_process_instance pi ON pi.id = cc.process_instance_id LEFT JOIN wf_process_define pd ON pd.id = pi.process_define_id WHERE 1=1" + (match operator {
-      Some(_) => " AND cc.actor_id = ?"
-      None => ""
-    }) + " ORDER BY pi.id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()
-  let params : Array[@moondb.Value] = []
-  match operator {
-    Some(op) => params.push(@moondb.Text(op))
-    None => ()
-  }
+  let sql = cc_page_data_sql(page_size, offset)
+  let params : Array[@moondb.Value] = [@moondb.Text(operator)]
   let rows = q(conn, sql, params)
   close_conn(conn)
   let out : Array[@model.InstanceRow] = []
@@ -235,6 +230,22 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_cc_instances(se
     out.push(instance_row_of_mysql(r))
   }
   @model.PageResult::new(page_num, page_size, total, out)
+}
+
+///|
+/// ccList count SQL（issues/141 G1）：归属谓词 `AND cc.actor_id = ?` **恒拼**，
+/// 原先"有 operator 才拼、没有就整条丢掉"的分支删除 ⇒ 这一支不可能再放出无归属的实例。
+/// 计数保持 `COUNT(DISTINCT pi.id)`（issues/138 既有形状，本轮不动：G2 的判重在写侧，
+/// 查询侧既不加去重也不减去重，历史重复行不清理）。
+pub fn cc_page_count_sql() -> String {
+  "SELECT COUNT(DISTINCT pi.id) AS cnt FROM wf_process_cc_instance cc JOIN wf_process_instance pi ON pi.id = cc.process_instance_id WHERE 1=1 AND cc.actor_id = ?"
+}
+
+///|
+/// ccList 数据 SQL（issues/141 G1 同上）：投影清单仍是 cc_instance_select_columns()（issues/138 行形状），
+/// 归属谓词恒拼一条 `AND cc.actor_id = ?`；LIMIT/OFFSET 内联非负整数（C21）。
+pub fn cc_page_data_sql(page_size : Int64, offset : Int64) -> String {
+  "SELECT DISTINCT " + cc_instance_select_columns() + " FROM wf_process_cc_instance cc JOIN wf_process_instance pi ON pi.id = cc.process_instance_id LEFT JOIN wf_process_define pd ON pd.id = pi.process_define_id WHERE 1=1 AND cc.actor_id = ? ORDER BY pi.id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()
 }
 
 ///|
@@ -332,4 +343,4 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn get_all_tasks(self) 
 
 // ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
 // 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
-pub extend MysqlRepository with @spi.ProcessRepository::{add_task_actor, count_todo_tasks, create_cc_instance, find_define_by_id, find_doing_tasks, find_done_tasks, find_history_tasks, find_instance_by_id, find_task_actors, find_task_by_id, get_all_instances, get_all_tasks, page_cc_instances, page_defines, page_done_tasks, page_instances, page_todo_tasks, remove_define, remove_task_actor, save_define, save_instance, save_task, update_cc_status, update_define, update_define_state, update_instance, update_task}
+pub extend MysqlRepository with @spi.ProcessRepository::{add_task_actor, count_todo_tasks, create_cc_instance, create_cc_instance_if_absent, find_cc_actors, find_define_by_id, find_doing_tasks, find_done_tasks, find_history_tasks, find_instance_by_id, find_task_actors, find_task_by_id, get_all_instances, get_all_tasks, page_cc_instances, page_defines, page_done_tasks, page_instances, page_todo_tasks, remove_define, remove_task_actor, save_define, save_instance, save_task, update_cc_status, update_define, update_define_state, update_instance, update_task}

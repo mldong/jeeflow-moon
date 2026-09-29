@@ -258,9 +258,10 @@ async test "events: CC_CREATE fired per actor with cc rows" {
   }
   assert_eq(fired[0].1.unwrap(), "u1")
   assert_eq(fired[1].1.unwrap(), "u2")
-  let q = @model.PageQuery::new(1L, 10L)
-  let page = repo.page_cc_instances(q)
-  assert_eq(page.record_count(), 2L)
+  // issues/141 G1 归属条件必填（spec 06-facade §2.5）之后，"零条件读回全部 cc 行"这个读法本身
+  // 已是非法形状（无 cc.actor_id 有效条件 ⇒ 空页）。这里换成读仓储真相，**断言值一字未动**
+  // （与 java 侧 JeeflowFullTest:507 同一处理方式：改读法不改期望）。
+  assert_eq(repo.cc_instances.length().to_int64(), 2L)
 }
 
 ///|
@@ -274,9 +275,10 @@ async test "events: CC_CREATE zero side effect without listener" {
   let args = new_args()
   args.insert("f_ccActors", @json.array_of([@json.string_of("u9")]))
   let instance = engine.start_async(define_id, "user1", args)
-  let q = @model.PageQuery::new(1L, 10L)
-  let page = repo.page_cc_instances(q)
-  assert_eq(page.record_count(), 1L)
+  // issues/141 G1 归属条件必填（spec 06-facade §2.5）之后，"零条件读回全部 cc 行"这个读法本身
+  // 已是非法形状（无 cc.actor_id 有效条件 ⇒ 空页）。这里换成读仓储真相，**断言值一字未动**
+  // （与 java 侧 JeeflowFullTest:507 同一处理方式：改读法不改期望）。
+  assert_eq(repo.cc_instances.length().to_int64(), 1L)
   assert_true(instance.instance_id > 0L)
 }
 
@@ -558,7 +560,12 @@ async test "c19: cc paging" {
   let did = save_flow_define(repo, "simple-cc", load_flow("01-simple"))
   let iid = start_and_apply(engine, repo, did)
   repo.create_cc_instance(iid, "user1", ["cc_user1", "cc_user2"])
-  let page = repo.page_cc_instances(@model.PageQuery::new(1L, 10L))
+  // issues/141 G1 归属条件必填（spec 06-facade §2.5）：ccList 分页必须带 cc.actor_id 的有效条件，
+  // 缺则空页。本格原先零条件读 ⇒ 靠"无过滤=全量"的旧形状才 > 0；现补一条合法归属条件，
+  // **断言 `> 0L` 一字未动**（java 侧 JeeflowFullTest:507 同一处理方式）。
+  let q = @model.PageQuery::new(1L, 10L)
+  q.set_operator(Some("cc_user1"))
+  let page = repo.page_cc_instances(q)
   assert_true(page.record_count() > 0L)
 }
 

@@ -247,14 +247,18 @@ async test "i129-L2 内存通道: 归属列空值=空页，可选过滤空值仍
 ///|
 /// 边界留档（不是本案改动，防后续把两档混为一谈）：
 /// ① 直连仓储、operator 真缺失（None）时 doneList 是空页 = issues/117 §3.2 既有判据；
-/// ② page/todo/cc 的 None 档仍是"无过滤=全量"（本栈既有判据，案 A 未收这一档）；
-/// ③ 直连仓储给空串 ⇒ 0 行（本栈从不"丢掉条件"，只把空串当真实值比对）。
+/// ② page/todo 的 None 档仍是"无过滤=全量"（本栈既有判据，案 A 未收这一档）；
+///    ⚠️ **cc 的 None 档已被 issues/141 G1 收掉**（spec 06-facade §2.5 归属条件必填 ⇒ 空页），
+///    原先写在这一档里的"cc 零条件也返行"不再是合法形状 ⇒ 下面的 cc 读数改成仓储真相，
+///    期望值 3L 一字未动；"cc 缺条件⇒空页"的正档由 i141_g1_cc_ownership_test.mbt 钉。
+/// ③ 直连仓储给空串 ⇒ 0 行（本栈从不"丢掉条件"，只把空串当真实值比对；cc 的空串档在 G1
+///    之后从"比对空串"变成"直接空页"，终局同为 0 行）。
 async test "i129 边界留档: 直连仓储 None/空串 两档形状" {
   let (repo, _) = ob_setup()
   assert_eq(repo.page_done_tasks(@model.PageQuery::new(1L, 50L)).record_count(), 0L)
   assert_eq(repo.page_instances(@model.PageQuery::new(1L, 50L)).record_count(), 3L)
   assert_eq(repo.page_todo_tasks(@model.PageQuery::new(1L, 50L)).record_count(), 3L)
-  assert_eq(repo.page_cc_instances(@model.PageQuery::new(1L, 50L)).record_count(), 3L)
+  assert_eq(repo.cc_instances.length().to_int64(), 3L)
   let q_blank = @model.PageQuery::new(1L, 50L)
   q_blank.set_operator(Some(""))
   assert_eq(repo.page_instances(q_blank).record_count(), 0L)
