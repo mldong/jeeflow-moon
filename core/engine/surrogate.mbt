@@ -4,7 +4,8 @@
 //
 // 本栈挂点落位（issues/116 §3 记的两个结构缺口，逐条）：
 //
-// ① 「建任务点显式不触发拦截器」——Task/Custom 节点不 fire **后置**节点拦截器是刻意与
+// ① 「建任务点显式不触发拦截器」——Task 建单腿与 Custom 记录腿都不 fire **后置**节点拦截器，
+//    这是刻意与
 //    Java CreateTaskHandler / Go executeNode 对齐的，本轮不改它；委托改挂在
 //    **新任务落库唯一收口** `Engine::persist_tasks`（`engine.mbt`）的 `save_task` **之前**。
 //    本栈 7 处 `persist_tasks` 调用点覆盖了全部建任务路径（发起 / 带父实例发起 /
@@ -13,7 +14,8 @@
 //
 // ② 「fire_pre_interceptors 是空实现」——现为真派发：按 order 遍历独立注册通道
 //    `Ctx::register_pre_interceptor` 里的前置拦截器（不与后置数组共用，否则 persist 的
-//    PostInterceptor 会被双触发），并在 Task/Custom 节点的建单处调用 ⇒ 第三方自写拦截器
+//    PostInterceptor 会被双触发），并在 Task 建单处与 Custom 记录腿（issues/142 A 批分家后
+//    各自一支、同口径）调用 ⇒ 第三方自写拦截器
 //    从此"有地方挂"。内置委托**不走**这条通道：委托要的是"参与者已解析、taskId 已分配、
 //    尚未落库"这一刻，节点 pre 的时机对不上（Task 节点的参与者集合在 create_task 才成形），
 //    故落在 ① 的收口里。pre 体系的整体 canonical 形态仍归 issues/104 §P1，本轮不扩。

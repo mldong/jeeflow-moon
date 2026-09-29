@@ -269,7 +269,12 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn save_task(self, task
   let var_json = flow_data_to_json(task.variables)
   let conn = self.open_or_tx()
   let _ = x(conn, 
-    "INSERT INTO wf_process_task (id, process_instance_id, task_name, display_name, task_type, perform_type, task_state, operator, expire_time, form_key, task_parent_id, variable, create_time, create_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    // ⚠️ `finish_time` 这一列 **2026-09-30 issues/142 A 批补进来**（spec/02 §6.2 第 1bis 条）：
+    // 本语句原先不带它，finish_time 只由 update_task 写——可记录类（snaker:custom）那条 DONE 行
+    // **只走 INSERT 不走 UPDATE**（生来已完成，没有"办理"那一次更新），于是聚合根赋的完成时间
+    // 在 SQL 仓被静默丢掉、内存仓却全绿（两层冗余藏病灶；本轮补列后由
+    // demo/cmd/t1_mysql 的 i142 格在真库复查）。列序照 java/rust/node 同位置：operator 之后。
+    "INSERT INTO wf_process_task (id, process_instance_id, task_name, display_name, task_type, perform_type, task_state, operator, finish_time, expire_time, form_key, task_parent_id, variable, create_time, create_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       @moondb.Int64(task.task_id),
       @moondb.Int64(task.process_instance_id),
@@ -279,6 +284,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn save_task(self, task
       @moondb.Int(task.perform_type),
       @moondb.Int(task.task_state),
       opt_v(task.actor_id),
+      opt_v(task.finish_time),
       opt_v(task.expire_time),
       opt_v(task.form_key),
       @moondb.Int64(task.parent_task_id.unwrap_or(0L)),

@@ -346,13 +346,21 @@ pub fn ProcessInstance::create_countersign_tasks(
 
 ///|
 /// 历史任务（custom 节点用，直接 FINISHED）
-/// ⚠️ issues/137 B：**引擎侧零调用者**（grep create_history_task 只命中本定义与 core/model
-/// 的单测，core/engine、facade、persist 无人调），但承担**契约形状义务**——它钉的是
-/// "自动节点落一条 FINISHED 行"的行形状：state=FINISHED(20) + actor_id=处理人 +
-/// actor_ids=[处理人]，前两条与主路径 ProcessTask::finish 写的列同判据；差异只有办理
-/// 审计三列（finish_time/update_time/update_user），自动节点本无办理人 ⇒ 不写。
-/// owner 2026-09-29 拍板**不删**（删除会踩既有测试、收益低），直调行为由
-/// i137b_zero_caller_create_test.mbt 逐字段钉住。
+/// ⚠️ issues/137 B 拍板"不删"时它**引擎侧零调用者**（grep 只命中本定义与 core/model 单测）；
+/// **issues/142 A 批（2026-09-30）把它接线了** —— `Engine::execute_custom_node` 记录类腿调它，
+/// 并经由 `Engine::persist_history_task` 走 save_task/add_task_actor **真落库**
+/// （spec/02 §6.2 第 1 条：只在聚合 `instance.tasks` 里 append 一条不算做到）。
+/// 行形状：state=FINISHED(20) + actor_id=处理人 + actor_ids=[处理人]，前两条与主路径
+/// ProcessTask::finish 写的列同判据。
+/// ⚠️ **2026-09-30 issues/142 A 批收口改了一列**（spec/02 §6.2 第 1bis 条，owner 拍）：
+/// `finish_time` 从此**必写**。原先这里钉的是「办理审计三列都不写」，理由「自动节点没有办理
+/// 这一步」；但这条 DONE 行在用户面上要经 `processTask/doneList`（`task_state<>10 AND
+/// operator=?`）与 `processInstance/approvalRecord` 查得到，那两支都按 operator＋finish_time
+/// 取数 ⇒ 缺完成时间的留痕等于没落过（与第 1 条「查不到的留痕＝没留痕」同一把尺子）。
+/// 反过来 `update_time`/`update_user` **继续不写**（记录类没有「办理」那一次更新），
+/// `expire_time` 也留 None（spec/02 §6 的 custom 属性字典无 expireTime）。
+/// ⇒ 两列写、两列不写，别顺手一起补。直调行为由
+/// i137b_zero_caller_create_test.mbt 逐字段钉住（该用例跟着本裁定改判）。
 pub fn ProcessInstance::create_history_task(
   self : ProcessInstance,
   task_name : String,
@@ -372,6 +380,11 @@ pub fn ProcessInstance::create_history_task(
   )
   task.task_state = TaskState::Finished.code()
   task.actor_id = Some(operator)
+  // spec/02 §6.2 第 1bis 条（issues/142 A 批收口，owner 09-30）：留痕行必须带完成时间。
+  // MoonBit 的 struct 是引用语义 ⇒ 这里赋值即聚合里那一格，不存在 rust 那边
+  // 「返回行与 tasks 里那格分叉」的问题；但 MySQL 仓的 INSERT 语句原先没有 finish_time 列，
+  // 值到不了库（repository-mysql/repo/repository.mbt::save_task 本轮补列）。
+  task.finish_time = Some(current_time_str())
   task
 }
 

@@ -95,8 +95,13 @@ test "i137b: create_history_task 直调等于主路径建单后 finish（只差�
   assert_eq(hist.actor_id, Some("flow.auto"))
   assert_true(hist.actor_ids == main.actor_ids)
   assert_true(hist.actor_ids == ["flow.auto"])
-  // 有据差异（自动节点无办理人 ⇒ 不写办理审计三列）；主路径那边这三列必须已写
-  assert_eq(hist.finish_time, None)
+  // 办理审计三列里 **finish_time 现在也写**（spec/02 §6.2 第 1bis 条，2026-09-30 裁定，
+  // 本用例跟着改判）：留痕行要能在 doneList/approvalRecord 里按 operator＋finish_time 查到。
+  // 另两列 update_time/update_user 的差异仍「有据」——记录类没有办理那一次更新。
+  // ⚠️ 上一行原为 `assert_eq(hist.finish_time, None)`（issues/137 B 当时的判据），
+  // 本轮改动是把已被规范作废的旧期望换成新期望，不是把断言改松。
+  assert_eq(hist.finish_time, main.finish_time)
+  assert_eq(hist.finish_time, Some("2026-09-29 10:00:00"))
   assert_eq(hist.update_time, None)
   assert_eq(hist.update_user, None)
   assert_eq(main.finish_time, Some("2026-09-29 10:00:00"))

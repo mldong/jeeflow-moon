@@ -66,6 +66,14 @@ pub(all) struct Ctx[R, E] {
   // ── 按名注册表 ──
   assignment_handlers : Map[String, (@exec.Execution) -> String raise @error.JeeflowError]
   decision_handlers : Map[String, (@exec.Execution) -> String raise @error.JeeflowError]
+  /// 记录类（`snaker:custom`）节点处理器（issues/142 A 批 · spec/02 §6.1/§6.2）。
+  /// 键＝流程定义 `properties.clazz` 的**原样字符串**：MoonBit 没有反射，java 那句
+  /// `Class.forName(clazz)` 在本栈无从谈起 ⇒ 与 C#/Python 栈同策「按名注册、按名解析」，
+  /// 由集成方把 JVM 类名/任意自定义串映射到闭包（共享夹具 `flows/08-custom-node.json`
+  /// 里就是 `com.mldong.jeeflow.test.TestCustomHandler`）。
+  /// 返回值取 `Json`：本栈流程变量的载体就是 Json（`@json.FlowData`），处理器无返回值时
+  /// 返回 `@json.null_json()` ⇒ 引擎不写键（对齐 python「ret is not None 才写」）。
+  custom_handlers : Map[String, (@exec.Execution) -> Json raise @error.JeeflowError]
   // ── 有序集合 ──
   interceptors : Array[InterceptorFn]
   /// 前置扩展位（issues/116 批次 D）：与 `interceptors` **分开注册、分开触发**。
@@ -95,6 +103,7 @@ pub fn[R, E] Ctx::new(repository : R, ext_repository : E) -> Ctx[R, E] {
     biz_data_reader: None,
     assignment_handlers: Map([]),
     decision_handlers: Map([]),
+    custom_handlers: Map([]),
     interceptors: [],
     pre_interceptors: [],
     event_listeners: [],
@@ -267,4 +276,29 @@ pub fn[R, E] Ctx::find_decision_handler(
   name : String
 ) -> ((@exec.Execution) -> String raise @error.JeeflowError)? {
   self.decision_handlers.get(name)
+}
+
+///|
+/// 注册记录类节点处理器（issues/142 A 批）。键＝定义里的 `clazz` 原样串，不做归一化
+/// （大小写/前缀归一是 issues/141 G4 义务 1 的 C 方案，立法在前、实现另批，这里不抢跑）。
+pub fn[R, E] Ctx::register_custom_handler(
+  self : Ctx[R, E],
+  clazz : String,
+  handler : (@exec.Execution) -> Json raise @error.JeeflowError
+) -> Unit {
+  self.custom_handlers[clazz] = handler
+}
+
+///|
+/// 按 `clazz` 解析记录类节点处理器；未注册 ⇒ `None`（**引擎侧记日志后照常落历史行并续流，
+/// 不打断建单**，spec/02 §6.2 第 2 条；处理器**自身**执行失败不在豁免内，照旧外抛）。
+pub fn[R, E] Ctx::find_custom_handler(
+  self : Ctx[R, E],
+  clazz : String
+) -> ((@exec.Execution) -> Json raise @error.JeeflowError)? {
+  if clazz.is_empty() {
+    None
+  } else {
+    self.custom_handlers.get(clazz)
+  }
 }

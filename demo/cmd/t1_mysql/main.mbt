@@ -923,6 +923,132 @@ fn opt_v_param(v : String?) -> @moondb.Value {
   }
 }
 
+///|
+/// issues/142 A 批：记录类（snaker:custom）两腿串起来——custom1 走"已注册处理器"档、
+/// custom2 走"clazz 未注册"档（真机档里故意不给它注册），两腿都必须真落库。
+/// clazz 串与共享夹具 `flows/08-custom-node.json` 一致（JVM 类名，本栈按名注册解析）。
+const CUSTOM142_FLOW : String =
+  $|{"name": "t1-f118", "displayName": "T1F118记录类", "type": "approval",
+  $|"nodes": [
+  $|  {"id": "start", "type": "snaker:start", "text": {"value": "S"}},
+  $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"},
+  $|   "properties": {"assignee": "applicant", "taskType": 0, "performType": 0}},
+  $|  {"id": "custom1", "type": "snaker:custom", "text": {"value": "通知外部系统"},
+  $|   "properties": {"clazz": "com.mldong.jeeflow.test.TestCustomHandler", "val": "route"}},
+  $|  {"id": "custom2", "type": "snaker:custom", "text": {"value": "未注册那一档"},
+  $|   "properties": {"clazz": "com.mldong.jeeflow.test.NotRegisteredHandler"}},
+  $|  {"id": "end", "type": "snaker:end", "text": {"value": "E"}}
+  $|],
+  $|"edges": [
+  $|  {"id": "e1", "sourceNodeId": "start", "targetNodeId": "apply"},
+  $|  {"id": "e2", "sourceNodeId": "apply", "targetNodeId": "custom1"},
+  $|  {"id": "e3", "sourceNodeId": "custom1", "targetNodeId": "custom2"},
+  $|  {"id": "e4", "sourceNodeId": "custom2", "targetNodeId": "end"}
+  $|]}
+
+///|
+/// 标量计数查询（列名固定 cnt）
+async fn count_of(repo : @repo.MysqlRepository, sql : String, params : Array[@moondb.Value]) -> Int64 raise {
+  select_i64(repo, sql, params, "cnt")
+}
+
+///|
+/// T1-F118：记录类节点的**历史行真落 MySQL**（spec/02 §6.2 第 1 条）。
+/// 普查 A 段第 1 条钉的正是"基准 java/c# 的历史行没有 INSERT 腿"，而 §6.2 说"只在聚合内存对象里
+/// append 一条不算做到" ⇒ 内存档（core/engine/i142_custom_record_leg_test.mbt）只能证明"引擎调了
+/// save_task"，这条腿要在真库上读回来才算数。判据一律读**库里的行/列**，不信聚合副本（同 F114–F117）。
+/// 一并钉两档用户可感知面：① 记录类**不建待办**（库里零条 state=10、todoList 里也没有它）；
+/// ② "clazz 未注册"档照常落行＋续流（§6.2 第 2 条，SQL 通道同样不许把流程炸掉）。
+async fn t1_f118_custom_history_row() -> Unit raise {
+  let repo = @repo.MysqlRepository::from_env()
+  clean_9x(repo)
+  save_define_9x(repo, 990951L, "t1-f118", CUSTOM142_FLOW)
+  let ctx = @spi.Ctx::new(repo, @spi.NoExtRepository::new())
+  let counter : Ref[Int64] = Ref(990960L)
+  let ctx2 = ctx.with_id_generator(fn() {
+    let v = counter.val
+    counter.val = v + 1L
+    v
+  })
+  // 本栈无反射 ⇒ clazz 按名注册（键＝定义里的原样串）；custom2 故意不注册，走"未注册"那一档
+  ctx2.register_custom_handler(
+    "com.mldong.jeeflow.test.TestCustomHandler",
+    fn(_e) { @json.string_of("ok") },
+  )
+  let facade = @facade.Facade::make(ctx2)
+  let started = facade.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990951"), ("operator", "f118-applicant")]),
+  )
+  check(env_code(started) == 0L, "F118 发起 code=0")
+  let iid = iid_of(started)
+  let apply_tid = doing_task_id(repo, iid, "apply")
+  check(apply_tid >= 990000L && apply_tid < 1000000L, "F118 apply 行 id 落 9xxxxx 段")
+  for name in ["custom1", "custom2"] {
+    // ① 历史行**真在库里**（只在聚合数组里 append 的话，这一句就是 "<无行>"→ -1）
+    let tid = select_i64(
+      repo,
+      "SELECT id FROM wf_process_task WHERE process_instance_id = ? AND task_name = ? LIMIT 1",
+      [@moondb.Int64(iid), @moondb.Text(name)],
+      "id",
+    )
+    check(tid >= 990000L && tid < 1000000L, "\{name} 历史行 id 落 9xxxxx 段（真 INSERT 出来的）")
+    check_eq(task_cell(repo, tid, "task_state"), "20", "\{name} 库里历史行 task_state=20")
+    check_eq(task_cell(repo, tid, "operator"), "f118-applicant", "\{name} 库里历史行 operator=当前操作人")
+    // §6.2 第 **1bis** 条：DONE 留痕行必须带完成时间。这一列在真库上原先恒 NULL，两个原因
+    // 叠在一起才看得见——聚合不赋值 ＋ save_task 的 INSERT 语句压根没这一列（值随语句一起丢），
+    // 而内存仓整行存 ⇒ 单测全绿。判据必须读**库里的列**。
+    let fin = task_cell(repo, tid, "finish_time")
+    check(fin != "<NULL>" && !fin.is_empty(), "\{name} 库里 finish_time 已写（1bis），实际=<\{fin}>")
+    // 反过来 expire_time 留 NULL（记录类无到期表达式）：条文是"两列写、两列不写"，
+    // 只断 finish_time 非空不足以挡住"顺手把时间列全补上"。
+    check_eq(task_cell(repo, tid, "expire_time"), "<NULL>", "\{name} expire_time 留 NULL")
+    // ② 建单不变量：task_parent_id ＝刚办结的 apply 行；行级 isFirstTaskNode 随 variable 列落库
+    check_eq(
+      task_cell(repo, tid, "task_parent_id"),
+      apply_tid.to_string(),
+      "\{name} task_parent_id 照建单不变量",
+    )
+    let var_json = task_cell(repo, tid, "variable")
+    check(var_json.contains("isFirstTaskNode"), "\{name} variable 列带 isFirstTaskNode，实际=<\{var_json}>")
+    // ③ 参与者行随任务一起落 wf_process_task_actor（add_task_actor 那条腿）
+    check_eq(
+      count_of(
+        repo,
+        "SELECT COUNT(*) AS cnt FROM wf_process_task_actor WHERE process_task_id = ? AND actor_id = ?",
+        [@moondb.Int64(tid), @moondb.Text("f118-applicant")],
+      ).to_string(),
+      "1",
+      "\{name} 参与者行真落库（actor_id=当前操作人）",
+    )
+    // ④ 记录类**不建待办**：同一节点名下不得有 state=10 的行
+    check_eq(
+      count_of(
+        repo,
+        "SELECT COUNT(*) AS cnt FROM wf_process_task WHERE process_instance_id = ? AND task_name = ? AND task_state = 10",
+        [@moondb.Int64(iid), @moondb.Text(name)],
+      ).to_string(),
+      "0",
+      "\{name} 零条 DOING 行（记录类不该有待办）",
+    )
+  }
+  // ⑤ 令牌续流到终点 ＋ 用户可感知：待办列表读库里没有这一条
+  check_eq(inst_cell(repo, iid, "state"), "20", "F118 实例 state=20（两腿执行后令牌走到 end）")
+  check(!page_has(todo_of(facade, "f118-applicant"), iid), "F118 待办列表不含记录类行（SQL JOIN 读库）")
+  // ⑥ 已办侧留痕：<>10 候选集里两条历史行都在（同 F117 的已办判据口径）
+  check_eq(
+    count_of(
+      repo,
+      "SELECT COUNT(*) AS cnt FROM wf_process_task WHERE process_instance_id = ? AND task_name IN ('custom1', 'custom2') AND task_state <> 10",
+      [@moondb.Int64(iid)],
+    ).to_string(),
+    "2",
+    "F118 两条历史行都进入已办候选集（<>10 口径）",
+  )
+  clean_9x(repo)
+}
+
+///|
 async fn run() -> Unit raise {
   if skip_mysql() {
     println("SKIP_MYSQL=1 → T1-F skipped (开发机口径；发版机连不上=fail)")
@@ -938,6 +1064,8 @@ async fn run() -> Unit raise {
   t1_f116_surrogate_auto_apply()
   println("T1-F117 facade 已办判据 <>10 + 空 operator 空页 + 转办撤回红线...")
   t1_f117_done_list()
+  println("T1-F118 facade 记录类历史行真落库 + 零待办 + 已注册/未注册两档 clazz 续流真机对拍...")
+  t1_f118_custom_history_row()
   println("T1-F ALL PASS (wasm → 真机 MySQL)")
 }
 

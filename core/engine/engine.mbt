@@ -194,13 +194,23 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
     for next in next_nodes {
       self.execute_node(exec, next)
     }
-  } else if node.node_type is @parser.Task || node.node_type is @parser.Custom {
+  } else if node.node_type is @parser.Task {
     // 任务创建不触发**后置**节点拦截器（对齐 Java CreateTaskHandler / Go executeNode）——保持原样。
     // 前置侧 issues/116 批次 D 打通了独立通道（ctx.pre_interceptors），"建单那一刻"从此可挂。
     // ⚠️ 内置委托自动生效**不挂这里**：此刻参与者尚未进聚合、taskId 尚未分配，
     // 它落在唯一落库收口 `persist_tasks` 的 save_task 之前（见 surrogate.mbt 条款 2 ⚠️）。
     self.fire_pre_interceptors(exec)
     self.create_task_with_assignment(exec, node)
+  } else if node.node_type is @parser.Custom {
+    // issues/142 A 批 · spec/02 §6.1 表第二行：记录类独立一支。从前它与 Task 合流，于是被
+    // 任务类那套「参与者解析」判据管着、建一条 DOING 待办 —— 而记录类节点本来就不该有
+    // 参与者、也不该有待办：执行 clazz、落一条 DONE 历史行（真落库）、令牌继续沿出边走。
+    self.execute_custom_node(exec, node)
+  } else if node.node_type is @parser.Unknown {
+    // 兜底守卫：parse_model 已把未知档拦在模型外（记日志＋跳过节点，spec/02 类型键义务 2），
+    // 正常路径走不到这一臂。留着是为了「库里存过的旧定义／第三方直接喂进来的 ProcessModel」
+    // 也不被当记录类落一条留痕行 —— 与解析期同判据：记日志、不静默、不动令牌。
+    println(@parser.unknown_node_warning(node.id, node.node_type.as_str()))
   } else if node.node_type is @parser.Decision {
     self.fire_pre_interceptors(exec)
     let target_node_name = self.evaluate_decision(exec, node)
@@ -290,23 +300,14 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
 }
 
 ///|
-/// 建任务（含参与人解析与 0 参与人跳过）
+/// 建任务（含参与人解析；任务类零参与者照样建单，issues/142 A 批）
 async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::create_task_with_assignment(self : Engine[R, E], exec : @exec.Execution, node : @parser.NodeModel) -> Unit raise @error.JeeflowError {
   let actor_ids = self.resolve_assignee(exec, node)
-  if actor_ids.is_empty() && (node.candidate_users() is None) && (node.candidate_groups() is None) {
-    // 无参与人 → 跳过任务创建（继续下钻）
-    let next_nodes : Array[@parser.NodeModel] = []
-    for e in exec.process_model.get_output_edges(node.id) {
-      match exec.process_model.get_target_node(e) {
-        Some(next) => next_nodes.push(next)
-        None => ()
-      }
-    }
-    for next in next_nodes {
-      self.execute_node(exec, next)
-    }
-    return
-  }
+  // issues/142 A 批 · spec/02 §6.1 表第一行 + §6.2 第 3 条：任务类**零参与者照样建一行 DOING**
+  // （java `CreateTaskHandler.handle` 无条件建单）。旧形状是「actors 解析为空 ⇒ 一行不建、
+  // 令牌直接放行到下一节点」，那正是 §6.1 点名 python 曾犯的死锁黑洞：实例停在 state=10
+  // 却一条可办行都没有（普查现读 go/node/rust/moon 四栈同病，本轮四栈跟改，这里即 moon 那一栈）。
+  // 参与者为空就落一行 actor_ids=[] 的行 —— **不兜底挂当前操作人**（§6.1 硬结论 1：八栈一律不许有）。
   let perform_type = @model.PerformType::from_code(node.perform_type())
   let task_type = @model.TaskType::from_code(node.task_type())
   if perform_type is Countersign {
@@ -372,6 +373,141 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
     // 节点没配 ⇒ 这一列保持 NULL（不写 now()、不写 ''、不写 0）
     apply_node_expire_time(exec, node, [task])
     exec.new_tasks.push(task)
+  }
+}
+
+///|
+/// 记录类返回值写入流程变量的**缺省**键（`properties.val` 没配 / 配空串时用这一档）。
+/// 逐字对齐 java `FlowConst.CUSTOM_RETURN_VAL` 与 python `KEY_CUSTOM_RETURN_VAL`。
+pub let custom_return_val_key : String = "custom_return_val"
+
+///|
+/// 记录类返回值写入的变量键：`val` 命中用之（trim 后非空），否则缺省 `custom_return_val`
+/// （对齐 java `CustomParser.java:20-22` 解析 + `CustomModel.java:46-48` 写 `execution.getArgs()`）。
+pub fn custom_return_key(node : @parser.NodeModel) -> String {
+  let v = match node.prop_str("val") {
+    Some(s) => s.trim(chars=" \t\r\n").to_owned()
+    None => ""
+  }
+  if v.is_empty() { custom_return_val_key } else { v }
+}
+
+///|
+/// 「未注册处理器」档的诊断日志文案（spec/02 §6.2 第 2 条末尾：两档日志要**分别**可诊断，
+/// 不许像 c# 那样把「clazz 空串」与「未注册」合成同一条）。抽纯函数的理由同 parser：
+/// println 的效果在测试里读不回来，判据留在纯函数、副作用留在调用点。
+pub fn custom_handler_unregistered_warning(node_id : String, clazz : String) -> String {
+  "[jeeflow] custom 节点 clazz=\{clazz} 未注册处理器，跳过执行、照常落历史行并继续流转" + "（本栈无反射，注册入口：@spi.Ctx::register_custom_handler）: nodeId=\{node_id}"
+}
+
+///|
+/// 「clazz 空串/缺失」档的诊断日志文案（同一节点属性的另一格病灶：连按名解析的键都没有）。
+pub fn custom_clazz_missing_warning(node_id : String) -> String {
+  "[jeeflow] custom 节点未配置 clazz（缺失或空串），不执行处理器、照常落历史行并继续流转" + ": nodeId=\{node_id}"
+}
+
+///|
+/// 记录类（`snaker:custom`）节点执行腿 —— issues/142 A 批，spec/02 §6.1 表第二行 + §6.2 三条硬要求。
+/// 现成对照＝python 本轮那条腿（`jeeflow-python/jeeflow/engine.py::_exec_custom_node`）。
+///
+/// 四件事，缺任一件都算违反 §6.2（「落库不建行 / 建行不落库 / 记日志但停在原地」都是半截）：
+/// 1. 执行 `clazz` —— MoonBit 没有反射，java 那句 `Class.forName(clazz)` 在本栈无从谈起，
+///    故与 C#/Python 同策：`Ctx::register_custom_handler(<clazz 原样串>, handler)` 按名注册、引擎按名解析；
+/// 2. 落一条**历史行**（task_state=20）—— 调 issues/137 B 拍板「不删」的那支
+///    `ProcessInstance::create_history_task`，本单正是把它接线的那一单；
+/// 3. **真落库**：走 `save_task` + `add_task_actor`，内存仓与 MySQL 仓两条建行通道各自真
+///    INSERT（§6.2 第 1 条：只在聚合 `instance.tasks` 里 append 一条不算做到 —— java/c# 的
+///    历史行至今没有 INSERT 腿，正是本条要补的洞）；
+/// 4. 令牌沿出边继续流转（java `CustomModel` 收尾那句 `runOutTransition`）。
+///
+/// ⚠️ §6.1 表列的三条禁止形状，本腿逐条不犯：① 当任务类建 DOING 行；② 兜底把行挂给当前
+///    操作人、伪造一条他不该收到的待办（历史行的 actor=operator 是**留痕主体**不是待办主体：
+///    行状态 20 谁也办不动，todoList 按 task_state=10 取行，它进不去）；③ 直接跳过节点不建行。
+/// ⚠️ **不 fire 码 3**（PROCESS_TASK_START）：spec/11 §11.2 原则 1「码=事实」，码 3 表达
+///    「新待办产生」，而本腿建行即已完成态。同一理由本腿**不进** `exec.new_tasks` —— 那是
+///    「本步新产生的待办」清单（门面出口与集成层按它推待办），落库走 `persist_history_task` 单独一支。
+///
+/// ⚠️ 返回值只写进**执行变量** `exec.args`（与 java 写 `execution.getArgs()`、python 写 `vars_`
+///    同口径）：同一次令牌推进里下游决策边读得到；跨步骤的实例变量回写不在本条义务内。
+async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::execute_custom_node(
+  self : Engine[R, E],
+  exec : @exec.Execution,
+  node : @parser.NodeModel
+) -> Unit raise @error.JeeflowError {
+  // 前置拦截器与原 Task|Custom 合流时同口径（「建单那一刻」可挂，issues/116 批次 D）；
+  // 后置仍不 fire —— 与本栈建单腿一致（刻意不触发，见上面 CreateTaskHandler 对齐注释）。
+  self.fire_pre_interceptors(exec)
+  let clazz = match node.prop_str("clazz") {
+    Some(s) => s.trim(chars=" \t\r\n").to_owned()
+    None => ""
+  }
+  match self.ctx.find_custom_handler(clazz) {
+    Some(handler) => {
+      // 处理器**自身**执行失败 ⇒ 直接外抛：§6.2 第 2 条豁免的是「解析不了」（配置形状），
+      // 不是「跑炸了」（业务错误）。这一支不加 try，外抛即与 java CustomModel 方法调用失败同形。
+      let ret = (handler)(exec)
+      match ret {
+        Json::Null => ()
+        _ => exec.args.insert(custom_return_key(node), ret)
+      }
+    }
+    // 两档日志分别可诊断（§6.2 第 2 条末尾；c# 合成一条的形状不许照抄）：都记完日志照常
+    // 落历史行 + 续流，严禁 abort/raise 打断建单 —— 与 spec/04「节点属性配错不该把流程炸掉」同哲学。
+    None =>
+      if clazz.is_empty() {
+        println(custom_clazz_missing_warning(node.id))
+      } else {
+        println(custom_handler_unregistered_warning(node.id, clazz))
+      }
+  }
+  let history = exec.process_instance.create_history_task(
+    node.id, node.display_name, exec.operator, @model.TaskType::from_code(node.task_type())
+  )
+  self.persist_history_task(exec, history)
+  let next_nodes : Array[@parser.NodeModel] = []
+  for e in exec.process_model.get_output_edges(node.id) {
+    match exec.process_model.get_target_node(e) {
+      Some(next) => next_nodes.push(next)
+      None => ()
+    }
+  }
+  for next in next_nodes {
+    self.execute_node(exec, next)
+  }
+}
+
+///|
+/// 历史行落库通道（spec/02 §6.2 第 1 条「历史行必须真落库」的那条 INSERT 腿）。
+/// 建单不变量与 `persist_tasks` 同判据：`task_parent_id` ＝产生这一步的那个刚办结任务
+/// （发起 execution 没有当前任务 ⇒ 落 0L），行级 `isFirstTaskNode` 建单时落库（回退血缘要读它）。
+/// 与 `persist_tasks` 的三处刻意差别：① 入参是单条已完成行、不进 `exec.new_tasks`；
+/// ② **不 fire 码 3**；③ 不做委托并入（历史行不是待办，代理人无从「替办结」）。
+async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::persist_history_task(
+  self : Engine[R, E],
+  exec : @exec.Execution,
+  task : @model.ProcessTask
+) -> Unit raise @error.JeeflowError {
+  if task.task_id == 0L {
+    task.task_id = self.next_id()
+  }
+  task.process_instance_id = exec.process_instance.instance_id
+  match task.parent_task_id {
+    None =>
+      task.parent_task_id = Some(
+        match exec.process_task {
+          Some(t) => t.task_id
+          None => 0L
+        },
+      )
+    _ => ()
+  }
+  task.variables.insert(
+    "isFirstTaskNode",
+    @json.bool_of(exec.process_model.is_first_task_node(task.task_name)),
+  )
+  (self.repo()).save_task(task)
+  if !task.actor_ids.is_empty() {
+    (self.repo()).add_task_actor(task.task_id, task.actor_ids)
   }
 }
 

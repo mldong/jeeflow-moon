@@ -124,7 +124,15 @@ pub fn ProcessModel::get_end_nodes(self : ProcessModel) -> Array[NodeModel] {
 }
 
 ///|
-/// 8 节点类型
+/// 8 节点类型 ＋ 未知档（issues/142 A 批）
+/// ⚠️ `Unknown` **不是第 9 种节点**，它是「类型表里没查到」那一档。旧形状是 `_ => Custom` 兜底
+/// ⇒ 任何未知类型（拼错大小写的 `snaker:subProcess`、设计器写坏的串）都被当**记录类**执行。
+/// 记录类与任务类从此分叉（spec/02 §6.1）之后，「未知一律按记录类」等于把没认出来的节点
+/// 静默变成一条留痕行；反过来「未知一律报错」又违反 spec/04「节点属性配错不该把流程炸掉」。
+/// ⇒ 本档只做两件事：**先记一条可诊断日志（带节点 id 与实得类型串），再跳过该节点**，
+///   逐字照 java `ModelParser.java:79-90`（WARNING 后 continue）＋ spec/02 类型键义务 2。
+/// 注：大小写归一与 `subProcess`/无前缀别名是 issues/141 G4 的 C 方案（先立法后补实现），
+/// 本档**不做归一化** ⇒ 照 spec 写无前缀 `task` 的定义会落进这里，那是义务 1 未落地的已知后果。
 pub(all) enum NodeType {
   Start
   Task
@@ -134,6 +142,7 @@ pub(all) enum NodeType {
   End
   Custom
   SubProcess
+  Unknown
 } derive(Eq, Debug)
 
 ///|
@@ -146,7 +155,10 @@ pub fn NodeType::from_snaker_type(t : String) -> NodeType {
     "snaker:join" => Join
     "snaker:end" => End
     "snaker:subprocess" => SubProcess
-    _ => Custom
+    // issues/142 A 批：custom 从此是**显式档**，不再由兜底臂代答——旧兜底臂把「没认出来的
+    // 类型」和「记录类节点」塌成同一档，拼错的定义会被当记录类照常执行并落一条留痕行。
+    "snaker:custom" => Custom
+    _ => Unknown
   }
 }
 
@@ -161,7 +173,17 @@ pub fn NodeType::as_str(self : NodeType) -> String {
     End => "end"
     Custom => "custom"
     SubProcess => "subprocess"
+    Unknown => "unknown"
   }
+}
+
+///|
+/// 未知类型档的诊断日志文案（spec/02 类型键义务 2「带节点 id 与实得类型串」）。
+/// 抽成纯函数有两个理由：① 这句文案是跨栈对得上的契约面（java/php 都是「该节点及其出边将被跳过:
+/// nodeId=.., type=..」那一形），钉住文案才谈得上「可诊断」；② `println` 的效果在测试里读不回来，
+/// 判据留在纯函数、副作用留在调用点，两件事各自可测。
+pub fn unknown_node_warning(node_id : String, raw_type : String) -> String {
+  "[jeeflow] 流程定义里的节点类型不在类型表里，该节点及其出边将被跳过: nodeId=\{node_id}, type=\{raw_type}"
 }
 
 ///|
@@ -361,6 +383,13 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
             let id = @json.get_str(node_val, "id").unwrap_or("")
             let raw_type = @json.get_str(node_val, "type").unwrap_or("snaker:task")
             let node_type = NodeType::from_snaker_type(raw_type)
+            // issues/142 A 批 · spec/02 类型键义务 2：**先留可诊断日志，再跳过**该节点。
+            // 节点不入模型 ⇒ 它的出边随后取不到目标，与 java ModelParser 的 WARNING+continue 同形；
+            // 旧形状是 `_ => Custom` 把未知档当记录类照常执行（本轮把两件事分开）。
+            if node_type is Unknown {
+              println(unknown_node_warning(id, raw_type))
+              continue
+            }
             let display_name = match @json.get_str(node_val, "displayName") {
               Some(s) => Some(s)
               None =>
