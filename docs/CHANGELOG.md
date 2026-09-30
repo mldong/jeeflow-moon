@@ -1,5 +1,39 @@
 # CHANGELOG
 
+## 0.1.23（2026-09-30）
+
+**盲测报告 §5 五条建议落地 + 它牵出的内存仓读侧真缺陷**。报告阅后即焚，本节与下面四笔 commit 是唯一留档。
+
+- `158c080` 文档五条（默认只改文档、不动代码）：
+  ① **`/api/stats` 路由口径**——实测复核报告结论成立：无参通（`operator` 缺省 user1），
+     带 `?operator=` 返回 `99999999 unknown path`；根因是 `demo/cmd/main/main.mbt` 把含查询串的
+     `req.path` 整串交给 `App::handle`（wasm 侧不剥 `?`）。三处文档（demo.md / integration.md /
+     engine-api.md）改成实测形态并注明限制 ⇒ 消灭唯一一个"照抄即失败"。
+  ② 删漂移数字：`119 用例` → 以实跑读数为准；`现 0.1.14` → 指向各模块 `moon.mod` 与本 CHANGELOG。
+  ③ `engine-api.md` action 分组表与 `scripts/action-manifest.json` 对名
+     （`start_and_execute`→`startAndExecute`、`up_and_down`→`upAndDown`、`get_last_by_name`→
+     `getLastByName`、`taskDetail`→`detail`、补 `transfer`；processTask 9→10），
+     并补一组 `startAndExecute` 请求/响应**成对** JSON 示例（取 demo 实测真实值）。
+  ④ `smoke_t2.sh` 头注释补前置：依赖 curl + python。
+  ⑤ （可选·代码）demo 启动横幅加 `(GET /health)`。
+- `8bb6a2d` **内存仓读侧真缺陷**（142 A 批「零参与者照样建单」暴露的既有缺口）：
+  `find_task_by_id` / `find_history_tasks` 不水合参与者 ⇒ 办理与办结守卫拿**建单时**的旧空集合
+  误判，demo 种子 `define=14 op=leader` 报 `99999999 权限不足`（09-29 盲测 16/16 → 09-30 15/16）。
+  按 java「actor 表即参与者唯一事实源」补水合，新增 2 格。
+- `5ab9dc0` 同族缺口收口：六条任务读路统一到单一 `hydrated_task` 判据点（含
+  `page_todo_tasks` 的**过滤前**水合——那才是"待办漏人"的真位置），新增 3 格。
+  `get_all_tasks` 的弱口径（仅 `actor_ids` 为空才回填）**保持不动**：它只喂 stats、不在守卫/列表
+  路径，改它会动 stats 读数，超出本缺口范围，留 owner。
+- `946897e` **补记本文件欠的八代（0.1.15–0.1.22）**：②那条"指向 CHANGELOG"的修法，当时指向的是
+  最新条目还停在 0.1.14 的本文件 ⇒ 指引会把读者引到落后 8 代的值。账补齐，指向才成立。
+- **本版门禁**：T0 **352/352**（349+3）、T2 冒烟 7/7 ALL PASS、demo 种子 in-progress 16/16 /
+  finished 9/9 / surrogates 8/8；`moon check` 0 error，20 条 warning 全是既有结构性误报，
+  改动文件零新增警告。
+- **判红能力自证**（不是"改后绿"就算数）：副本内把 `hydrated_task` 改成不水合（单点覆盖六条读路）
+  ⇒ 判红 5 格——本版 3 格（`page_todo_tasks` 报 `0 != 1`）+ 8bb6a2d 的 2 格（报 `99999999 != 0`），
+  而对照组（lisi 命中 / wangwu 零行 / taskC 真空）不红 ⇒ 新格确有判红能力、非恒绿。
+- ⚠️ 本版 tag 打在「五模块 `version` + 7 处接力 import pin 全部同步」之后（0.1.22 的 tag 落点缺陷不再复现）。
+
 ## 0.1.22（2026-09-30）
 
 **issues/141 抄送轮 + issues/142 记录类与归属值普查 A/B 两批**（八栈同批，随 1.8.36 家族发布）。
