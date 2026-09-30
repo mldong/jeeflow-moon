@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## 0.1.24（2026-09-30 深夜）
+
+**截止夜文档收尾攒下的源码侧欠账，一次清掉。** 代次从 0.1.23 前进一格，四模块
+（core / persist / repository-mysql / facade）同号重发，接力 import pin 同步（`moon_dep_bump.py`
+命中 12 处＝5 version＋7 pin）。
+
+- **四处历史注释纠偏**（09-30 文档收尾批登记为「明确未做」的第 ① 条，当时不改的理由就是
+  `core` / `repository-mysql` 属已发布模块、动源码＝重发注册表 ⇒ 攒到这一版一起做）：
+  - `core/json/json.mbt` 「见 `docs/decisions-log.md` D-M5-3」→ 改指仓根 `MAINTAINING.md` §4 代决策；
+  - `core/memory/memory.mbt` 「见 `docs/m1-progress.md`」→ 同上（那两个文件早已并入 §4 与 CHANGELOG，
+    注释却还指着它们，公开 clone 的人按图索骥必然 404）；
+  - `repository-mysql/smoke/smoke.mbt` 「见 `docs/decisions-log.md` D-M2-2」→ 同上；
+  - `core/engine/compliance_test.mbt` 段标题「15 flows 驱动」→ **16 flows**，并注明
+    c23–c31 在 `compliance2_test.mbt`（`c01–c22` 在本文件，合起来才是 31 个场景）。
+  四行全是单行子串替换，**逐文件行尾约定字节级不变**（`json.mbt` 纯 LF、`memory.mbt` 全 CRCRLF、
+  `smoke.mbt` 与 `compliance_test.mbt` 各自的混存比例前后一致）——本仓 `.mbt` 行尾不统一，
+  批量转换会造出全文件 diff，所以只允许"不碰换行符"的改法。
+- **demo 的存储模式静默回落改成点名警告**（`226ab60` 已在 master，随本版**第一次进镜像**）：
+  `App::create()` 对"拼错名 `JEFFLOW_DEMO_STORE`（两个 F）"和"值不是逐字 `memory`/`mysql`"
+  各打一行 `警告：…`；线上 `:8092` 演示镜像此前是 v0.1.23 的静默版。
+- **本版门禁**（2026-09-30 23:5x 实测，真库用**专用新库** `jeeflow_moon_t1`，按 §2 T1 姿势现建现导）：
+  `moon check` **0 error**（20 条既有结构性误报）；T0 **352/352**；T1 仓储级 **111 断言**
+  `T1 ALL PASS (wasm → 160)`；T1-F 门面级 **130 断言** `T1-F ALL PASS`；T2 冒烟 **7/7**
+  （种子 in-progress 16/16 / finished 9/9 / surrogates 8/8）；manifest **46/46** 与 Java 实查双向无差集；
+  `consistency` 载荷**逐字节等值**（3091B，按载荷比不按文件字节比）。
+  ⚠️ 顺带纠一处台账漂移：§4 D-M6-1 那句"T1-F 门面级 **104 格**"是当时的读数，
+  141/142/134/130 几轮加格后现行是 **130**——历史句不回写，但本版读数以这里为准。
+
 ## 0.1.23 文档收尾批（2026-09-30 夜，**只改文档，未发版**）
 
 新手模拟盲测（子智能体从公开 clone 起步）反馈的第二轮。注册表仍 `0.1.23`，模块源码零改动 ⇒
