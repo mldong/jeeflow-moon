@@ -2,7 +2,7 @@
 
 ## LogicFlow JSON
 
-流程定义为 **LogicFlow JSON**（与联邦共享同一格式，15 个流程各语言一份副本）：
+流程定义为 **LogicFlow JSON**（与联邦共享同一格式，16 个流程各语言一份副本）：
 
 - 节点 8 种类型（`type` 串按 `snaker:` 前缀那一档，规范 `spec/02` §3 的表）：
   `snaker:start` / `snaker:task`（申请与审批都是它，靠 `assignee`/`performType` 区分）/
@@ -71,7 +71,7 @@ ctx.register_custom_handler(
 
 ## 共享 flows 与镜像机制
 
-- 15 个共享流程（id=1..N 按文件名字典序）**唯一编辑源**在 `jeeflow-java/jeeflow-core/src/test/resources/flows/`。
+- 16 个共享流程（id=1..N 按文件名字典序）**唯一编辑源**在 `jeeflow-java/jeeflow-core/src/test/resources/flows/`。
 - 本仓 `flows/` 是**入库副本**，demo/test 启动时由本仓解析器读取；维护者机器上 java 兄弟目录存在时，启动即**精确镜像**（全量复制 + 删孤儿）同步进本仓。
 - 改流程只改 java 编辑源 → 跑一次任意语言 demo/test 触发镜像 → 逐仓 commit `flows/`（禁止只增不删）。
 

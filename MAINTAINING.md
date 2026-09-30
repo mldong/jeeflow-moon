@@ -5,6 +5,26 @@
 > 发版通道、设计决策、契约对照——收在本文件（仓根，**不进 `docs/`、不上文档站**）。
 > 用户向版本历史见 [docs/CHANGELOG.md](./docs/CHANGELOG.md)。
 
+> ### 跨仓引用怎么读（公开 clone 里点不开的那些）
+>
+> 本文件与 `docs/` 里大量出现的「**方案 §x.y**」、「`jeeflow-hub` AGENTS.md / 凭据基准」、
+> 「`issues/1NN`」、「`口径见 jeeflow-hub`」、「六语言对照快照」都指向**协调仓
+> [`mldong/jeeflow-hub`](https://github.com/mldong/jeeflow-hub)**（及
+> [`mldong/jeeflow-doc`](https://github.com/mldong/jeeflow-doc)）里的私有/聚合内容，
+> **不随本引擎仓发布**：
+>
+> - 方案 = `jeeflow-hub/docs/moonbit-engine-implementation-plan.md`（`scripts/action-manifest.json`
+>   的 `sources.plan` 同一份）。
+> - issues 台账 = `jeeflow-hub/issues/`；引擎规范 = `jeeflow-doc/docs/spec/`（公开在
+>   <https://jeeflow-doc.mldong.com/spec/>）。
+> - 一致性对照快照 = 本仓只发布 `consistency/moon.json`（MoonBit 自己那一份），其余语言快照留在
+>   协调仓做跨语言比对。
+> - 历史代码注释里出现的 `docs/decisions-log.md`、`docs/m1-progress.md` **已不存在**——内容并入了
+>   本文件 [§4 设计决策](#4-设计决策) 与 `docs/CHANGELOG.md`；注释保留原文只作留痕。
+>
+> 结论：这些引用**不是缺陷、也不影响跑通**（Quickstart / T0 / T2 全部仓内自洽）；需要跨语言契约细节时
+> 去上面两个公开仓，或直接读本仓 `scripts/action-manifest.json`（46 action 的权威清单）。
+
 ## 1. 工具链口径（机器无关）
 
 > **`MOON_HOME` 是机器相关路径，由读者自己的安装位置决定**——本文件一律用占位符 `<MOON_HOME>`，
@@ -723,13 +743,18 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
 
 ### 40+ action（5 组）
 
-| 组 | 数量 | 入口方法 |
+| 组 | 数量 | wire 名（`POST /wf/{action}` 的逐字实参） |
 |---|---|---|
-| processDefine | 8 | define_page/detail/start_and_execute/deploy/redeploy/remove/up_and_down/get_last_by_name |
-| processInstance | 14（含 stats 3） | instance_page/detail/start_and_execute/withdraw/bizData/highLight/approvalRecord/getAssigneeTextData/createCCInstance/updateCCStatus/ccList/stats_overview/stats_trend/stats_group |
-| processTask | 9 | todo_list/done_list/execute/task_detail/jump_able_task_name_list/candidate_page/surrogate/add_candidate/latest |
-| processDesign | 9（需扩展仓储） | design_page/detail/save/update/updateDefine/remove/deploy/redeploy/listByType |
-| processSurrogate | 5（需扩展仓储） | page/save/update/detail/remove |
+| processDefine | 8 | page / detail / startAndExecute / deploy / redeploy / remove / upAndDown / getLastByName |
+| processInstance | 14（含 stats 3） | page / detail / startAndExecute / withdraw / bizData / highLight / approvalRecord / getAssigneeTextData / createCCInstance / updateCCStatus / ccList / stats/overview / stats/trend / stats/group |
+| processTask | 10 | todoList / doneList / execute / detail / jumpAbleTaskNameList / candidatePage / surrogate / addCandidate / transfer / latest |
+| processDesign | 9（需扩展仓储） | page / detail / save / update / updateDefine / remove / deploy / redeploy / listByType |
+| processSurrogate | 5（需扩展仓储） | page / save / update / detail / remove |
+
+> ⚠️ 本表只列 **wire 名**（HTTP 实参）。snake_case 一律 `99999999 未知 action`——实测
+> `start_and_execute` / `todo_list` / `task_detail` / `stats_overview` 全被打回。引擎内部方法名
+> （`definePage` / `taskTransfer` …）见 `scripts/action-manifest.json` 每条的 `method` 字段；
+> 该文件是 46 action 的权威清单，`summary.byGroup` 与本表计数同源（改一处必核对另一处）。
 
 ### 契约要点（方案 §4 C 条目 → moon 落点）
 

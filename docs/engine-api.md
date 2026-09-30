@@ -42,6 +42,36 @@ let resp = facade.flow("processTask/execute", args)   // {code, msg, data}
 {"code":0,"msg":"成功","data":{"processInstanceId":"2105199812302348288"}}
 ```
 
+### 请求/响应示例：`processTask/todoList`
+
+待办按**参与人**过滤（`pta.actor_id`），所以传的是 `operator`，不是 `assignee`；返回体是
+分页五键（`pageNum/pageSize/recordCount/totalPage/rows`）。demo 实测一对真实值：
+
+请求（`POST /wf/processTask/todoList` 的 body）：
+
+```json
+{"operator":"leader","pageNum":1,"pageSize":2}
+```
+
+响应（`rows[0]` 节选——`id/processInstanceId/taskParentId` 三个雪花 id 均已字符串化，
+`createTime` 为 `yyyy-MM-dd HH:mm:ss`，`ext` 是任务变量（空则回落实例变量）、`instanceExt`
+是实例变量，`taskFormData` 只切 `tf_` 前缀；其余字段见 `scripts/action-manifest.json`
+`processTask/todoList` 那条的 `resp`）：
+
+```json
+{"code":0,"msg":"成功","data":{"pageNum":1,"pageSize":2,"recordCount":5,"totalPage":3,
+ "rows":[{"id":"2105294819889782784","processInstanceId":"2105294819852034048","taskName":"task1",
+  "displayName":"上级审批","taskType":0,"performType":0,"taskState":10,"operator":null,
+  "finishTime":null,"expireTime":null,"formKey":"leave-form","taskParentId":"2105294819864616960",
+  "createTime":"2026-09-30 13:52:54","createUser":"user1","processDefineName":"01-simple",
+  "processDefineDisplayName":"简单审批流程","ext":{"isFirstTaskNode":false,"f_days":3},
+  "instanceExt":{"f_days":3},"instanceCreateTime":"2026-09-30 13:52:54","version":1,
+  "taskFormData":{}}]}}
+```
+
+> `recordCount=5 / totalPage=3` 是 `pageSize=2` 下的真实读数——五键分页不是摆设。
+> 查"某人办过的"用 `processTask/doneList`（同形状，过滤字段换成 `t.operator`）。
+
 ## 引擎操作（核心语义）
 
 - `start` / `execute` / `jump` / `jump_to_end` / `jump_to_first` / `withdraw`，聚合根从仓储水合是一等步骤。

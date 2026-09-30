@@ -9,7 +9,9 @@
 | Windows（PowerShell） | `irm https://cli.moonbitlang.com/install/powershell.ps1 \| iex` |
 | Linux / macOS | `curl -fsSL https://cli.moonbitlang.com/install/unix.sh \| bash` |
 
-- 装完先跑一次 `moon update` 刷新 registry 索引——工具链内置索引可能陈旧，不认识 async / moonmysql 等依赖，缺 `moon update` 时 `moon install` 会失败。
+- 装完先跑一次 `moon update` 刷新 registry 索引——工具链内置索引可能陈旧，不认识 async / moonmysql
+  等依赖（`moon add` 自己也会刷新索引，但首次装完手动跑一次更稳；Quickstart 三步里没列它，
+  拉不到依赖时先补这一步）。
 - ⚠️ **Windows 专属坑**：从 32 位父进程链（某些终端启动器）跑安装脚本会误报
   `Install Failed: MoonBit for Windows is currently only available for x86 64-bit...`——
   原因是继承的 `$env:PROCESSOR_ARCHITECTURE` 为 `x86`（系统实际是 `PROCESSOR_ARCHITEW6432=AMD64`）。
@@ -26,28 +28,75 @@ mooncakes.io 正式版本（0.x 线）。核心引擎仅依赖 MoonBit 标准库
 传递依赖 moondb/moonmysql/async 一并解析，无需手声明）：
 
 ```bash
+moon new my-flow && cd my-flow                    # 消费者工程（没有 moon init）
 moon add mldong/jeeflow-core                  # 引擎核心（运行时零 registry 依赖）
 moon add mldong/jeeflow-facade                # 40+ action 统一门面
 moon add mldong/jeeflow-persist               # 可选：业务数据动态入库（ARCHIVE/SYNC）
 moon add mldong/jeeflow-repository-mysql      # 可选：MySQL 仓储（含 vendored 解锁的 client）
+moon add moonbitlang/async                    # flow() 是 async，async main 必须有它
 ```
+
+> ⚠️ `moon.mod` 的 `version` 是**发版目标**，注册表 latest 可能落后一代（索引刷新有滞后）。
+> 装不到期望版本先 `moon update` 再看 `moon add` 解析到的实际版本，别手工钉死。
 
 ## 5 分钟上手（内存仓储）
 
-```moonbit
-// 引擎为泛型 [R : ProcessRepository, E : ProcessExtRepository]；小 SPI 走闭包字段
-let repo = @memory.MemoryRepository::new()
-let ctx  = @spi.Ctx::new(repo, repo)              // 无扩展仓储时第二参用 @spi.NoExtRepository::new()
-let ctx  = ctx
-  .with_id_generator(fn() { gen.next_id() })      // 缺省回退默认雪花
-  .with_user_provider(my_user_provider)           // (String) -> UserInfo? raise JeeflowError
-let facade = @facade.Facade::make(ctx)
+`flow` 是 `async`、`args` 是 `Map[String, Json]`，而包别名（`@spi` / `@memory` / `@facade`）
+写在**消费者自己的 `moon.pkg`** 里——`moon.mod` 只管模块依赖，不解析别名。缺任意一项就是
+`Package "memory" not found` / `unbound` 一屏报错。下面这份是实测跑通的完整形状（`moon new`
+出的模板根包文件保持原样即可）：
 
-// 所有工作流能力都是一次调用：
-let resp = facade.flow("processDefine/startAndExecute", args)  // {code: 0, msg, data}
+```moonbit
+// cmd/main/moon.pkg —— 少 @model / @error 这两行别名，下面的 provider 就写不出来
+import {
+  "mldong/jeeflow-core/spi" @spi,
+  "mldong/jeeflow-core/memory" @memory,
+  "mldong/jeeflow-core/model" @model,
+  "mldong/jeeflow-core/error" @error,
+  "mldong/jeeflow-core/id_gen" @id_gen,
+  "mldong/jeeflow-core/json" @json,
+  "mldong/jeeflow-facade" @facade,
+  "moonbitlang/async",
+}
+
+pkgtype(kind: "executable")
 ```
 
-流程定义从共享 JSON 装入（15 个流程，`flows/` 副本已入库；单独引入时把流程 JSON 塞进
+```moonbit
+// cmd/main/main.mbt —— 引擎为泛型 [R : ProcessRepository, E : ProcessExtRepository]；小 SPI 走闭包字段
+let user_provider : (String) -> @model.UserInfo? raise @error.JeeflowError =
+  (id) =>
+    if id == "user1" {
+      Some(@model.UserInfo::make(user_id="user1", real_name="张三", dept_id="d1"))
+    } else {
+      None
+    }
+
+async fn main raise {
+  let repo = @memory.MemoryRepository::new()
+  let gen = @id_gen.DefaultIdGenerator::new(2L)
+  let ctx = @spi.Ctx::new(repo, repo)   // 无扩展仓储时第二参用 @spi.NoExtRepository::new()
+    .with_id_generator(fn() { gen.next_id() })   // 缺省回退默认雪花
+    .with_user_provider(user_provider)
+  let facade = @facade.Facade::make(ctx)
+  let args : Map[String, Json] = { "processDefineId": 1, "operator": "applicant" }
+  println(@json.stringify(facade.flow("processDefine/startAndExecute", args)))  // {code, msg, data}
+}
+```
+
+```
+$ moon run --target wasm cmd/main
+{"code":99999999,"msg":"流程定义不存在: 1"}
+```
+
+`IUserProvider` 的签名必须逐字写成 `(String) -> @model.UserInfo? raise @error.JeeflowError`：
+少 `@error.JeeflowError` 的裸 `raise`、或整个不写 `raise`，都会撞 `Expr Type Mismatch`
+（两种报错原文都在实测里出现过）。
+
+内存仓储 `MemoryRepository::new()` 起来是**空库**——上面那句 `99999999 流程定义不存在: 1` 就是
+证据。流程定义要自己装入（见下）。
+
+流程定义从共享 JSON 装入（16 个流程，`flows/` 副本已入库；单独引入时把流程 JSON 塞进
 `processDesign/save` → `processDesign/deploy`，或直接用 demo 仓的种子逻辑）。
 
 ## MySQL 仓储

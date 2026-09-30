@@ -16,18 +16,22 @@ moon add mldong/jeeflow-repository-mysql      # 可选：MySQL 仓储（含 vend
 
 ## 最小装配（内存仓储）
 
+> ⚠️ 本节是**装配形状图，不是可粘贴即编译的代码**：`my_*` / `gen` / `args` 是占位符，包别名要写进
+> 消费者自己的 `cmd/main/moon.pkg`，且 `flow` 是 `async`。逐字跑通的完整模块见
+> [getting-started.md](./getting-started.md)「5 分钟上手」。
+
 ```moonbit
 // 引擎为泛型 [R : ProcessRepository, E : ProcessExtRepository]；小 SPI 走闭包字段
 let repo = @memory.MemoryRepository::new()
 let ctx = @spi.Ctx::new(repo, repo)            // 无扩展仓储时第二个参数用 NoExtRepository::new()
 let ctx = ctx
   .with_id_generator(fn() { gen.next_id() })   // IIdGenerator（未注入回退默认雪花）
-  .with_user_provider(my_user_provider)        // IUserProvider：(String) -> UserInfo? raise JeeflowError
+  .with_user_provider(my_user_provider)        // IUserProvider：(String) -> UserInfo? raise @error.JeeflowError
   .with_org_user_provider(my_org_fns)          // IOrgUserProvider 三闭包组
   .with_user_search_provider(my_search_fns)    // IUserSearchProvider
   .with_expression_evaluator(my_eval)          // 可选；缺省内置简单比较求值
 let facade = @facade.Facade::make(ctx)
-// 40+ action 单入口：
+// 40+ action 单入口（async；args 是 Map[String, Json]）：
 let resp = facade.flow("processDefine/startAndExecute", args)  // {code,msg,data}
 ```
 
@@ -61,8 +65,14 @@ ctx.register_interceptor(interceptor.as_interceptor())  // order=100 后置
 `demo/cmd/main` 即可运行的演示服务（:8092）：
 
 ```bash
-JEFFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main
+JEEFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main
 ```
+
+> ⚠️ 前缀拼法**两套并存**，别写成 `JEFFLOW_DEMO_STORE`：demo 侧是 `JEEFLOW_*`
+> （`JEEFLOW_DEMO_STORE` / `JEEFLOW_TZ_OFFSET`），MySQL 连接侧才是 `JEFFLOW_DB_*`。
+> `App::create()` 只认逐字 `Some("mysql")`，其它一律回落内存（`_ => App::memory_only()`）——
+> 拼错、或值写成 `Mysql`/`MYSQL`/空串，都**无报错无警告**，`/api/reset` 照样回 `code=0`。
+> 想确认存储模式只看启动横幅里的 `store=`。
 
 路由契约：`POST /wf/{action}`（全转发 facade）+ `GET /health` + `POST /api/reset` + `GET /api/stats`（无查询串，operator 缺省 `user1`——wasm 路由不剥 `?` 后缀，带查询串会 unknown path）。
 

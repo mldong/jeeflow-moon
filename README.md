@@ -15,7 +15,7 @@
 countersign gates, CC notifications, stats — behind a **single 40+ action facade**:
 `flow(action, args) → {code, msg, data}`. It is the MoonBit port of the
 jeeflow federation (Java reference implementation), API-compatible with the Go / Python / Node /
-PHP / Rust builds: same 15 shared LogicFlow fixtures, same `99999999` error envelope, same
+PHP / Rust builds: same 16 shared LogicFlow fixtures, same `99999999` error envelope, same
 five-key pagination, same state machine.
 
 ```mermaid
@@ -40,7 +40,14 @@ moon run --target wasm demo/cmd/main                      # demo on :8092 (memor
 bash scripts/smoke_t2.sh                                  # start → todo → approve → highlight
 ```
 
-> The demo defaults to the in-memory store — zero setup, 15 shared flows preseeded.
+> Fresh toolchain? Run `moon update` once before the first `moon test` / `moon add` — the index
+> bundled with the compiler can be too old to resolve `moonbitlang/async` / moonmysql deps.
+>
+> One demo per port: a second `moon run demo/cmd/main` dies with
+> `通常每个套接字地址(协议/网络地址/端口)只允许使用一次` — stop the first, or move it with
+> `LISTEN_ADDR=127.0.0.1:8093 moon run --target wasm demo/cmd/main` and point the smoke script at
+> it (`BASE=http://127.0.0.1:8093 bash scripts/smoke_t2.sh`).
+> The demo defaults to the in-memory store — zero setup, 16 shared flows preseeded.
 > `JEEFLOW_DEMO_STORE=mysql` expects a **dedicated database** with
 > [`repository-mysql/schema/schema-mysql.sql`](./repository-mysql/schema/schema-mysql.sql) applied
 > first and does **not** auto-seed: the define list starts empty until you `processDesign/save`
@@ -58,21 +65,50 @@ Already running against this exact facade (no setup needed):
 Consume from your own module — `moon add` pulls the latest release, no version pin:
 
 ```bash
+moon new my-flow && cd my-flow
 moon add mldong/jeeflow-core     # engine core — zero runtime registry deps
 moon add mldong/jeeflow-facade   # 40+ action unified facade
+moon add moonbitlang/async       # flow() is async; async main needs it
 # each add resolves the latest version and writes it into your moon.mod
 ```
 
-```moonbit
-// Wire once at startup: repositories are generic parameters, small SPIs are closure fields.
-let repo    = @memory.MemoryRepository::new()
-let ctx     = @spi.Ctx::new(repo, repo)
-              .with_user_provider(my_user_provider)       // (String) -> UserInfo? raise
-let facade  = @facade.Facade::make(ctx)
+`flow` is `async` and takes `Map[String, Json]`, and MoonBit resolves package aliases per
+`moon.pkg` — both of those belong in your module's files, not in `moon.mod`. This is the whole
+copy-paste module (verified `moon run cmd/main`, output below):
 
-// Every workflow capability is one call:
-let resp = facade.flow("processDefine/startAndExecute", args)   // {code:0, msg, data}
+```moonbit
+// cmd/main/moon.pkg
+import {
+  "mldong/jeeflow-core/spi" @spi,
+  "mldong/jeeflow-core/memory" @memory,
+  "mldong/jeeflow-core/json" @json,
+  "mldong/jeeflow-facade" @facade,
+  "moonbitlang/async",
+}
+
+pkgtype(kind: "executable")
 ```
+
+```moonbit
+// cmd/main/main.mbt — repositories are generic parameters, small SPIs are closure fields
+async fn main raise {
+  let repo   = @memory.MemoryRepository::new()
+  let ctx    = @spi.Ctx::new(repo, repo)          // no ext repo here; NoExtRepository for MySQL
+  let facade = @facade.Facade::make(ctx)
+  let args : Map[String, Json] = { "processDefineId": 1, "operator": "applicant" }
+  println(@json.stringify(facade.flow("processDefine/startAndExecute", args)))
+}
+```
+
+```
+{"code":99999999,"msg":"流程定义不存在: 1"}
+```
+
+That envelope is the point: a bare `MemoryRepository` ships **empty** — the demo's 16 shared flows
+come from `seed_memory()` loading `flows/*.json` (`demo/app.mbt`), which is not part of any
+published module. Feed your own definition through `processDesign/save` → `processDesign/deploy`
+first, then `startAndExecute`. Add `.with_user_provider(...)` / `.with_id_generator(...)` on the
+`Ctx` for real assignees and snowflakes (see [SPI guide](./docs/spi-guide.md)).
 
 ## What's here
 
@@ -110,8 +146,8 @@ let resp = facade.flow("processDefine/startAndExecute", args)   // {code:0, msg,
 - **Clock SPI** — core has no wall clock; time is injected (`set_clock`), so stats snapshots and
   `autoGenTitle` are fully deterministic under test (fixed clock = byte-stable consistency runs).
 - **Zero-registry-dependency core** — `jeeflow-core` runs on the MoonBit standard library only;
-  JSON, expressions, users and transactions are all SPI. Demo wiring shows a full assembly in
-  ~40 lines.
+  JSON, expressions, users and transactions are all SPI. Demo wiring shows the full assembly
+  (`demo/app.mbt:15-42` is the minimal shape; entry `demo/cmd/main/main.mbt` is 70 lines).
 
 ## Modules
 
@@ -127,7 +163,7 @@ let resp = facade.flow("processDefine/startAndExecute", args)   // {code:0, msg,
 
 | Tier | Command | Scope |
 |---|---|---|
-| T0 | `moon test --target wasm` | 全部 T0 用例: 22 compliance scenarios over the shared flows, submitType matrix, event timing, outbound contracts, persist idempotency/permissions (mutation-verified); + facade-level withdraw/transfer three-tier cases (memory repo) |
+| T0 | `moon test --target wasm` | 全部 T0 用例: 31 compliance scenarios (c01–c31) over the shared flows, submitType matrix, event timing, outbound contracts, persist idempotency/permissions (mutation-verified); + facade-level withdraw/transfer three-tier cases (memory repo) |
 | T1 | `JEFFLOW_DB_*=… moon run --target wasm repository-mysql/smoke` | real MySQL: five-key pages, hydrate, `m_` filters over SQL, tx rollback leaves no half instance, double-execute is rejected, `update_user` really in the UPDATE statement |
 | T1-F | `JEFFLOW_DB_*=… moon run --target wasm demo/cmd/t1_mysql` | real MySQL over `JeeflowFacade`: withdraw (operator 硬必填 / 三条归属判据 / state 30 / `update_user` 回写 / 已完成行不改) + transfer (摘原人·加新人·三件留痕·账本只追加·不覆写 `operator` 列·doneList 不污染) |
 | T2 | `bash scripts/smoke_t2.sh` | demo HTTP: start → todo → approve → state 20 → highlight → 99999999 negative |

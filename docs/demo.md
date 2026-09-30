@@ -4,13 +4,24 @@
 
 ```bash
 export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH      # 装法见 getting-started.md 安装节
-JEFFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main   # 默认 memory
+JEEFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main   # 默认 memory（该变量可省）
 ```
 
-- `demo/cmd/main`：`run_forever` 常驻 HTTP 服务，~40 行完成完整装配（引擎 + 门面 + SPI + 种子）。
-- 存储双模式：`JEEFLOW_DEMO_STORE=memory`（默认，内存仓储 + 15 个共享流程种子，零前置）| `mysql`（真库）。
+> ⚠️ 变量名是 `JEEFLOW_DEMO_STORE`（两个 E），**不是** `JEFFLOW_DEMO_STORE`。本栈前缀两套并存：
+> demo 侧 `JEEFLOW_DEMO_STORE` / `JEEFLOW_TZ_OFFSET`，MySQL 侧 `JEFFLOW_DB_*`。拼错或值不是逐字
+> `mysql` 都**静默回落 memory**（`App::create()` 只认 `Some("mysql")`，其余走 `_` 臂），
+> 无报错无警告——存储模式只认启动横幅里的 `store=`。
+>
+> 一个端口只能起一个 demo：第二次 `moon run` 会撞
+> `通常每个套接字地址(协议/网络地址/端口)只允许使用一次`。换端口用
+> `LISTEN_ADDR=127.0.0.1:8093 moon run --target wasm demo/cmd/main`。
+
+- `demo/cmd/main`：`run_forever` 常驻 HTTP 服务。入口 `main.mbt` 70 行；完整装配分布在
+  `demo/app.mbt`(334) + `demo/demo.mbt`(202) + `demo/seed_business.mbt`(526)，其中最小装配形状是
+  `App::memory_only()` + `make_mem_ctx()`（`demo/app.mbt:15-42`）。
+- 存储双模式：`JEEFLOW_DEMO_STORE=memory`（默认，内存仓储 + 16 个共享流程种子，零前置）| `mysql`（真库）。
 - ⚠️ mysql 模式前提：先建**专用新库**并导入 `repository-mysql/schema/schema-mysql.sql`（连接 env 口径见
-  [getting-started.md](./getting-started.md)「MySQL 仓储」）；且 **demo 不自动种流程**——内存模式的 15 个
+  [getting-started.md](./getting-started.md)「MySQL 仓储」）；且 **demo 不自动种流程**——内存模式的 16 个
   共享流程不会写入真库，起来后 define 列表为空，需自行 `processDesign/save` → `processDesign/deploy`。
   只想看效果请用默认 memory 模式。
 - 8 具名用户 SPI（user1=张三 / leader=李四 / manager=王五 …），flows 种子 define id=1..N。
@@ -22,7 +33,7 @@ JEFFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main   # 默认 memory
 | `POST /wf/{action}` | 全转发 facade（40+ action） |
 | `GET /health` | 健康检查（返回 engine/store） |
 | `POST /api/reset` | memory 模式重建状态 + 重载种子；mysql 模式回 ok |
-| `GET /api/stats` | 待办/实例计数（demo 专用；operator 缺省 `user1`。⚠️ wasm 路由不剥查询串——带 `?…` 会整串当 path 匹配，返回 `99999999 unknown path`） |
+| `GET /api/stats` | demo 专用两键计数：`todoCount` / `instanceCount`，**两键都按 operator 过滤**。HTTP 侧 operator 恒为缺省 `user1`——`demo/cmd/main` 交给 `App::handle` 的 query_string 是空串，且 wasm 路由不剥 `?` 后缀（带 `?…` 会整串当 path ⇒ `99999999 unknown path`）。要全库口径打 `POST /wf/processInstance/stats/overview`（`data.total`），换人口径打 `processInstance/page` + `operator`。 |
 | CORS | 全开（本地 UI 直连） |
 
 ## jeeflow-ui 直连
@@ -39,6 +50,14 @@ JEFFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main   # 默认 memory
 ```bash
 moon run --target wasm demo/cmd/main    # 终端 1
 bash scripts/smoke_t2.sh                # 终端 2：发起→待办→办理→完成→高亮→99999999 负向
+```
+
+脚本头两个可覆盖变量（换主机/换端口、换 python 解释器的唯一手段，脚本内 `BASE=${BASE:-…}` /
+`PY=${PY:-…}`）：
+
+```bash
+LISTEN_ADDR=127.0.0.1:8093 moon run --target wasm demo/cmd/main   # demo 挪端口
+BASE=http://127.0.0.1:8093 bash scripts/smoke_t2.sh               # 冒烟跟着挪
 ```
 
 demo 部署后 CI 亦自动跑 T2 门禁（数字 id 全链路，防雪花精度假绿复发，D-M5-3）。

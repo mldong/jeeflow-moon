@@ -7,9 +7,9 @@
 
 | SPI | 形态 | 说明 |
 |-----|------|------|
-| `ProcessRepository`（trait，24 方法） | 必需 | 定义/实例/任务/参与人/抄送/委托/设计 等全部持久化 |
-| `ProcessExtRepository`（trait，14 方法） | 必需（可空实现） | 设计与委托扩展仓储；无则用 `@spi.NoExtRepository::new()` |
-| `IUserProvider` | 闭包 `(String) -> UserInfo?` | `getUser` 单方法，applicant/审批人信息 |
+| `ProcessRepository`（trait，29 方法） | 必需 | 定义/实例/任务/参与人/抄送/委托/设计 等全部持久化 |
+| `ProcessExtRepository`（trait，13 方法） | 必需（可空实现） | 设计与委托扩展仓储；无则用 `@spi.NoExtRepository::new()` |
+| `IUserProvider` | 闭包 `(String) -> UserInfo? raise @error.JeeflowError` | `getUser` 单方法，applicant/审批人信息；⚠️ 签名里 `raise @error.JeeflowError` 要逐字写，裸 `raise` 或不写都会 `Expr Type Mismatch`（形状见 `demo/demo.mbt:30`，可编译示例见 getting-started） |
 | `IOrgUserProvider` | 三闭包组 | 部门主管（含主职）/角色取人 |
 | `IUserSearchProvider` | 闭包组 | 审批人搜索（候选人双源） |
 | `IIdGenerator` | 闭包 `() -> Int64` | 缺省回退默认雪花（EPOCH 对齐联邦 1288834974657） |
@@ -83,4 +83,4 @@ ctx.register_assignment_handler("com.mldong.wf.handler.XxxHandler", my_handler) 
    **SQL 里不许出现 `NOW()`**（那会把数据库会话时区当成第二把钟）。详见 `integration.md`
    「时钟基准（宿主注入）」与 MAINTAINING.md D-M6-2。
 
-完整坑位与决策依据见仓根 `MAINTAINING.md`（§2 已知坑、§4 代决策 D-M0~D-M5、§5 契约 C1–C28 → 实现落点映射；维护者向，不在本目录）。
+完整坑位与决策依据见仓根 `MAINTAINING.md`（§2 已知坑、§4 代决策 D-M0~D-M6-2、§5 契约 C1–C28 → 实现落点映射；维护者向，不在本目录）。

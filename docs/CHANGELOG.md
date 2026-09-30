@@ -1,5 +1,56 @@
 # CHANGELOG
 
+## 0.1.23 文档收尾批（2026-09-30 夜，**只改文档，未发版**）
+
+新手模拟盲测（子智能体从公开 clone 起步）反馈的第二轮。注册表仍 `0.1.23`，模块源码零改动 ⇒
+`moon.mod` 不动；本批只落 GitHub master。每条都实测过才写。
+
+- **B2 静默陷阱**：`docs/demo.md` / `docs/integration.md` 里的 `JEFFLOW_DEMO_STORE` 是拼错的变量名，
+  代码读的是 `JEEFLOW_DEMO_STORE`（两个 E）。照文档写 ⇒ 整条变量被忽略、banner 仍 `store=memory`、
+  `POST /api/reset` 照样回 `code=0`。两处改对，并加「两套前缀」警告：demo 侧 `JEEFLOW_*`
+  （`JEEFLOW_DEMO_STORE` / `JEEFLOW_TZ_OFFSET`），MySQL 连接侧才是 `JEFFLOW_DB_*`；
+  `App::create()` 只认逐字 `Some("mysql")`，其余（含非法值）走 `_` 臂静默回落。
+- **B3 装配示例不可编译**：三处示例缺三项从未写进文档的前置——包别名要写进**消费者自己的**
+  `cmd/main/moon.pkg`（`moon.mod` 只解模块依赖、不解析名）、`args` 是 `Map[String, Json]`、
+  `flow` 是 `async`（`async fn main raise` 还要 `moon add moonbitlang/async`，否则报
+  「Cannot use `async fn main`: package moonbitlang/async is not imported」）。
+  `getting-started.md`「5 分钟上手」重写成**逐字跑通**的完整模块（`moon new` + 3 条 `moon add` +
+  两个文件），实测输出 `{"code":99999999,"msg":"流程定义不存在: 1"}`，并把这个信封写成
+  「内存仓储出厂为空」的证据；`IUserProvider` 签名逐字 `raise @error.JeeflowError`（裸 `raise`、
+  整个不写 `raise` 各撞一次 Expr Type Mismatch，两条报错原文都记进文档）。README 消费段换成同一
+  形状；`integration.md` 的富装配块显式标注「装配形状图、非可粘贴代码」。
+  ⇒ 三份文档的示例现在都能编译，且是从 `moon new` 出的干净工程里 `moon run` 出来的，不是推的。
+- **B5 MAINTAINING §5 表**：整列既不是 wire 名也不是内部方法名（`define_page` 这类 snake_case 实测
+  一律 `99999999 未知 action`），改成 wire 名列 + 一句「snake_case 一律打回」；`processTask` 计数
+  9→10 与 `scripts/action-manifest.json` 对齐（上轮只改了 `engine-api.md`，这张表漏改），补 `transfer`。
+- **漂移数字清零**：共享流程 **15→16**（`ls flows/*.json` = 16，八语言仓均 16，demo 种子
+  `in-progress 16/16`）共 9 处；`spi-guide.md` trait 方法数 24→**29** / 14→**13**（数
+  `core/spi/repository.mbt` 的 `async fn` 得）；README T0 行 `22 compliance scenarios`→
+  **31（c01–c31）**；`docs/index.md` 规范范围 01~08→**01~11**（文档站实有 `09-persist` /
+  `10-persist-meta` / `11-events`，而同目录 `docs/persist.md` 正在引 spec/09、spec/10 —— 自家文档
+  互相打脸）；`spi-guide.md` 的「D-M0~D-M5」→「D-M0~D-M6-2」（同文件上一行就写着 D-M6-2）。
+- **要脑补的前置补进文档**：一个端口只能起一个 demo（第二次 `moon run` 报「通常每个套接字地址…
+  只允许使用一次」），换端口 `LISTEN_ADDR=127.0.0.1:8093`；冒烟跟着挪 `BASE=http://127.0.0.1:8093`
+  （`scripts/smoke_t2.sh` 的 `BASE`/`PY` 两个可覆盖变量此前全仓零处提及）；`moon update` 从
+  「缺了它 `moon install` 会失败」降级为「索引陈旧时补一步」（Quickstart 全程不用 `moon install`，
+  原口径无从对照）；新增「注册表 latest 可能落后 `moon.mod` 一代」一句。
+- **`/api/stats` 口径写实**：两键**都按 operator 过滤**，且 HTTP 侧 operator 恒为缺省 `user1`
+  （`demo/cmd/main` 交给 `App::handle` 的 query_string 是空串）。实测 `{"todoCount":0,
+  "instanceCount":4}` 对 `stats/overview.total=25` ⇒ 全库口径必须去 `processInstance/stats/overview`，
+  别把 `instanceCount` 读成全库实例数。
+- **N9 待办列表补例**：`docs/engine-api.md` 此前只有 `startAndExecute` 一对示例，`todoList` 的调用
+  形状只藏在 `scripts/smoke_t2.sh:18`。补一组 demo 实测真实值（五键齐、三枚雪花 id 已字符串化、
+  `ext` / `instanceExt` / `taskFormData` 齐、`recordCount=5 / totalPage=3` 是 `pageSize=2` 下的真读数），
+  四个 JSON 块逐个 `JSON.parse` 过。
+- **跨仓引用不再让人扑空**：`MAINTAINING.md` 顶部加「跨仓引用怎么读」——「方案 §x.y」=
+  `jeeflow-hub/docs/moonbit-engine-implementation-plan.md`（即 `action-manifest.json` 的
+  `sources.plan`）、issues 台账在 `jeeflow-hub/issues/`、`consistency/` 只发布本语言一份快照、
+  以及历史注释里的 `docs/decisions-log.md` / `docs/m1-progress.md` 已不存在（内容并入 §4 与本文件）。
+  **代码注释本体未改**：`core` / `repository-mysql` 是已发布模块，动注释就要重发注册表，超出
+  「文档收尾」边界 ⇒ 登记为后续批次；本轮 `demo/`（未发布模块）也未动。
+- **门禁**：`moon check` 0 error；T0 352/352；T2 冒烟对 `:8095` 实例 7/7（种子 in-progress 16/16）；
+  文档示例的编译/运行验证走独立消费者工程（`moon new` 出来的，不在本仓工作树内，不污染门禁）。
+
 ## 0.1.23（2026-09-30）
 
 **盲测报告 §5 五条建议落地 + 它牵出的内存仓读侧真缺陷**。报告阅后即焚，本节与下面四笔 commit 是唯一留档。
