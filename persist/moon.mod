@@ -6,5 +6,5 @@ readme = "README.md"
 repository = "https://github.com/mldong/jeeflow-moon"
 description = "jeeflow dynamic table persist (DynamicTableWriter + PersistPostInterceptor + Meta)"
 import {
-  "mldong/jeeflow-core@0.1.21",
+  "mldong/jeeflow-core@0.1.22",
 }
