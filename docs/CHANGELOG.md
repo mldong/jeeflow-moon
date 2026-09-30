@@ -25,6 +25,11 @@
   `T1 ALL PASS (wasm → 160)`；T1-F 门面级 **130 断言** `T1-F ALL PASS`；T2 冒烟 **7/7**
   （种子 in-progress 16/16 / finished 9/9 / surrogates 8/8）；manifest **46/46** 与 Java 实查双向无差集；
   `consistency` 载荷**逐字节等值**（3091B，按载荷比不按文件字节比）。
+- **发布链终局**：tag push run 36740635875 四步 publish **逐步** success（判发布看 job steps，
+  不看 workflow 总结论），registry 索引四件 `0.1.24` 全命中，`pull_verify.sh 0.1.24` 消费者实下载
+  正负两支 OK；Demo Deploy run 36740635879 success（服务端 T2 `ALL PASS` +
+  `✅ Moon demo deployed (port 16086->8092)`）⇒ **demo 的存储模式警告自此在线上生效**；
+  sync-cn run 36740636340 success ⇒ Gitee/GitCode 同步同一代次。
   ⚠️ 顺带纠一处台账漂移：§4 D-M6-1 那句"T1-F 门面级 **104 格**"是当时的读数，
   141/142/134/130 几轮加格后现行是 **130**——历史句不回写，但本版读数以这里为准。
 
@@ -83,6 +88,7 @@
   横幅 `store=mysql`。`demo` 是**未发布模块**（`publish.yml` 只发 core/persist/repository-mysql/
   facade 四件）⇒ 零注册表成本，代次仍 v0.1.23；但线上 `:8092` 镜像按 v0.1.23 构建、那一版仍静默，
   要下一次 tag 才带上 ⇒ 文档里把这条标成「v0.1.23 之后的 master 才有」，并保留旧行为的留痕描述。
+  **（后续：这一版 tag 就是本节下面的 0.1.24，警告已随它上线；上面那句是当时的状态描述，保留不改。）**
   已发布模块（`core` / `repository-mysql`）的注释仍**一字未动**，见上一条的后续批次登记。
 - **门禁**：`moon check` 0 error；T0 352/352；T2 冒烟对 `:8095` 实例 7/7（种子 in-progress 16/16）；
   文档示例的编译/运行验证走独立消费者工程（`moon new` 出来的，不在本仓工作树内，不污染门禁）。

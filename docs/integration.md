@@ -71,7 +71,7 @@ JEEFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main
 > ⚠️ 前缀拼法**两套并存**，别写成 `JEFFLOW_DEMO_STORE`：demo 侧是 `JEEFLOW_*`
 > （`JEEFLOW_DEMO_STORE` / `JEEFLOW_TZ_OFFSET`），MySQL 连接侧才是 `JEFFLOW_DB_*`。
 > `App::create()` 只认逐字 `memory` / `mysql`（大小写敏感），其它一律回落内存：拼错名、
-> 或值写成 `Mysql`/`MYSQL`/空串——**v0.1.23 之后的 master 会各打一行 `警告：…` 点名原因**
+> 或值写成 `Mysql`/`MYSQL`/空串——**v0.1.24 起会各打一行 `警告：…` 点名原因**
 > （v0.1.23 及以前是静默回落，`/api/reset` 照样回 `code=0`，最容易骗过人）。
 > 想确认存储模式，任何时候都只看启动横幅里的 `store=`。
 

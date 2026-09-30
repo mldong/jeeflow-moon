@@ -11,8 +11,8 @@ JEEFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main   # 默认 memory
 > demo 侧 `JEEFLOW_DEMO_STORE` / `JEEFLOW_TZ_OFFSET`，MySQL 侧 `JEFFLOW_DB_*`。
 > 两种踩法现在都会打一行 `警告：…` 并回落 memory（`App::create()` 只认逐字 `memory` / `mysql`，
 > 大小写敏感）：拼错名 ⇒ 警告点名"那条变量没生效"；值不认识 ⇒ 警告点名非法值。
-> ⚠️ 这条警告是 **v0.1.23 之后的 master** 才有；线上 `:8092` 演示镜像按 v0.1.23 构建，那一版是
-> 静默回落——所以任何时候都只认启动横幅里的 `store=`。
+> ⚠️ 这条警告自 **v0.1.24** 起随镜像发布，线上 `:8092` 演示站已带上（v0.1.23 那一版是静默回落）。
+> 但判存储模式的口径不变：**任何时候都只认启动横幅里的 `store=`**，别信自己传进去的变量名。
 > （历史留痕：09-30 新手盲测实测旧写法拼错时整条被忽略、无报错无警告、`/api/reset` 照样回
 > `code=0`，会得到一个"看起来起来了"的假 mysql demo。）
 >

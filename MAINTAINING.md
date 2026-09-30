@@ -37,8 +37,11 @@
 > ② ~~demo 对未知 `JEEFLOW_DEMO_STORE` 值仍静默回落 memory~~ **已于同日补掉**：
 >    `App::create()` 现在对"拼错名（`JEFFLOW_DEMO_STORE`）"和"非法值（非逐字 memory/mysql）"
 >    各打一行 `警告：…`，四种组合逐条真跑过（含 `JEEFLOW_DEMO_STORE=mysql` 走到 mysql 臂、
->    横幅 `store=mysql`）。`demo` 未发布 ⇒ 零注册表成本；但线上 `:8092` 镜像按 v0.1.23 构建，
->    那一版仍静默，**下一次 tag 才带上**（文档里也照实标注了"v0.1.23 之后的 master 才有"）。
+>    横幅 `store=mysql`）。`demo` 未发布 ⇒ 零注册表成本；当时线上 `:8092` 还是 v0.1.23 的静默版。
+>    **该状态已结束**：v0.1.24（tag `5acbe49`）的 Demo Deploy run 36740635879 success——服务端
+>    T2 `ALL PASS` + `✅ Moon demo deployed (port 16086->8092)` ⇒ 警告已随本版进镜像并在线上生效，
+>    复核 `defines=16 / leader todo=5`；`docs/demo.md`、`docs/integration.md` 里"v0.1.23 之后才有"
+>    的措辞也一并改成 v0.1.24。
 > ③ 跨语言一致性对照只发布本语言一份（`consistency/moon.json`），其余语言快照仍在协调仓，
 >    公开 clone 者无法本地比对外语——需要时看 jeeflow-doc 的语言指南页。
 
