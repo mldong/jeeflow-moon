@@ -298,7 +298,8 @@ raise 由标注承担、不再是"体内未用的效应类型"——`compliance_
 ### T0 仓内快测（必绿门槛）
 
 ```bash
-moon test --target wasm          # 全 workspace（119+ 用例：合规场景/submitType 矩阵/事件时机/出口纪律/persist）
+moon test --target wasm          # 全 workspace（用例数**以实跑读数为准、别手写**——活文档不钉漂移数字；
+                                 # 覆盖面：合规场景/submitType 矩阵/事件时机/出口纪律/persist）
 ```
 
 - async 测试 = 黑盒 `_test.mbt` + 包 `moon.pkg` 的 `import { "moonbitlang/async" } for "test"`（§4 D-M0-1）。
