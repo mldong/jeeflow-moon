@@ -1,7 +1,7 @@
 // 内存仓储（T0）—— 移植自 rust memory.rs
 // ProcessRepository + ProcessExtRepository 双实现；MoonBit 单线程事件循环无锁（方案 §3.4.2）。
 // 方法签名 async 内部零 await。行收集按 id 升序排序（rust 为 HashMap 无序；排序使契约测试确定化，
-// 不改变单元素断言语义，属测试确定性增强，见 docs/m1-progress.md）。
+// 不改变单元素断言语义，属测试确定性增强，见仓根 MAINTAINING.md §4 代决策）。
 
 ///|
 /// operator 过滤：todo 按 actor_ids；done/instance 按 actor_id/create_user（rust 同款宽匹配由各方法自定）

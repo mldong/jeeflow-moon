@@ -52,7 +52,7 @@ pub fn as_array(value : Json) -> Array[Json]? {
 /// 对齐 rust as_i64：Number 截断 / Str 解析双收。
 /// Number 的 double 分量对 >2^53 整数会取整（雪花 id 均超限）；
 /// core 词法器对超限字面量在 repr 保留原文，有 repr 时按原文精确解析
-/// （修复"任务不存在 …048"取整事故，见 docs/decisions-log.md D-M5-3）
+/// （修复"任务不存在 …048"取整事故，见仓根 MAINTAINING.md §4 代决策 D-M5-3）
 pub fn as_i64(value : Json) -> Int64? {
   match value {
     Json::Number(n, repr~) =>

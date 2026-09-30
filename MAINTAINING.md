@@ -19,17 +19,21 @@
 >   <https://jeeflow-doc.mldong.com/spec/>）。
 > - 一致性对照快照 = 本仓只发布 `consistency/moon.json`（MoonBit 自己那一份），其余语言快照留在
 >   协调仓做跨语言比对。
-> - 历史代码注释里出现的 `docs/decisions-log.md`、`docs/m1-progress.md` **已不存在**——内容并入了
->   本文件 §4「代决策日志（decisions-log）」 与 `docs/CHANGELOG.md`；注释保留原文只作留痕。
+> - 历史代码注释里曾出现 `docs/decisions-log.md`、`docs/m1-progress.md`——那两个文件**已不存在**，
+>   内容并入了本文件 §4「代决策日志（decisions-log）」 与 `docs/CHANGELOG.md`。注释已在
+>   **v0.1.24** 改指本文件 §4（`core/json/json.mbt`、`core/memory/memory.mbt`、
+>   `repository-mysql/smoke/smoke.mbt`）；改的是已发布模块的源码，所以随那次发版一起走，没单独改。
 >
 > 结论：这些引用**不是缺陷、也不影响跑通**（Quickstart / T0 / T2 全部仓内自洽）；需要跨语言契约细节时
 > 去上面两个公开仓，或直接读本仓 `scripts/action-manifest.json`（46 action 的权威清单）。
 
 > **09-30 文档收尾批（`2cdfb40`）明确未做，登记给后续批次**：
-> ① 已发布模块里的历史注释仍指 `docs/decisions-log.md` / `docs/m1-progress.md`
->    （`repository-mysql/smoke/smoke.mbt:2`、`core/json/json.mbt:55`、`core/memory/memory.mbt:4`），
->    且 `core/engine/compliance_test.mbt:321` 仍写「15 flows 驱动」——`core` / `repository-mysql`
->    是已发布模块，动它们＝重发注册表，与「只改文档」的边界冲突 ⇒ 只在本节说明，不改源码。
+> ① ~~已发布模块里的历史注释仍指 `docs/decisions-log.md` / `docs/m1-progress.md`~~
+>    **已随 v0.1.24 发出**：`repository-mysql/smoke/smoke.mbt:2`、`core/json/json.mbt:55`、
+>    `core/memory/memory.mbt:4` 三处改指本文件 §4，`core/engine/compliance_test.mbt:321`
+>    的「15 flows 驱动」也改成 16 并注明 c23–c31 在 `compliance2_test.mbt`。
+>    当时不改的原因就是这条：`core` / `repository-mysql` 是已发布模块，动源码＝重发注册表
+>    ⇒ 攒到这次真发版一起做，四行注释与版本 bump 同一批落地。
 > ② ~~demo 对未知 `JEEFLOW_DEMO_STORE` 值仍静默回落 memory~~ **已于同日补掉**：
 >    `App::create()` 现在对"拼错名（`JEFFLOW_DEMO_STORE`）"和"非法值（非逐字 memory/mysql）"
 >    各打一行 `警告：…`，四种组合逐条真跑过（含 `JEEFLOW_DEMO_STORE=mysql` 走到 mysql 臂、

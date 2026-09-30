@@ -318,7 +318,7 @@ test "events: publisher per-listener isolation" {
   assert_eq(fired[0], 42L)
 }
 
-// ── 合规场景 c01–c18 / c19–c22（15 flows 驱动）──
+// ── 合规场景 c01–c18 / c19–c22（16 flows 驱动；c23–c31 见 compliance2_test.mbt）──
 
 ///|
 async test "c01: execute returns non-zero task ids (#91)" {

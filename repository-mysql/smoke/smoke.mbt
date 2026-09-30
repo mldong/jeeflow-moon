@@ -1,5 +1,5 @@
 // T1 MySQL 冒烟可执行（方案 §5 M2 / §6.1 T1）——`moon run --target wasm repository-mysql/smoke`
-// 说明：moon test 的 Windows socket 读路径挂死（2026-09-05 实测，见 docs/decisions-log.md D-M2-2），
+// 说明：moon test 的 Windows socket 读路径挂死（2026-09-05 实测，见仓根 MAINTAINING.md §4 代决策 D-M2-2），
 // T1 走 moon run 可执行通道；断言失败 abort → 非零退出（R6：连不上=fail，不是 skip）。
 // SKIP_MYSQL=1 开发机跳过。红线 R6：9xxxxx 段 + 测前测后自清理 + 凭据只走 JEFFLOW_DB_* env。
 
