@@ -362,8 +362,11 @@ JEFFLOW_DB_HOST=<DB_HOST> JEFFLOW_DB_USER=root JEFFLOW_DB_PWD=... \
 - 连接全部走 env：`JEFFLOW_DB_HOST/PORT/USER/PWD/NAME`——**四个显式给全，别依赖 `from_env()` 的
   内置默认值**（那是一套开发机兜底，硬编码在 `repository-mysql/repo/conn.mbt`）；库名指向上方前置
   建的**专用新库**，别指旧库/与其他栈共享的库（静默混表，schema 不齐时表现为莫名的缺列/水化失败，
-  见 getting-started.md「MySQL 仓储」警告）。开发服务器与凭据基准见宿主仓库 jeeflow-hub `AGENTS.md`，
-  凭据本身不入本仓。
+  见 getting-started.md「MySQL 仓储」警告）。**公开 clone 的读者到这儿没有现成凭据可抄**——协调仓
+  jeeflow-hub `AGENTS.md` 里那份开发服务器基准不随本引擎仓发布（凭据本身也永不入本仓）。
+  自给姿势：自备 MySQL → 建**专用新库**（如 `jeeflow_moon_t1`，别指旧库/共享库）→ 导入
+  `repository-mysql/schema/schema-mysql.sql` → 用 `JEFFLOW_DB_HOST/PORT/USER/PWD/NAME` 五条 env 指过去。
+  `SKIP_MYSQL=1` 是开发机的跳过档（发版机连不上＝fail），别拿它掩盖配错的凭据。
 - 覆盖：分页五键 / hydrate 参与人+变量+DATETIME / m_ LIKE 真实走 SQL /
   事务回滚无半完成实例 / 并发办理幂等（§6.2 语义级）。
 - 数据纪律（R6）：define/instance 全走 9xxxxx 段，测前测后自清理；
@@ -690,7 +693,8 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
 - **vendor 面积**：`conn.mbt`/`driver.mbt` 现为上游 0.4.0 **逐字节原样拷贝**（sha256 已核），
   与上游的唯一偏差仍只在 vendored `moon.pkg`（去掉 `supported_targets` 行）。
 - **状态**：待追认（2026-09-19）。
-- **验证**：T0 `moon test --target wasm` 119/119；T1 `moon run --target wasm
+- **验证**：T0 `moon test --target wasm` 119/119（**当时读数**，别当现行——本代次 T0 以
+  `moon test` 现场输出为准，§2 T0 那条已定调「用例数以实跑读数为准、别手写（本文件不存计数）」）；T1 `moon run --target wasm
   repository-mysql/smoke` 专用库 27 断言 ALL PASS（M1 6 + M2 8 + M3 2 + M4 事务回滚 3 +
   M5 幂等 3 + I110 水合 5）；负向两例——错密码 `ServerError(1045, 28000)`、不存在库 `ServerError(1049, 42000)`，
   rc 均为 1（也反证 `JEFFLOW_DB_*` env 真实生效，非默认值假绿）；T2 `smoke_t2.sh` ALL PASS +

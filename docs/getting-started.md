@@ -101,6 +101,11 @@ $ moon run --target wasm cmd/main
 
 ## MySQL 仓储
 
+> 下面是**形状图**（`ctx_with(repo)` 是你的装配函数、`@repo` 是 `moon.pkg` 里给
+> `mldong/jeeflow-repository-mysql/repo` 起的别名）；可编译的最小装配见上面「5 分钟上手」，
+> 把 `@memory.MemoryRepository::new()` 换成 `@repo.MysqlRepository::from_env()`、
+> `@spi.Ctx::new(repo, @spi.NoExtRepository::new())` 即可。
+
 ```moonbit
 let repo = @repo.MysqlRepository::from_env()      // 读 JEFFLOW_DB_HOST/PORT/USER/PWD/NAME
 let facade = @facade.Facade::make(ctx_with(repo))
@@ -122,6 +127,11 @@ moon test --target wasm              # T0：全绿（用例数以实跑读数为
 moon run --target wasm demo/cmd/main # demo :8092（memory 默认）
 bash scripts/smoke_t2.sh             # T2：发起→待办→办理→完成→高亮→负向
 ```
+
+> 这三条是**单列命令**，但一个端口只能挂一个 demo：重复 `moon run` 会撞
+> `通常每个套接字地址(协议/网络地址/端口)只允许使用一次`。已有实例在跑就换端口
+> （`LISTEN_ADDR=127.0.0.1:8093 …`）并让冒烟跟着挪（`BASE=http://127.0.0.1:8093 bash scripts/smoke_t2.sh`），
+> 口径见 [demo.md](./demo.md)「本地起 demo」。
 
 ## 环境变量
 
