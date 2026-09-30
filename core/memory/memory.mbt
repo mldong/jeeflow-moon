@@ -13,6 +13,23 @@ fn query_match(q : @model.PageQuery, actor_ids : Array[String]) -> Bool {
 }
 
 ///|
+/// 参与者水合（六条任务读路共用）：task_actors 表是参与者唯一事实源——对齐 java
+/// JdbcProcessRepository 的 findTaskById:227 / mapTasks:571 无条件 setActorIds(findTaskActors)，
+/// 本栈 mysql 仓 hydrate_tasks 同构（其注释即「is_allowed 依赖 actor_ids」）。
+/// 内存仓聚合根上可能仍是**建单时**的集合：发起腿门面 addTaskActor、processTask/surrogate
+/// 追加都只写表（java 同款）。不水合则两类后果——① 办理/办结守卫 is_allowed 拿旧空集合误判
+/// 非处理人（demo 种子 define=14 零参与者申请节点实测 99999999，142 A 批「照样建单」后暴露）；
+/// ② 待办列表按 actor_ids 过滤 + 投影一起漏人（page_todo_tasks / find_doing_tasks 同族缺口）。
+fn hydrated_task(actors : Map[Int64, Array[String]], tid : Int64, task : @model.ProcessTask) -> @model.ProcessTask {
+  let out = task.clone()
+  match actors.get(tid) {
+    Some(acts) => out.actor_ids = acts.copy()
+    None => ()
+  }
+  out
+}
+
+///|
 /// 已办 operator 过滤：t.operator = 我（对齐 java doneList query.add("t.operator","EQ",userId)）。
 /// moon memory 语义 = 任务办理人 actor_id（finish(operator) 写入），非发起人 create_user。
 /// issues/117 §3.2：operator 缺失/空串 → **不匹配任何行**（原 `None => true` 等于"没传就给我
@@ -170,19 +187,7 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn update_instance(sel
 ///|
 pub impl @spi.ProcessRepository for MemoryRepository with fn find_task_by_id(self, task_id) {
   match self.tasks.get(task_id) {
-    Some(t) => {
-      // 参与者水合：task_actors 是参与者唯一事实源（对齐 java JdbcProcessRepository.findTaskById
-      // 的 setActorIds(findTaskActors) 与本栈 mysql hydrate_tasks「is_allowed 依赖 actor_ids」）。
-      // 发起腿门面自动办申请前只写 task_actors（java addTaskActor 同款），聚合根上仍是建单时集合
-      // ——不水合则办理守卫拿旧集合误判非处理人（demo 种子 define=14 零参与者申请节点实测
-      // 99999999「权限不足」，142 A 批「零参与者照样建单」后暴露）。
-      let task = t.clone()
-      match self.task_actors.get(task_id) {
-        Some(actors) => task.actor_ids = actors.copy()
-        None => ()
-      }
-      Some(task)
-    }
+    Some(t) => Some(hydrated_task(self.task_actors, task_id, t))
     None => None
   }
 }
@@ -206,7 +211,7 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn find_doing_tasks(se
   for tid in sorted_ids(self.tasks) {
     let t = self.tasks[tid]
     if t.process_instance_id == instance_id && t.task_state == @model.TaskState::Doing.code() && (task_names.is_empty() || task_names.contains(t.task_name)) {
-      out.push(t.clone())
+      out.push(hydrated_task(self.task_actors, tid, t))
     }
   }
   out
@@ -218,7 +223,7 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn find_done_tasks(sel
   for tid in sorted_ids(self.tasks) {
     let t = self.tasks[tid]
     if t.process_instance_id == instance_id && t.task_state == @model.TaskState::Finished.code() && (task_names.is_empty() || task_names.contains(t.task_name)) {
-      out.push(t.clone())
+      out.push(hydrated_task(self.task_actors, tid, t))
     }
   }
   out
@@ -230,14 +235,8 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn find_history_tasks(
   for tid in sorted_ids(self.tasks) {
     let t = self.tasks[tid]
     if t.process_instance_id == instance_id {
-      // 同 find_task_by_id：办结守卫 finish() 在聚合副本上再过一次 is_allowed
-      // （java mapTasks 对 findHistoryTasks 逐行 setActorIds 同款），副本不水合照样误判。
-      let task = t.clone()
-      match self.task_actors.get(tid) {
-        Some(actors) => task.actor_ids = actors.copy()
-        None => ()
-      }
-      out.push(task)
+      // 办结守卫 finish() 在聚合副本上再过一次 is_allowed（java mapTasks 逐行 setActorIds 同款）
+      out.push(hydrated_task(self.task_actors, tid, t))
     }
   }
   out
@@ -429,7 +428,9 @@ fn task_row_of(
 pub impl @spi.ProcessRepository for MemoryRepository with fn page_todo_tasks(self, query) {
   let rows : Array[@model.TaskRow] = []
   for tid in sorted_ids(self.tasks) {
-    let t = self.tasks[tid]
+    // 水合必须在 query_match 过滤**之前**：发起腿 addTaskActor / surrogate 只写表，
+    // 拿聚合根旧集合过滤 ⇒ 该待办对真正的参与人整行不可见（java 走 actor 表 join，无此病）。
+    let t = hydrated_task(self.task_actors, tid, self.tasks[tid])
     if t.task_state == @model.TaskState::Doing.code() && query_match(query, t.actor_ids) {
       let inst = self.instances.get(t.process_instance_id)
       let define_info = match inst {
@@ -458,7 +459,8 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_done_tasks(sel
     return @model.PageResult::new(query.page_num(), query.page_size(), 0L, [])
   }
   for tid in sorted_ids(self.tasks) {
-    let t = self.tasks[tid]
+    // 过滤按 actor_id（办理人，finish 写入）不受影响；水合为的是投影行 actor_ids 与表一致
+    let t = hydrated_task(self.task_actors, tid, self.tasks[tid])
     if t.task_state != @model.TaskState::Doing.code() && done_operator_match(query, t) {
       let inst = self.instances.get(t.process_instance_id)
       let define_info = match inst {
@@ -616,8 +618,8 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn get_all_tasks(self)
   }
   out
 }
-
-
-// ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
-// 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
-pub extend MemoryRepository with @spi.ProcessRepository::{add_task_actor, count_todo_tasks, create_cc_instance, create_cc_instance_if_absent, find_cc_actors, find_define_by_id, find_doing_tasks, find_done_tasks, find_history_tasks, find_instance_by_id, find_task_actors, find_task_by_id, get_all_instances, get_all_tasks, page_cc_instances, page_defines, page_done_tasks, page_instances, page_todo_tasks, remove_define, remove_task_actor, save_define, save_instance, save_task, update_cc_status, update_define, update_define_state, update_instance, update_task}
+
+
+// ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
+// 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
+pub extend MemoryRepository with @spi.ProcessRepository::{add_task_actor, count_todo_tasks, create_cc_instance, create_cc_instance_if_absent, find_cc_actors, find_define_by_id, find_doing_tasks, find_done_tasks, find_history_tasks, find_instance_by_id, find_task_actors, find_task_by_id, get_all_instances, get_all_tasks, page_cc_instances, page_defines, page_done_tasks, page_instances, page_todo_tasks, remove_define, remove_task_actor, save_define, save_instance, save_task, update_cc_status, update_define, update_define_state, update_instance, update_task}
