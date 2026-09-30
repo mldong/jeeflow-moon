@@ -170,7 +170,19 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn update_instance(sel
 ///|
 pub impl @spi.ProcessRepository for MemoryRepository with fn find_task_by_id(self, task_id) {
   match self.tasks.get(task_id) {
-    Some(t) => Some(t.clone())
+    Some(t) => {
+      // 参与者水合：task_actors 是参与者唯一事实源（对齐 java JdbcProcessRepository.findTaskById
+      // 的 setActorIds(findTaskActors) 与本栈 mysql hydrate_tasks「is_allowed 依赖 actor_ids」）。
+      // 发起腿门面自动办申请前只写 task_actors（java addTaskActor 同款），聚合根上仍是建单时集合
+      // ——不水合则办理守卫拿旧集合误判非处理人（demo 种子 define=14 零参与者申请节点实测
+      // 99999999「权限不足」，142 A 批「零参与者照样建单」后暴露）。
+      let task = t.clone()
+      match self.task_actors.get(task_id) {
+        Some(actors) => task.actor_ids = actors.copy()
+        None => ()
+      }
+      Some(task)
+    }
     None => None
   }
 }
@@ -218,7 +230,14 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn find_history_tasks(
   for tid in sorted_ids(self.tasks) {
     let t = self.tasks[tid]
     if t.process_instance_id == instance_id {
-      out.push(t.clone())
+      // 同 find_task_by_id：办结守卫 finish() 在聚合副本上再过一次 is_allowed
+      // （java mapTasks 对 findHistoryTasks 逐行 setActorIds 同款），副本不水合照样误判。
+      let task = t.clone()
+      match self.task_actors.get(tid) {
+        Some(actors) => task.actor_ids = actors.copy()
+        None => ()
+      }
+      out.push(task)
     }
   }
   out
