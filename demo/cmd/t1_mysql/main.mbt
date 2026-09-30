@@ -1050,6 +1050,57 @@ async fn t1_f118_custom_history_row() -> Unit raise {
 }
 
 ///|
+/// T1-F119（issues/142 §9.2 第二批）：remove_task_actor 删除位 trim＋空档零删除的真库读数。
+/// 「 f119a 」删得掉库里 trim 后的 f119a；空串/全白白入参一条 DELETE 都不发——
+/// 真库插一条 actor_id='' 的历史脏行，断言它原样保留（issues/129 删除位对偶）。
+async fn t1_f119_actor_remove_trim() -> Unit raise {
+  let repo = @repo.MysqlRepository::from_env()
+  clean_9x(repo)
+  set_sql(
+    repo,
+    "INSERT INTO wf_process_task (id, process_instance_id, task_name, display_name, task_type, perform_type, task_state, operator, variable, create_time, create_user) VALUES (990971, 990970, 't1f119', 'F119', 0, 0, 10, '', '{}', NOW(), 't1f')",
+    [],
+  )
+  repo.add_task_actor(990971L, ["  f119a  "])
+  check_eq(
+    count_of(
+      repo,
+      "SELECT COUNT(*) AS cnt FROM wf_process_task_actor WHERE process_task_id = 990971 AND actor_id = 'f119a'",
+      [],
+    ).to_string(),
+    "1",
+    "F119 写侧落库存 trim 值 f119a",
+  )
+  repo.remove_task_actor(990971L, ["  f119a  "])
+  check_eq(
+    count_of(
+      repo,
+      "SELECT COUNT(*) AS cnt FROM wf_process_task_actor WHERE process_task_id = 990971 AND actor_id = 'f119a'",
+      [],
+    ).to_string(),
+    "0",
+    "F119 带空格的删除打得中 trim 后的行",
+  )
+  set_sql(
+    repo,
+    "INSERT INTO wf_process_task_actor (id, process_task_id, actor_id, create_time, create_user) VALUES (999972, 990971, '', NOW(), 't1f')",
+    [],
+  )
+  repo.remove_task_actor(990971L, ["", "   "])
+  repo.remove_task_actor(990971L, [])
+  check_eq(
+    count_of(
+      repo,
+      "SELECT COUNT(*) AS cnt FROM wf_process_task_actor WHERE process_task_id = 990971",
+      [],
+    ).to_string(),
+    "1",
+    "F119 归一后为空 ⇒ 零删除，脏行原样保留",
+  )
+  clean_9x(repo)
+}
+
+///|
 async fn run() -> Unit raise {
   if skip_mysql() {
     println("SKIP_MYSQL=1 → T1-F skipped (开发机口径；发版机连不上=fail)")
@@ -1067,6 +1118,8 @@ async fn run() -> Unit raise {
   t1_f117_done_list()
   println("T1-F118 facade 记录类历史行真落库 + 零待办 + 已注册/未注册两档 clazz 续流真机对拍...")
   t1_f118_custom_history_row()
+  println("T1-F119 facade 删除位 trim 命中 + 空档零删除真机对拍...")
+  t1_f119_actor_remove_trim()
   println("T1-F ALL PASS (wasm → 真机 MySQL)")
 }
 

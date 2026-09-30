@@ -234,6 +234,13 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn find_task_actors(se
 
 ///|
 pub impl @spi.ProcessRepository for MemoryRepository with fn add_task_actor(self, task_id, new_actors) {
+  // issues/142 B 批（spec 06-facade §2.11「两仓 addTaskActor 写侧兜底」，owner 拍「八栈一起收：
+  // 两形同判据＋写侧兜底＋trim＋哨兵」）：判据复用 @model.normalize_actors 那一枚单点（逐元素
+  // trim、空串/纯空白丢弃、同一次调用折叠），落库与判重读的都是 trim 后的值 —— 与 MySQL 仓
+  // 同一把尺子，"同一栈两个仓储两个答案"由构造堵死（issues/117 场景 27）。
+  // 改前本仓只 `!entry.contains(a)` 判重**不判空** ⇒ 绕过门面/引擎直连仓储的调用方照样能把
+  // ""／纯空白灌进归属列 actor_id，那正是 issues/129 那族"空归属值读全库"的进水口。
+  // 反向哨兵："0" 与 "00" 是两个人，都得落（判空是 trim()==""，不是 falsy）。
   let entry = match self.task_actors.get(task_id) {
     Some(v) => v
     None => {
@@ -242,7 +249,7 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn add_task_actor(self
       v
     }
   }
-  for a in new_actors {
+  for a in @model.normalize_actors(new_actors) {
     if !entry.contains(a) {
       entry.push(a)
     }
@@ -250,12 +257,20 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn add_task_actor(self
 }
 
 ///|
+/// issues/142 §9.2 第二批（spec 06 §2.11 删除位与写侧同一条尺子）：删除列表先过
+/// `@model.normalize_actors`——不 trim 则「 8601 」删不掉库里 trim 后的 8601（静默 no-op 报成功）；
+/// 归一后为空 ⇒ 什么都不删（早退），空串入参在历史 actor_id='' 脏行上会批量误删
+/// （issues/129 的删除位对偶）。与 MySQL 仓同一条判据、同一个答案。
 pub impl @spi.ProcessRepository for MemoryRepository with fn remove_task_actor(self, task_id, remove_actors) {
+  let remove = @model.normalize_actors(remove_actors)
+  if remove.is_empty() {
+    return
+  }
   match self.task_actors.get(task_id) {
     Some(entry) => {
       let kept : Array[String] = []
       for a in entry {
-        if !remove_actors.contains(a) {
+        if !remove.contains(a) {
           kept.push(a)
         }
       }

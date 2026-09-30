@@ -395,10 +395,27 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_task_actors(sel
 }
 
 ///|
+/// issues/142 B 批（spec 06-facade §2.11）：本仓 `add_task_actor` **实际会 INSERT 的 actor 序**
+/// = `@model.normalize_actors(入参)` —— 逐元素 trim、空串/纯空白丢弃、同一次调用折叠，落库与
+/// 判重取 trim 后的值（" 123 " 与 "123" 是同一个人，不 trim 就与 §2.11 的写侧判重错开、同一人落两行）。
+///
+/// 抽成 pub 纯函数的理由与同文件 `cc_actor_ids_to_insert` 一样：本栈 T0 档不连真库（真库档 T1
+/// 需 JEFFLOW_DB_* 且 native 编译要 cc），写侧这一层否则只能靠"内存腿同判据"间接推定 ——
+/// 有了这一支，`add_task_actor` 循环的实际入参就是它的返回值，还原归一该格当场红；
+/// 判据本身仍只在 @model 那一处（本函数只组合，不另写规则）。
+pub fn task_actor_ids_to_insert(actor_ids : Array[String]) -> Array[String] {
+  @model.normalize_actors(actor_ids)
+}
+
+///|
 pub impl @spi.ProcessRepository for MysqlRepository with fn add_task_actor(self, task_id, actors) {
+  // issues/142 B 批（spec 06-facade §2.11「两仓 addTaskActor 写侧兜底」）：循环的序取自
+  // task_actor_ids_to_insert —— 空串/纯空白一个都不插、trim 后的值才进 INSERT、同调用折叠；
+  // 之后仍按既有 SELECT 判重跳过库里已有的行。只修门面腿则绕过门面直连仓储的调用方
+  // 照样灌空归属值（issues/129 病根），所以这一层必须自己挡（§2.11 要求①「两层都挡」）。
   // 去重追加（C14：非全删全插）
   let conn = self.open_or_tx()
-  for actor in actors {
+  for actor in task_actor_ids_to_insert(actors) {
     let exists = q(conn, 
       "SELECT id FROM wf_process_task_actor WHERE process_task_id = ? AND actor_id = ? LIMIT 1",
       [@moondb.Int64(task_id), @moondb.Text(actor)],
@@ -419,9 +436,16 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn add_task_actor(self,
 }
 
 ///|
+/// issues/142 §9.2 第二批（spec 06 §2.11 删除位与写侧同一条尺子）：删除列表先过
+/// `@model.normalize_actors`（与内存仓同一枚）——「 8601 」删得掉库里的 8601；
+/// 归一后为空 ⇒ 一条 DELETE 都不发（空串入参批量误删历史 actor_id='' 脏行）。
 pub impl @spi.ProcessRepository for MysqlRepository with fn remove_task_actor(self, task_id, actors) {
+  let remove = @model.normalize_actors(actors)
+  if remove.is_empty() {
+    return
+  }
   let conn = self.open_or_tx()
-  for actor in actors {
+  for actor in remove {
     let _ = x(conn, 
       "DELETE FROM wf_process_task_actor WHERE process_task_id = ? AND actor_id = ?",
       [@moondb.Int64(task_id), @moondb.Text(actor)],

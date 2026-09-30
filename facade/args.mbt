@@ -237,35 +237,20 @@ pub fn arg_id(args : Map[String, Json], keys : Array[String]) -> Int64? raise @e
 }
 
 ///|
-/// actorIds：JSON 数组 / 逗号串双收
+/// actorIds：JSON 数组 / 逗号串**两形同判据**（issues/142 B 批 · spec 06-facade §2.11
+/// 「归属值写侧归一」，owner 2026-09-30 拍「八栈一起收：两形同判据＋写侧兜底＋trim＋哨兵」）。
+///
+/// 改前本函数"一参两尺"：串臂 trim＋丢空，数组臂却只 `if !s.is_empty()` ⇒ 不 trim、不折叠，
+/// 于是 `[" a "]` 与 `["a"]` 判成两个人、`["  "]` 原样进写侧落一行 actor_id="  "；而同文件紧邻的
+/// `create_cc_instance` 还额外过 @model 归一，`task_surrogate`（addCandidate/surrogate 同体）却不过。
+///
+/// 现在形状适配复用 `@engine.parse_actors`（issues/141 G10 为抄送腿落地的那一枚，§2.11 逐字搬到
+/// 任务侧）：数组里的数字按 repr 原文收敛成字符串（>2^53 不取整，D-M5-3）、true/false 转串、
+/// Json null 丢弃（本栈无 undefined 档，不许串化成 "null"）；判据复用 `@model.normalize_actors`
+/// （逐元素 trim、空串/纯空白丢弃、同一次调用折叠）。反向哨兵：`"0"`、`"00"` 都是有效值且是两个人。
+/// 空入参档由调用方沿用各自既有的"缺参数"错误信封（§2.11 要求③：不新造错误码与文案）。
 pub fn arg_actor_ids(args : Map[String, Json]) -> Array[String] {
-  let out : Array[String] = []
-  match args.get("actorIds") {
-    Some(Json::Array(arr)) =>
-      for v in arr {
-        match v {
-          Json::String(s) => if !s.is_empty() { out.push(s) }
-          // id 字符串化走 repr 原文优先（>2^53 防 double 取整，D-M5-3）
-          Json::Number(n, repr~) =>
-            match repr {
-              Some(s) => out.push(s)
-              None => out.push(n.to_int64().to_string())
-            }
-          Json::Null => ()
-          _ => ()
-        }
-      }
-    Some(Json::String(s)) => {
-      for part in s.split(",") {
-        let t = part.to_owned().trim(chars=" \t\r\n").to_owned()
-        if !t.is_empty() {
-          out.push(t)
-        }
-      }
-    }
-    _ => ()
-  }
-  out
+  @engine.parse_actors(args.get("actorIds"))
 }
 
 ///|

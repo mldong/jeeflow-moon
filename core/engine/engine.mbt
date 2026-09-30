@@ -83,13 +83,14 @@ fn gen_auto_title(args : @json.FlowData, display_name : String) -> String {
 ///|
 /// 参与人解析（优先级：tf_nextNodeOperator → assignee 字面量/变量 → assignmentHandler → candidateUsers）
 fn[R, E] Engine::resolve_assignee(self : Engine[R, E], exec : @exec.Execution, node : @parser.NodeModel) -> Array[String] {
-  // 1. tf_nextNodeOperator
-  match exec.args.get_str("tf_nextNodeOperator") {
-    Some(next_op) =>
-      if !next_op.is_empty() {
-        return split_actors(next_op)
-      }
-    None => ()
+  // 1. tf_nextNodeOperator（issues/142 B 批 · spec 06-facade §2.11「消费腿两形同判据」）
+  //    改前这一腿走 `exec.args.get_str(...)` ⇒ 只认逗号串：发起人用**数组**指派下一节点参与者时
+  //    整条失效（静默落回节点自己的 assignee），而逗号串"全空白"档（如 " , ,, "）非空 ⇒ 直接 return
+  //    空集合 ⇒ 建出一张零参与者待办。现在两形都过同一个适配器 parse_actors（与 cc 腿同一枚），
+  //    判据只在 @model.normalize_actors 那一处；解析后为空 ⇒ 视为"没指派"，按优先级链落下一腿。
+  let next_ops = parse_actors(exec.args.get("tf_nextNodeOperator"))
+  if !next_ops.is_empty() {
+    return next_ops
   }
   // 2. assignee 字面量 / 变量引用
   match node.assignee() {
@@ -123,31 +124,20 @@ fn[R, E] Engine::resolve_assignee(self : Engine[R, E], exec : @exec.Execution, n
     None => ()
   }
   // 4. candidateUsers（candidateGroups 由 OrgUserProvider 在上层装配处理）
-  let actors : Array[String] = []
-  match node.candidate_users() {
-    Some(users) => {
-      for u in users.split(",") {
-        let s = u.to_owned().trim(chars=" \t\r\n").to_owned()
-        if !s.is_empty() {
-          actors.push(s)
-        }
-      }
-    }
-    None => ()
+  //    逗号串切元素后同样只过 @model.normalize_actors 那一枚判据（issues/142 B 批：本栈不许
+  //    同时存在"过归一的腿"与"本地各写一份 trim 的腿"）
+  let users = match node.candidate_users() {
+    Some(u) => u
+    None => ""
   }
-  actors
+  @model.normalize_comma_actors(users)
 }
 
 ///|
+/// 逗号串切元素（issues/142 B 批：判据不再本地各写一份 trim/is_empty —— 与数组腿、门面腿、
+/// 两仓写侧同一枚 @model.normalize_actors；顺带把"同一次调用内的重复"折叠到与数组档同一答案）
 fn split_actors(s : String) -> Array[String] {
-  let out : Array[String] = []
-  for part in s.split(",") {
-    let t = part.to_owned().trim(chars=" \t\r\n").to_owned()
-    if !t.is_empty() {
-      out.push(t)
-    }
-  }
-  out
+  @model.normalize_comma_actors(s)
 }
 
 ///|
@@ -788,15 +778,23 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::pers
 }
 
 ///|
-/// 解析抄送人（issues/56 E28）：JSON 数组 / 逗号串 / 空三形态 —— 发起 `f_ccActors`、办理
-/// `tf_ccActors`（issues/141 G6 两腿同器）与子流程发起腿三条入口共用的**唯一漏斗**。
+/// 参与者集合的**形状适配器**（issues/56 E28 起为抄送腿而生，issues/142 B 批按 spec 06-facade
+/// §2.11 逐字搬到任务侧）：JSON 数组 / 逗号串 / 空三形态在这一层汇成元素序，随后一律过
+/// `@model.normalize_actors` 那一枚判据 —— 空串/纯空白/数组里的空元素丢弃、**值取 trim 后的串**、
+/// 同一次调用内的重复折叠；丢完为空 ⇒ 调用方按"没给"处理（建 cc 的三条入口不建行也不 fire 码 4，
+/// 任务侧的 nextNodeOperator 腿则落回下一优先级）。这里**只切形状、不判空**（§2.11「不要再抄第二份」）。
 ///
-/// issues/141 G10（spec 06-facade §2.10「空抄送人不建 cc 行」）：两形态的产物一律过
-/// `@model.normalize_cc_actors` 收口 —— 空串/纯空白/数组里的空元素丢弃、**值取 trim 后的串**、
-/// 同一次调用内的重复折叠；丢完为空 ⇒ 调用方不建 cc 行也不 fire 码 4。归一不在这里各抄一份：
-/// 逗号腿与数组腿只负责"切成元素"（此前数组腿只丢 `""`、不 trim ⇒ `["  "]` 原样进写侧、
-/// `[" a "]` 落成与 `"a"` 不同的两个人），空值判据只在 `@model` 那一处。
-pub fn parse_cc_actors(v : Json?) -> Array[String] {
+/// 数组元素档（§2.11「不得被静默丢弃或串化成类型名」）：
+/// · 字符串 ⇒ 原样交给判据；
+/// · 数字 ⇒ 收敛成字符串，**repr 原文优先**（>2^53 的雪花 id 不被 double 取整，D-M5-3），
+///   与别栈 `String.valueOf`/`str()`/`String()` 同形（rust 那腿"数字元素静默丢弃"是反面，不照抄）；
+/// · true/false ⇒ "true"/"false"；
+/// · `Json::Null` ⇒ 丢弃（本栈 Json 无 undefined 档，Null 就是 §2.11 说的 null/undefined 对应物，
+///   不许串化成 "null"/"None"/"<nil>"）；对象/嵌套数组等非标量 ⇒ 丢弃。
+///
+/// 抄送三支入口（发起 `f_ccActors`／办理 `tf_ccActors`／子流程发起腿）与任务侧
+/// `f_nextNodeOperator`／`tf_nextNodeOperator` 共用这一支，两形同判据由构造成立。
+pub fn parse_actors(v : Json?) -> Array[String] {
   let out : Array[String] = []
   match v {
     None => ()
@@ -822,6 +820,15 @@ pub fn parse_cc_actors(v : Json?) -> Array[String] {
     }
     Some(_) => ()
   }
-  // issues/141 G10 判据单点：空值丢弃 + trim + 同调用折叠只在 @model.normalize_cc_actors 写一次
-  @model.normalize_cc_actors(out)
+  // 判据单点：空值丢弃 + trim + 同调用折叠只在 @model.normalize_actors 写一次
+  @model.normalize_actors(out)
+}
+
+///|
+/// issues/141 G10 时这一支只挂抄送腿、旧名 `parse_cc_actors`；issues/142 B 批（spec §2.11）把它
+/// 升格为通用的 `parse_actors`（任务侧 nextNodeOperator 共用同一枚），本名**保留为转发** ——
+/// 已发布 mooncakes 模块（mldong/jeeflow-core，0.1.x 线）的公开成员，既有调用点（engine_ops 三处
+/// 抄送入口）与既有测试不破；适配器本体不在这里复制。
+pub fn parse_cc_actors(v : Json?) -> Array[String] {
+  parse_actors(v)
 }

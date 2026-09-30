@@ -548,26 +548,28 @@ pub fn cc_fresh_subset(existing : Array[String], requested : Array[String]) -> A
   fresh
 }
 
-///|
-/// issues/141 G10（spec 06-facade §2.10「空抄送人不建 cc 行」，owner 2026-09-29 拍「空不创建行」；
-/// 基准＝java `5fbd5ac` 的 `StringUtils.normalizeCcActors`）：抄送人集合归一 —— 逐元素 **trim**、
-/// **空串与纯空白一律丢弃**、同一次调用内的重复折叠（顺序保持）。
+/// issues/142 B 批（spec 06-facade §2.11「归属值写侧归一 · actor_id 与 task id」，owner 2026-09-30
+/// 拍「八栈一起收：两形同判据＋写侧兜底＋trim＋哨兵」；基准＝java `StringUtils.normalizeCcActors` 那一枚）：
+/// issues/141 G10 落地的那枚归一判据在这里**升格为通用单点** —— 参与者/抄送人集合一律过同一枚：
+/// 逐元素 **trim**、**空串与纯空白一律丢弃**、同一次调用内的重复折叠（顺序保持），
+/// 落库与比较一律取 **trim 后的值**。
 ///
-/// **判据只有这一份**，三层都调它（两层都挡 ⇒ 绕过引擎/门面直连仓储的调用方同样灌不进空值）：
-/// - 漏斗层：`core/engine` 的 `parse_cc_actors`（发起 `f_ccActors`／办理 `tf_ccActors`／子流程发起腿
-///   三条入口共用同一个解析器，逗号串与数组两形态在这一层汇流）；
-/// - 门面手动腿：`processInstance/createCCInstance`（丢完为空 ⇒ 与该仓既有"空集合"档同判，
-///   沿用 `actorIds 缺失` 文案，本函数只归一集合、不新造错误语义）；
-/// - 写侧层：内存仓与 MySQL 仓的 `create_cc_instance` / `create_cc_instance_if_absent`。
+/// 为什么是「升格」而不是「另立一枚」（§2.11 尾注原话：「归一判据请复用 §2.10 已落地的那一枚单点
+/// ……必要时改名成通用的 normalizeActors——**不要再抄第二份**」）：两份判据迟早分叉，本栈普查实读
+/// 到的正是「同一把尺子长两副面孔」——`create_cc_instance` 过归一、紧邻的 `task_surrogate` 不过。
+/// 旧名 `normalize_cc_actors` 保留为**转发**（见下），判据本体只这一份。
 ///
-/// 为什么必须带 trim（G2 与 G10 的咬合点）：`" 123 "` 与 `"123"` 是同一个人，落库与比较都取 trim
-/// 后的值，否则 `cc_fresh_subset` 的写侧判重会被空白化差异绕开、同一人落两行（issues/141 G2 被打穿）。
+/// 覆盖的写点（§2.11 表，与 §2.10 的抄送三入口同一枚）：
+/// · 门面腿：`processTask/addCandidate`、`processTask/surrogate`（同体）、`processTask/transfer` 的
+///   fromActor/toActor（单值档走下面的 `normalize_actor`）、`processInstance/createCCInstance`；
+/// · 漏斗腿：`core/engine` 的 `parse_cc_actors` 与发起/办理两侧的 f_/tf_nextNodeOperator（§2.11 消费腿）；
+/// · 写侧层：内存仓与 MySQL 仓的 `add_task_actor`／`create_cc_instance`／`create_cc_instance_if_absent
+///   —— **两层都挡**：只修门面腿则绕过门面直连仓储的调用方照样灌空值（issues/129 那族病根）。
 ///
-/// ⚠️ **反向哨兵**：判据是「trim 后 `is_empty()`」，不是 falsy —— `"0"` 这类"看起来像空"的正常 id
-/// 必须保留，不得被当空值丢掉。
-///
-/// 丢完为空 ⇒ 调用方不得建任何 cc 行、也不得 fire CC_CREATE（码 4）（spec §11.2 原则 1「码=事实」）。
-pub fn normalize_cc_actors(raw : Array[String]) -> Array[String] {
+/// ⚠️ **反向哨兵**：判据是「trim 后 `is_empty()`」，**不是 falsy** —— `"0"`、`"00"`、`"false"` 这类
+/// 「看起来像空」的正常 id 必须保留，且 `"0"` 与 `"00"` 是**两个人**（严禁松散比较把第二个静默折叠）；
+/// `" "` 纯空白按本条丢弃（与 §2.10 逐字同源）。
+pub fn normalize_actors(raw : Array[String]) -> Array[String] {
   let out : Array[String] = []
   for actor_id in raw {
     let t = actor_id.trim(chars=" \t\r\n").to_owned()
@@ -576,6 +578,38 @@ pub fn normalize_cc_actors(raw : Array[String]) -> Array[String] {
     }
   }
   out
+}
+
+///|
+/// 单个归属值归一（§2.11 表里 `transfer` 的 fromActor/toActor 是「单值档」）：判据**复用**
+/// `normalize_actors`，不另写第二枚 trim/is_empty。空串与纯空白 ⇒ `None`，调用方按本仓既有的
+/// 「缺参数」错误信封报错（§2.11 要求③：不新造错误码与文案）。
+pub fn normalize_actor(raw : String) -> String? {
+  match normalize_actors([raw]) {
+    [v] => Some(v)
+    _ => None
+  }
+}
+
+///|
+///|
+/// 逗号串 → 参与者序（issues/142 B 批）：切元素在本函数完成，判据仍交回 `normalize_actors`
+/// 那一枚单点 —— 本栈"逗号串形态"的三条腿（引擎 assignee/assignmentHandler 解析、门面出口侧
+/// 候选人名册、nextNodeOperator 消费腿）由此共用同一把尺子，不再各写一份 trim/is_empty。
+/// 数字/布尔等非字符串元素不在这一档（那是 Json 形态的事，走 `@engine.parse_actors` 的形状适配）。
+pub fn normalize_comma_actors(s : String) -> Array[String] {
+  let out : Array[String] = []
+  for part in s.split(",") {
+    out.push(part.to_owned())
+  }
+  normalize_actors(out)
+}
+
+/// issues/141 G10 时这枚判据的旧名（当时只挂抄送一支）：§2.11 把它逐字搬到任务侧后升格为
+/// `normalize_actors`，本名**保留为转发** —— 已发布 mooncakes 模块（mldong/jeeflow-core，0.1.x 线）
+/// 的公开成员，既有调用方与既有测试不破；判据**不在这里复制**。
+pub fn normalize_cc_actors(raw : Array[String]) -> Array[String] {
+  normalize_actors(raw)
 }
 
 

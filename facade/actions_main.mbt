@@ -267,17 +267,23 @@ fn bool_of_bool(b : Bool) -> Json {
 }
 
 ///|
-/// 必填字符串参数（剔除首尾空白；缺失/空串 → msg 跨栈统一文案，issues/114/115）
+/// 必填字符串参数（issues/114 语义：缺失即报错、返回 trim 后的值）
+///
+/// issues/142 B 批（spec 06-facade §2.11「transfer 的 fromActor/toActor 归一后再用」）：判空判据
+/// 不再本地另写一份 trim/is_empty，**复用** @model.normalize_actor（内部就是集合那一枚
+/// normalize_actors）—— 于是 `processTask/transfer` 的 fromActor/toActor 与参与者表的比对、
+/// 账本与便捷键落库的都是 trim 后的值（" leader " 与 "leader" 同一个人）。
+/// 空白档沿用**调用方传入的既有"必填"文案**（§2.11 要求③：不新造错误码与文案）；
+/// 反向哨兵："0" 是有效值，判据是 trim()=="" 而不是 falsy。
 fn arg_required_str(
   args : Map[String, Json],
   key : String,
   msg : String
 ) -> String raise @error.JeeflowError {
-  let v = arg_str(args, key).unwrap_or("").trim(chars=" \t\r\n").to_owned()
-  if v.is_empty() {
-    raise @error.Business(msg)
+  match @model.normalize_actor(arg_str(args, key).unwrap_or("")) {
+    Some(v) => v
+    None => raise @error.Business(msg)
   }
-  v
 }
 
 ///|
@@ -403,11 +409,12 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::create_cc_instance(self : Fa
     None => raise @error.Business("processInstanceId 缺失")
   }
   let operator = operator_arg(args)
-  // issues/141 G10（spec 06 §2.10「空抄送人不建 cc 行」）：手动腿与引擎腿走同一支归一
-  // @model.normalize_cc_actors —— 空串/纯空白/数组里的空元素一律丢弃，值取 trim 后的串
-  // （此前数组形态 ["  "] 会原样建一行 actor_id="  "，[" a "] 与 "a" 判成两个人）。
+  // issues/141 G10（spec 06 §2.10「空抄送人不建 cc 行」）＋ issues/142 B 批（§2.11 同一枚判据）：
+  // 手动腿与两条引擎腿共用 @engine.parse_actors 的形状适配，判据只在 @model.normalize_actors
+  // 那一处 —— 空串/纯空白/数组里的空元素一律丢弃，落库与比较取 trim 后的值，同调用折叠
+  // （改前本行是"再归一一次"，因为 arg_actor_ids 的数组臂不 trim ⇒ [" a "] 与 "a" 判成两个人）。
   // 丢完为空 ⇒ 与下面这条既有的"空集合"档同判（沿用 `actorIds 缺失`，不新造错误码/文案）。
-  let actors = @model.normalize_cc_actors(arg_actor_ids(args))
+  let actors = arg_actor_ids(args)
   if actors.is_empty() {
     raise @error.Business("actorIds 缺失")
   }
@@ -431,7 +438,15 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::update_cc_status(self : Faca
     Some(v) => v
     None => raise @error.Business("processInstanceId 缺失")
   }
-  let operator = operator_arg(args)
+  // issues/142 §9.2 复核补（spec 06 §2.11 表第四行）：operator 归一后再交给仓储比——
+  // operator_arg 已把空档回落 demo 缺省 user1（issues/129 案 A），这里补 trim 那半：
+  // 不 trim 则「 9101 」打不中库里 trim 后的行（点了已读没反应）。与 java
+  // normalizeActor(operatorArg(args)) 同构，其 error(「operator 必填」) 分支因回落
+  // 恒非空而不可达，本栈 None ⇒ 同文案保形。
+  let operator = match @model.normalize_actor(operator_arg(args)) {
+    Some(op) => op
+    None => raise @error.Business("operator 必填")
+  }
   (self.repo).update_cc_status(instance_id, operator)
   @json.null_json()
 }
@@ -711,15 +726,10 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::candidate_page(self : Facade
 }
 
 ///|
+/// 逗号串切元素（出口侧候选人名册用）：issues/142 B 批把判据并进 @model.normalize_actors
+/// 那一枚单点，本函数只负责"切成元素"，不再本地各写一份 trim/is_empty（两把尺子迟早分叉）。
 fn split_comma(s : String) -> Array[String] {
-  let out : Array[String] = []
-  for part in s.split(",") {
-    let t = part.to_owned().trim(chars=" \t\r\n").to_owned()
-    if !t.is_empty() {
-      out.push(t)
-    }
-  }
-  out
+  @model.normalize_comma_actors(s)
 }
 
 ///|
@@ -729,6 +739,17 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::task_surrogate(self : Facade
     Some(v) => v
     None => raise @error.Business("processTaskId/actorIds 缺失")
   }
+  // 主键另判一档（spec 06-facade §2.11 末段，issues/142 B 批）：`processTaskId` 缺失/空串/非正数
+  // 都是调用方写错了，必须响亮报错，**不得拿 0 当 id 往下落参与者行**。空串档在 arg_i64 已落
+  // 既有"非法id"信封；0/负数与缺键同判这一档 —— 沿用既有错误码与文案（§2.11 要求③），
+  // 与"归属值为空 ⇒ 丢弃"是两件事：归属值可有可无，主键没有就是错，静默接受会把脏数据钉进表里。
+  if task_id <= 0L {
+    raise @error.Business("processTaskId/actorIds 缺失")
+  }
+  // issues/142 B 批（§2.11「两形同判据＋写侧兜底＋trim＋哨兵」）：arg_actor_ids 现在自带
+  // @engine.parse_actors 的形状适配 + @model.normalize_actors 那一枚判据（逐元素 trim、
+  // 空串/纯空白丢弃、同一次调用折叠、数字元素按 repr 原文收敛成串），与紧邻的
+  // create_cc_instance 从此同一把尺子；绕过门面直连仓储的调用方由两仓 add_task_actor 再挡一次。
   let actors = arg_actor_ids(args)
   if actors.is_empty() {
     raise @error.Business("processTaskId/actorIds 缺失")

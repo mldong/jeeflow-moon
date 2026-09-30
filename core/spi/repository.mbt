@@ -37,7 +37,20 @@ pub(open) trait ProcessRepository {
   async fn find_done_tasks(Self, Int64, Array[String]) -> Array[@model.ProcessTask] raise @error.JeeflowError
   async fn find_history_tasks(Self, Int64) -> Array[@model.ProcessTask] raise @error.JeeflowError
   async fn find_task_actors(Self, Int64) -> Array[String] raise @error.JeeflowError
+  ///|
+  /// **归属值写侧归一义务**（issues/142 B 批 · spec 06-facade §2.11，与上面抄送三条义务同一枚尺子）：
+  /// 实现方自己必须挡空值 —— 入参里**空串、纯空白一律丢弃**，落库与判重取 **trim 后的值**
+  /// （" 123 " 与 "123" 是同一个人 ⇒ 不 trim 就会让同一人落两行），同一次调用内的重复也折叠。
+  /// ⚠️ 这一层不能只写在门面/引擎：绕过它们直连仓储的调用方（集成层、第三方仓储消费者）
+  /// 照样能把空归属值灌进归属列 `actor_id`，那正是 issues/129 那族"空归属值读全库"的进水口。
+  /// 判据单点＝`@model.normalize_actors`（两仓都调它，不许各抄一份 —— §2.11 尾注「不要再抄第二份」）。
+  /// 反向哨兵："0"／"00" 这类"看起来像空"的正常 id 是有效值且是**两个人**，不得被当空值丢掉。
+  /// 主键 `task_id` 另判一档：缺失/空串/非正数是调用方写错了，必须响亮报错，不得拿 0 当 id 落库。
   async fn add_task_actor(Self, Int64, Array[String]) -> Unit raise @error.JeeflowError
+  /// issues/142 §9.2 第二批（spec 06 §2.11 删除位与写侧同一条尺子）。实现方必须：
+  /// ① 删除列表先过 `@model.normalize_actors`（与 add_task_actor 同一枚）——存量行存的是 trim 后的串，
+  /// 入参带空格时按原样比会静默不中（转办「摘原人」落在这种报成功却没删上）；
+  /// ② 归一后为空 ⇒ 一条都不删（早退）——空串入参在历史 actor_id='' 脏行上会批量误删。
   async fn remove_task_actor(Self, Int64, Array[String]) -> Unit raise @error.JeeflowError
   async fn create_cc_instance(Self, Int64, String, Array[String]) -> Unit raise @error.JeeflowError
   // issues/141 G2：写侧判重的读侧（某实例已有 cc 行的 actor id）与幂等建行的入口（返回实际新建子集）。
