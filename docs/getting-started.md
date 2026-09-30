@@ -20,8 +20,9 @@
 
 ## 安装（作为 SDK 依赖）
 
-mooncakes.io 正式版本（0.1.x 线）。核心引擎仅依赖 MoonBit 标准库，按需引入仓储/门面——
-`moon add` 不带版本即拉 latest，自动把解析到的精确版本写进 moon.mod（实测 0.1.14，
+mooncakes.io 正式版本（0.x 线）。核心引擎仅依赖 MoonBit 标准库，按需引入仓储/门面——
+`moon add` 不带版本即拉 latest，自动把解析到的精确版本写进 moon.mod（版本以各模块
+`moon.mod` 与 [CHANGELOG](./CHANGELOG.md) 为准，活文档不手写版本号；
 传递依赖 moondb/moonmysql/async 一并解析，无需手声明）：
 
 ```bash
@@ -68,7 +69,7 @@ let facade = @facade.Facade::make(ctx_with(repo))
 ```bash
 export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH   # MOON_HOME=你的工具链安装目录（见上方安装节）
 
-moon test --target wasm              # T0：119 用例全绿（合规场景/submitType 矩阵/事件/出口契约）
+moon test --target wasm              # T0：全绿（用例数以实跑读数为准；合规场景/submitType 矩阵/事件/出口契约）
 moon run --target wasm demo/cmd/main # demo :8092（memory 默认）
 bash scripts/smoke_t2.sh             # T2：发起→待办→办理→完成→高亮→负向
 ```

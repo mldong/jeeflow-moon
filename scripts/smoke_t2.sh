@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # T2 demo 冒烟（对标 php smoke_test.php）：全链路 发起→待办→办理→完成→高亮→stats
-# 前置：demo 已启动（moon run --target wasm demo/cmd/main，:8092）
+# 前置：demo 已启动（moon run --target wasm demo/cmd/main，:8092）；依赖 curl + python（或 python3，用于解析 JSON 响应）
 set -e
 BASE=${BASE:-http://127.0.0.1:8092}
 B=$BASE/wf

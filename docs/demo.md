@@ -22,7 +22,7 @@ JEFFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main   # 默认 memory
 | `POST /wf/{action}` | 全转发 facade（40+ action） |
 | `GET /health` | 健康检查（返回 engine/store） |
 | `POST /api/reset` | memory 模式重建状态 + 重载种子；mysql 模式回 ok |
-| `GET /api/stats?operator=` | 待办/实例计数（demo 专用） |
+| `GET /api/stats` | 待办/实例计数（demo 专用；operator 缺省 `user1`。⚠️ wasm 路由不剥查询串——带 `?…` 会整串当 path 匹配，返回 `99999999 unknown path`） |
 | CORS | 全开（本地 UI 直连） |
 
 ## jeeflow-ui 直连

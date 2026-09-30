@@ -13,15 +13,34 @@ let resp = facade.flow("processTask/execute", args)   // {code, msg, data}
 
 ## 40+ action 分组
 
-| 组 | 数量 | action |
+下表为语义分组速览，action 一律写 **wire 名**（即 `flow()` / `POST /wf/{action}` 的实参）；精确计数以 `scripts/action-manifest.json` 为准。
+
+| 组 | 数量 | action（wire 名） |
 |----|------|--------|
-| processDefine | 8 | page / detail / start_and_execute / deploy / redeploy / remove / up_and_down / get_last_by_name |
-| processInstance | 14（含 stats 3） | page / detail / start_and_execute / withdraw / bizData / highLight / approvalRecord / getAssigneeTextData / createCCInstance / updateCCStatus / ccList / stats/overview / stats/trend / stats/group |
-| processTask | 9 | todoList / doneList / execute / taskDetail / jumpAbleTaskNameList / candidatePage / surrogate / addCandidate / latest |
+| processDefine | 8 | page / detail / startAndExecute / deploy / redeploy / remove / upAndDown / getLastByName |
+| processInstance | 14（含 stats 3） | page / detail / startAndExecute / withdraw / bizData / highLight / approvalRecord / getAssigneeTextData / createCCInstance / updateCCStatus / ccList / stats/overview / stats/trend / stats/group |
+| processTask | 10 | todoList / doneList / execute / detail / jumpAbleTaskNameList / candidatePage / surrogate / addCandidate / transfer / latest |
 | processDesign | 9（需扩展仓储） | page / detail / save / update / updateDefine / remove / deploy / redeploy / listByType |
 | processSurrogate | 5（需扩展仓储） | page / save / update / detail / remove |
 
 契约源：`scripts/action-manifest.json`（与 java `JeeflowFacade` 实查双向无差集，精确计数以 manifest 为准）。
+
+### 请求/响应示例：`processDefine/startAndExecute`
+
+发起后引擎自动以 `submitType=0`（APPLY）完成申请节点（`assignee="applicant"` → 发起人），
+下一节点的办理人即可在 `processTask/todoList` 里看到待办。demo 实测一对真实值：
+
+请求（`POST /wf/processDefine/startAndExecute` 的 body）：
+
+```json
+{"processDefineId":1,"operator":"applicant"}
+```
+
+响应（出口契约生效：雪花 id 已字符串化，防 float64 精度丢失）：
+
+```json
+{"code":0,"msg":"成功","data":{"processInstanceId":"2105199812302348288"}}
+```
 
 ## 引擎操作（核心语义）
 
@@ -55,4 +74,4 @@ let resp = facade.flow("processTask/execute", args)   // {code, msg, data}
 
 ## stats / reset（仅 demo）
 
-`GET /api/stats?operator=`、`POST /api/reset`、`GET /health` 只存在于 demo 服务，mldong 集成栈没有——契约细节见 [演示站](./demo.md)。
+`GET /api/stats`、`POST /api/reset`、`GET /health` 只存在于 demo 服务（stats 无查询串——wasm 路由不剥 `?`，operator 缺省 `user1`），mldong 集成栈没有——契约细节见 [演示站](./demo.md)。

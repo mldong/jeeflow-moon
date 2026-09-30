@@ -64,7 +64,7 @@ ctx.register_interceptor(interceptor.as_interceptor())  // order=100 后置
 JEFFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main
 ```
 
-路由契约：`POST /wf/{action}`（全转发 facade）+ `GET /health` + `POST /api/reset` + `GET /api/stats?operator=`。
+路由契约：`POST /wf/{action}`（全转发 facade）+ `GET /health` + `POST /api/reset` + `GET /api/stats`（无查询串，operator 缺省 `user1`——wasm 路由不剥 `?` 后缀，带查询串会 unknown path）。
 
 ## 时钟基准（宿主注入）
 

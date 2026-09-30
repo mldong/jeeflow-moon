@@ -79,7 +79,7 @@ let resp = facade.flow("processDefine/startAndExecute", args)   // {code:0, msg,
 - **40+ action facade** — every engine capability routes through `flow(action, args)` with the
   federation envelope: success `code=0`, business failure `99999999` (and nothing else), unknown
   action rejected at the top level. Groups: `processDefine` (8), `processInstance` (14, incl. 3
-  stats), `processTask` (9), `processDesign` (9), `processSurrogate` (5). An outbound contract
+  stats), `processTask` (10), `processDesign` (9), `processSurrogate` (5). An outbound contract
   layer runs on every response: snake→camel keys, recursive id stringification (including plural
   id arrays — snowflakes exceed float64), `yyyy-MM-dd HH:mm:ss` times, five-key pagination
   (`pageNum/pageSize/recordCount/totalPage/rows`).
