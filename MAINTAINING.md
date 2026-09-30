@@ -30,8 +30,11 @@
 >    （`repository-mysql/smoke/smoke.mbt:2`、`core/json/json.mbt:55`、`core/memory/memory.mbt:4`），
 >    且 `core/engine/compliance_test.mbt:321` 仍写「15 flows 驱动」——`core` / `repository-mysql`
 >    是已发布模块，动它们＝重发注册表，与「只改文档」的边界冲突 ⇒ 只在本节说明，不改源码。
-> ② demo 对**未知** `JEEFLOW_DEMO_STORE` 值仍静默回落 memory（`App::create()` 的 `_` 臂）。
->    `demo` 是未发布模块，补一行 WARN 零发布成本，但属行为改动 ⇒ 留下一轮连同门禁一起做。
+> ② ~~demo 对未知 `JEEFLOW_DEMO_STORE` 值仍静默回落 memory~~ **已于同日补掉**：
+>    `App::create()` 现在对"拼错名（`JEFFLOW_DEMO_STORE`）"和"非法值（非逐字 memory/mysql）"
+>    各打一行 `警告：…`，四种组合逐条真跑过（含 `JEEFLOW_DEMO_STORE=mysql` 走到 mysql 臂、
+>    横幅 `store=mysql`）。`demo` 未发布 ⇒ 零注册表成本；但线上 `:8092` 镜像按 v0.1.23 构建，
+>    那一版仍静默，**下一次 tag 才带上**（文档里也照实标注了"v0.1.23 之后的 master 才有"）。
 > ③ 跨语言一致性对照只发布本语言一份（`consistency/moon.json`），其余语言快照仍在协调仓，
 >    公开 clone 者无法本地比对外语——需要时看 jeeflow-doc 的语言指南页。
 

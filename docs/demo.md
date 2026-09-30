@@ -8,9 +8,13 @@ JEEFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main   # 默认 memory
 ```
 
 > ⚠️ 变量名是 `JEEFLOW_DEMO_STORE`（两个 E），**不是** `JEFFLOW_DEMO_STORE`。本栈前缀两套并存：
-> demo 侧 `JEEFLOW_DEMO_STORE` / `JEEFLOW_TZ_OFFSET`，MySQL 侧 `JEFFLOW_DB_*`。拼错或值不是逐字
-> `mysql` 都**静默回落 memory**（`App::create()` 只认 `Some("mysql")`，其余走 `_` 臂），
-> 无报错无警告——存储模式只认启动横幅里的 `store=`。
+> demo 侧 `JEEFLOW_DEMO_STORE` / `JEEFLOW_TZ_OFFSET`，MySQL 侧 `JEFFLOW_DB_*`。
+> 两种踩法现在都会打一行 `警告：…` 并回落 memory（`App::create()` 只认逐字 `memory` / `mysql`，
+> 大小写敏感）：拼错名 ⇒ 警告点名"那条变量没生效"；值不认识 ⇒ 警告点名非法值。
+> ⚠️ 这条警告是 **v0.1.23 之后的 master** 才有；线上 `:8092` 演示镜像按 v0.1.23 构建，那一版是
+> 静默回落——所以任何时候都只认启动横幅里的 `store=`。
+> （历史留痕：09-30 新手盲测实测旧写法拼错时整条被忽略、无报错无警告、`/api/reset` 照样回
+> `code=0`，会得到一个"看起来起来了"的假 mysql demo。）
 >
 > 一个端口只能起一个 demo：第二次 `moon run` 会撞
 > `通常每个套接字地址(协议/网络地址/端口)只允许使用一次`。换端口用

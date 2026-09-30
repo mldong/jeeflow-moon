@@ -70,9 +70,10 @@ JEEFLOW_DEMO_STORE=memory moon run --target wasm demo/cmd/main
 
 > ⚠️ 前缀拼法**两套并存**，别写成 `JEFFLOW_DEMO_STORE`：demo 侧是 `JEEFLOW_*`
 > （`JEEFLOW_DEMO_STORE` / `JEEFLOW_TZ_OFFSET`），MySQL 连接侧才是 `JEFFLOW_DB_*`。
-> `App::create()` 只认逐字 `Some("mysql")`，其它一律回落内存（`_ => App::memory_only()`）——
-> 拼错、或值写成 `Mysql`/`MYSQL`/空串，都**无报错无警告**，`/api/reset` 照样回 `code=0`。
-> 想确认存储模式只看启动横幅里的 `store=`。
+> `App::create()` 只认逐字 `memory` / `mysql`（大小写敏感），其它一律回落内存：拼错名、
+> 或值写成 `Mysql`/`MYSQL`/空串——**v0.1.23 之后的 master 会各打一行 `警告：…` 点名原因**
+> （v0.1.23 及以前是静默回落，`/api/reset` 照样回 `code=0`，最容易骗过人）。
+> 想确认存储模式，任何时候都只看启动横幅里的 `store=`。
 
 路由契约：`POST /wf/{action}`（全转发 facade）+ `GET /health` + `POST /api/reset` + `GET /api/stats`（无查询串，operator 缺省 `user1`——wasm 路由不剥 `?` 后缀，带查询串会 unknown path）。
 

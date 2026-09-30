@@ -70,9 +70,30 @@ pub fn App::mysql_mode() -> App raise {
 pub async fn App::create() -> App raise {
   // 时钟基准先于装配注入（issues/120 §9：引擎不自取基准，由宿主供给；本栈无集成壳 ⇒ demo 就是宿主）
   apply_clock_from_env()
+  // 存储模式判定。⚠️ 两条静默陷阱都在此收口（09-30 新手盲测 B2）：
+  // ① 变量名容易拼成 JEFFLOW_DEMO_STORE（两个 F）——本 demo 读的是 JEEFLOW_*（两个 E），
+  //    旧写法下拼错＝整条被忽略、静默起 memory，而 /api/reset 照样回 code=0，看起来「一切正常」；
+  // ② 值不是逐字 mysql/memory（大小写、Mysql、空串都算）——旧代码用 `_` 臂一走了之。
+  // 现口径：两种情况各打一行警告，只认逐字值；存储模式始终以启动横幅的 store= 为准。
+  match @env.get_env_var("JEFFLOW_DEMO_STORE") {
+    Some(v) =>
+      println(
+        "警告：检测到 JEFFLOW_DEMO_STORE=" + v + "（两个 F），但本 demo 读的是 JEEFLOW_DEMO_STORE（两个 E）" +
+          " ⇒ 那条变量没生效，本次仍按下面的实际模式起；想真连库请改拼法",
+      )
+    None => ()
+  }
   match @env.get_env_var("JEEFLOW_DEMO_STORE") {
     Some("mysql") => App::mysql_mode()
-    _ => App::memory_only()
+    Some("memory") => App::memory_only()
+    Some(other) => {
+      println(
+        "警告：JEEFLOW_DEMO_STORE=" + other +
+          " 既不是 memory 也不是 mysql（逐字比对、大小写敏感） ⇒ 回落 memory；想连真库请写 mysql，并以启动横幅的 store= 为准",
+      )
+      App::memory_only()
+    }
+    None => App::memory_only()
   }
 }
 

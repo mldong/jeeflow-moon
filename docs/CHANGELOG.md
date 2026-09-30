@@ -48,6 +48,14 @@
   以及历史注释里的 `docs/decisions-log.md` / `docs/m1-progress.md` 已不存在（内容并入 §4 与本文件）。
   **代码注释本体未改**：`core` / `repository-mysql` 是已发布模块，动注释就要重发注册表，超出
   「文档收尾」边界 ⇒ 登记为后续批次；本轮 `demo/`（未发布模块）也未动。
+- **B2 顺手在代码里堵死（超出"只改文档"半步，已单独说明）**：`demo/app.mbt` 的 `App::create()`
+  原来对拼错的 `JEFFLOW_DEMO_STORE` 和非法值都走 `_` 臂静默回落 memory。现在两条各打一行
+  `警告：…` 点名原因，且只认逐字 `memory` / `mysql`。四种组合逐条真跑过：拼错名 ⇒ 警告 +
+  `store=memory`；`Mysql` ⇒ 警告 + `store=memory`；`memory` ⇒ 无警告；`mysql` ⇒ 走到 mysql 臂、
+  横幅 `store=mysql`。`demo` 是**未发布模块**（`publish.yml` 只发 core/persist/repository-mysql/
+  facade 四件）⇒ 零注册表成本，代次仍 v0.1.23；但线上 `:8092` 镜像按 v0.1.23 构建、那一版仍静默，
+  要下一次 tag 才带上 ⇒ 文档里把这条标成「v0.1.23 之后的 master 才有」，并保留旧行为的留痕描述。
+  已发布模块（`core` / `repository-mysql`）的注释仍**一字未动**，见上一条的后续批次登记。
 - **门禁**：`moon check` 0 error；T0 352/352；T2 冒烟对 `:8095` 实例 7/7（种子 in-progress 16/16）；
   文档示例的编译/运行验证走独立消费者工程（`moon new` 出来的，不在本仓工作树内，不污染门禁）。
 
