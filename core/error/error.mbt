@@ -15,6 +15,12 @@ pub(all) suberror JeeflowError {
   InvalidState(String)
   InvalidSubmitType(Int64)
   ParseError(String)
+  /// issues/137-G／139：对外只给固定文案（逐字＝java 基准），底层原文另放一档供日志用。
+  ///
+  /// 走**新增变体**而不是改上面那条 `ParseError`：`error_test.mbt:21` 钉着
+  /// `ParseError("bad json").message().contains("bad json")`——那是"调用方自己写的文案要能看见"
+  /// 的通用档，动它就是改既有测试期望值。rust 同一条决定（`ParseErrorWithCause(msg, Box<..>)`）。
+  ParseErrorWithCause(String, String)
   Internal(String)
 } derive(Eq)
 
@@ -36,7 +42,18 @@ pub fn JeeflowError::message(self : JeeflowError) -> String {
     InvalidState(msg) => "非法状态转换: \{msg}"
     InvalidSubmitType(st) => "非法 submitType: \{st}"
     ParseError(msg) => "解析错误: \{msg}"
+    ParseErrorWithCause(msg, _) => msg
     Internal(msg) => "内部错误: \{msg}"
+  }
+}
+
+///|
+/// cause 分离里"进日志"的那一半：只有带底层详情的变体返回 Some。
+/// 出口 msg 走 `message()`（只给固定文案），日志走这里（原文照抄，不裁剪不转义）。
+pub fn JeeflowError::detail(self : JeeflowError) -> String? {
+  match self {
+    ParseErrorWithCause(_, d) => Some(d)
+    _ => None
   }
 }
 

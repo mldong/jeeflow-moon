@@ -10,7 +10,12 @@ pub fn parse_json(input : String) -> Json raise @error.JeeflowError {
   try {
     @cjson.parse(trimmed)
   } catch {
-    e => raise @error.JeeflowError::ParseError("json: \{e}")
+    // issues/137-G／139：对外只给 java 逐字基准文案，cjson 的原文收进 detail()（门面顶层据此落日志）。
+    // 旧形状是 ParseError("json: \{e}") ⇒ 出口 msg 实测 = `解析错误: json: <cjson 原文>`，
+    // 与"内部信息不进 msg"口径相反（其余七栈这条早已各自收敛到固定文案＋cause 分离）。
+    e => raise @error.JeeflowError::ParseErrorWithCause(
+      "读取流程定义 JSON 失败", "json: \{e}"
+    )
   }
 }
 
