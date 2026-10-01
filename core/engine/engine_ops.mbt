@@ -23,9 +23,25 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   full_args.insert_str("autoGenTitle", title)
   // 4. 创建实例
   let instance = @model.ProcessInstance::create(define_info, operator, full_args)
-  // 5. expireTime
+  // 5. expireTime（issues/137 A 裁定 A：实例级这一列＝定义级表达式的**求值结果**，不是原串）
+  //    基准逐字＝jeeflow-java JeeflowEngineImpl.java:93-96（`model.getExpireTime()` **非空才**
+  //    `instance.setExpireTime(FlowUtil.processTime(expireTime, args))`）＋ boot2
+  //    ProcessInstanceServiceImpl.java:157-160 同形状。尺子**复用本栈既有那一枚**
+  //    @model.process_time（issues/126 案 A 移植、任务级四处写点同款），不新造第二把。
+  //    修前形状＝原串搬运 `Some(et) => instance.expire_time = Some(et)`：把 "2h" 这类表达式**原文**
+  //    写进 wf_process_instance.expire_time（datetime 列）。SQL 仓绑定点
+  //    repository-mysql/repo/repository.mbt:168 `opt_v(instance.expire_time)` 原样塞参 ⇒ 真库
+  //    `@@sql_mode` 含 STRICT_TRANS_TABLES 时是 1292/SQLSTATE 22007
+  //    `Incorrect datetime value: '2h' for column 'expire_time'`（rust/php 本轮实测；137 案文原写
+  //    1366 已按实测更正），比留 NULL 更糟——整条发起 INSERT 直接失败。
+  //      · 变量源＝`full_args`（已 add_user_info + autoGenTitle 的那份，对齐 java 在
+  //        addUserInfoToArgs/addAutoGenTitle **之后**才取 args 的位置）
+  //      · 定义没配（缺键 / JSON null）⇒ `None` 臂 ⇒ 不碰这一列 ⇒ 保持 create 时的 NULL
+  //        （不赋 now()、不赋空串；owner 2026-09-28 口径「不设置就是没有到期时间」）
+  //      · 配了但算不出 ⇒ process_time 给 None ⇒ 同样落 NULL（空串/纯空白走它内部 ⓪ 档，
+  //        误配/负数档/裁空白边界沿用 §3-2、§3-3 已定的落穿语义，**不兜底 now**）
   match model.expire_time {
-    Some(et) => instance.expire_time = Some(et)
+    Some(et) => instance.expire_time = @model.process_time(Some(et), full_args)
     None => ()
   }
   // 6. 分配 ID
@@ -640,8 +656,12 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   let title = gen_auto_title(full_args, define_info.display_name)
   full_args.insert_str("autoGenTitle", title)
   let instance = @model.ProcessInstance::create_with_parent(define_info, operator, full_args, parent_id, parent_node_name)
+  // issues/137 A 第二处写点（子流程发起腿）：与主发起 `start_async` 同判据、同一把尺子——
+  // 定义级表达式**求值**后写实例列，不是原串搬运；未配 ⇒ NULL；算不出 ⇒ NULL 不兜底 now。
+  // 主发起那处的五条细节（基准 java:93-96 / boot2:157-160、真库 1292 的机理、变量源取
+  // full_args 的理由）逐条照搬，此处不重述，只钉"两处同形"里被漏掉的这一处。
   match model.expire_time {
-    Some(et) => instance.expire_time = Some(et)
+    Some(et) => instance.expire_time = @model.process_time(Some(et), full_args)
     None => ()
   }
   self.assign_ids(instance)
