@@ -47,10 +47,17 @@ pub(open) trait ProcessRepository {
   /// 反向哨兵："0"／"00" 这类"看起来像空"的正常 id 是有效值且是**两个人**，不得被当空值丢掉。
   /// 主键 `task_id` 另判一档：缺失/空串/非正数是调用方写错了，必须响亮报错，不得拿 0 当 id 落库。
   async fn add_task_actor(Self, Int64, Array[String]) -> Unit raise @error.JeeflowError
-  /// issues/142 §9.2 第二批（spec 06 §2.11 删除位与写侧同一条尺子）。实现方必须：
-  /// ① 删除列表先过 `@model.normalize_actors`（与 add_task_actor 同一枚）——存量行存的是 trim 后的串，
-  /// 入参带空格时按原样比会静默不中（转办「摘原人」落在这种报成功却没删上）；
-  /// ② 归一后为空 ⇒ 一条都不删（早退）——空串入参在历史 actor_id='' 脏行上会批量误删。
+  /// issues/137 §3-6（spec 06 §processTask/removeTaskActor 语义 6 · owner 2026-10-02 拍「两形并集」）。
+  /// ⚠️ **删除腿义务与上面 add_task_actor 的写侧义务不同，别照抄**。实现方必须：
+  /// ① 删除列表先过 `@model.actor_delete_forms`——空值（""/纯空白）一律丢弃、不参与匹配
+  ///    （空串入参在历史 actor_id='' 脏行上会批量误删，那是替脏数据做掉唯一痕迹）；
+  /// ② 非空值**同时以「原值」与「trim 值」两形**匹配：只取 trim 形 ⇒ 门面按语义 6 交出的脏行原值
+  ///    `" 9101 "` 被削成 `9101`，真库 NO PAD 排序规则下删不掉而门面报成功（被摘的人待办还在）；
+  ///    只取原值形 ⇒ 绕过门面直连仓储的调用方传 `" 8601 "` 时删不掉写侧归一后的规范行
+  ///    （issues/142 §9.2 那一路）；
+  /// ③ 展开后为空 ⇒ 一条都不删（早退），不得退化成"清空该任务全部参与者"。
+  /// 判据本体只有一枚＝`@model.actor_delete_forms`（trim/判空仍复用 `normalize_actors`），
+  /// 两仓都调它，不许各抄一份（§2.11 尾注）。反向哨兵同写侧："0" 与 "00" 是两个人。
   async fn remove_task_actor(Self, Int64, Array[String]) -> Unit raise @error.JeeflowError
   async fn create_cc_instance(Self, Int64, String, Array[String]) -> Unit raise @error.JeeflowError
   // issues/141 G2：写侧判重的读侧（某实例已有 cc 行的 actor id）与幂等建行的入口（返回实际新建子集）。

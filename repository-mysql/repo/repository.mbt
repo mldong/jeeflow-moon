@@ -436,11 +436,14 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn add_task_actor(self,
 }
 
 ///|
-/// issues/142 §9.2 第二批（spec 06 §2.11 删除位与写侧同一条尺子）：删除列表先过
-/// `@model.normalize_actors`（与内存仓同一枚）——「 8601 」删得掉库里的 8601；
-/// 归一后为空 ⇒ 一条 DELETE 都不发（空串入参批量误删历史 actor_id='' 脏行）。
+/// issues/137 §3-6（spec 06 §processTask/removeTaskActor 语义 6 · owner 2026-10-02 拍「两形并集」）：
+/// 删除列表过 `@model.actor_delete_forms`（与内存仓同一枚）——**空值一律丢弃**，一条 DELETE 都不发；
+/// **非空值同时以「原值」与「trim 值」两形绑进 WHERE**：只取 trim 形 ⇒ 门面按语义 6 交出的脏行原值
+/// `" 9101 "` 被削成 `9101`，真库 NO PAD 排序规则下那一行删不掉而门面报成功（**本栈改前正是这个形状**）；
+/// 只取原值形 ⇒ 绕过门面直连仓储传 `" 8601 "` 时删不掉写侧归一后的规范行（issues/142 §9.2 那一路）。
+/// 展开后为空 ⇒ 早退。两仓必须同答案（issues/117 场景 27）。
 pub impl @spi.ProcessRepository for MysqlRepository with fn remove_task_actor(self, task_id, actors) {
-  let remove = @model.normalize_actors(actors)
+  let remove = @model.actor_delete_forms(actors)
   if remove.is_empty() {
     return
   }

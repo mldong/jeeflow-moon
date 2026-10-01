@@ -581,6 +581,45 @@ pub fn normalize_actors(raw : Array[String]) -> Array[String] {
 }
 
 ///|
+/// 归属值**删除腿**展开（issues/137 §3-6 · spec 06 §processTask/removeTaskActor 语义 6，
+/// owner 2026-10-02 拍「两形并集」）：把待删列表展开成 `DELETE` 真正要绑的值 ——
+/// **空值一律丢弃，非空值同时保留「原值」与「trim 值」两形**（保序、按字面去重）。
+///
+/// 判据本体仍只有 `normalize_actors` 那一枚：本函数把单个元素喂给它——返回空 ⇒ 该元素是空值
+/// （`""`/纯空白）⇒ 丢弃；返回 `[t]` ⇒ `t` 就是 trim 形。**不在这里抄第二份 trim/is_empty**
+/// （§2.11 尾注「不要再抄第二份」）。
+///
+/// 为什么必须两形、只取一头各有一种假成功（1.8.36 之前八栈正好分成这两派，没有一处两全）：
+/// · 只取 **trim 形**（本栈与 php/csharp/rust 的旧形状）⇒ 门面按语义 6 交出的历史脏行原值
+///   `" 9101 "` 被削成 `9101`，真库 NO PAD 排序规则下那一行删不掉而门面报成功——被摘的人待办还在；
+/// · 只取 **原值形**（go/node/python/java 的旧形状）⇒ 绕过门面直连仓储的调用方传 `" 8601 "` 时
+///   删不掉写侧归一后落库的规范行（issues/142 §9.2 那一路）；且空值照喂 `DELETE`，
+///   把历史 `actor_id=''` 脏行批量误删（那是替脏数据做掉唯一痕迹）。
+///
+/// 并集同时满足两侧。按 §2.11 归一口径 `" 9101 "` 与 `9101` 本就是**同一个人**，两行都删才是
+/// "摘掉这个人"的正确结果，不构成误删。去重按**字面**做，不按"trim 后相同"折叠原值形：
+/// `" 9101 "` 与 `"  9101  "` 是两种不同的原值形，都要保留（库里可能正是其中任一种脏法）。
+///
+/// 反向哨兵同 `normalize_actors`：`"0"` 是合法 id 必须留下，且 `"0"` 与 `"00"` 是两个人。
+/// 返回空数组 ⇒ 调用方**一条 DELETE 都不发**（早退，不得退化成"清空该任务全部参与者"）。
+pub fn actor_delete_forms(raw : Array[String]) -> Array[String] {
+  let out : Array[String] = []
+  for actor_id in raw {
+    match normalize_actors([actor_id]) {
+      [t] => {
+        if !out.contains(actor_id) {
+          out.push(actor_id) // 原值形：保住未 trim 的历史脏行
+        }
+        if !out.contains(t) {
+          out.push(t) // trim 形：保住写侧归一后的规范行
+        }
+      }
+      _ => () // 空值（""/纯空白）⇒ 丢弃，不喂 DELETE
+    }
+  }
+  out
+}
+///|
 /// 单个归属值归一（§2.11 表里 `transfer` 的 fromActor/toActor 是「单值档」）：判据**复用**
 /// `normalize_actors`，不另写第二枚 trim/is_empty。空串与纯空白 ⇒ `None`，调用方按本仓既有的
 /// 「缺参数」错误信封报错（§2.11 要求③：不新造错误码与文案）。

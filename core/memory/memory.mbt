@@ -275,12 +275,16 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn add_task_actor(self
 }
 
 ///|
-/// issues/142 §9.2 第二批（spec 06 §2.11 删除位与写侧同一条尺子）：删除列表先过
-/// `@model.normalize_actors`——不 trim 则「 8601 」删不掉库里 trim 后的 8601（静默 no-op 报成功）；
-/// 归一后为空 ⇒ 什么都不删（早退），空串入参在历史 actor_id='' 脏行上会批量误删
-/// （issues/129 的删除位对偶）。与 MySQL 仓同一条判据、同一个答案。
+/// issues/137 §3-6（spec 06 §processTask/removeTaskActor 语义 6 · owner 2026-10-02 拍「两形并集」）：
+/// 删除列表过 `@model.actor_delete_forms`——**空值一律丢弃**（历史 actor_id='' 脏行不得被空串入参
+/// 批量误删，issues/129 的删除位对偶），**非空值同时以「原值」与「trim 值」两形匹配**：
+/// 只取 trim 形 ⇒ 门面按语义 6 交出的脏行原值 `" 9101 "` 被削成 `9101`，真库 NO PAD 排序规则下
+/// 那一行删不掉而门面报成功（被摘的人待办还在）；只取原值形 ⇒ 绕过门面直连仓储的调用方传
+/// `" 8601 "` 时删不掉写侧归一后的规范行（issues/142 §9.2 那一路，**本栈改前正是这个形状**）。
+/// 展开后为空 ⇒ 什么都不删（早退）。判据本体只有 `@model` 那一枚（trim/判空仍复用
+/// `normalize_actors`），与 MySQL 仓同一条判据、同一个答案（issues/117 场景 27）。
 pub impl @spi.ProcessRepository for MemoryRepository with fn remove_task_actor(self, task_id, remove_actors) {
-  let remove = @model.normalize_actors(remove_actors)
+  let remove = @model.actor_delete_forms(remove_actors)
   if remove.is_empty() {
     return
   }
