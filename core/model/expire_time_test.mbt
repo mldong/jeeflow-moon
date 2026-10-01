@@ -8,7 +8,8 @@
 // 另外把"天档必须日历加、不乘 86400"（e3）与"严格 19 位 + 日历校验"（e11）钉住——
 // 后面所有写点格子的"同一行 expire − create ≈ 偏移"判据都建立在这两档之上。
 //
-// ⚠️ 只新增断言，没动任何既有断言的期望值。
+// ⚠️ 只新增断言，没动任何既有断言的期望值——唯一例外是 i126-e3 里 `-1d` 那一格，
+// 它按 issues/137 D（owner 2026-10-01 拍「判非负」）翻面，并在同一格里用正数补回覆盖。
 
 ///|
 fn et_args(entries : Array[(String, Json)]) -> @json.FlowData {
@@ -90,7 +91,7 @@ test "i126-e2 相对档四单位 ⇒ 以注入钟为基准加偏移（含跨午�
 }
 
 ///|
-test "i126-e3 天档走**日历加天**（月末/跨年/闰年/回拨），不是乘 86400" {
+test "i126-e3 天档走**日历加天**（月末/跨年/闰年/正向跨月大档），不是乘 86400；负档 ⇒ NULL" {
   defer { @model.set_clock(None) }
   et_clock("2026-01-31 23:00:00")
   et_eq(@model.process_time(Some("1d"), et_empty()), "2026-02-01 23:00:00", "月末进位")
@@ -99,7 +100,20 @@ test "i126-e3 天档走**日历加天**（月末/跨年/闰年/回拨），不�
   et_clock("2028-02-28 12:00:00")
   et_eq(@model.process_time(Some("1d"), et_empty()), "2028-02-29 12:00:00", "闰年 2/29 存在")
   et_clock("2026-03-01 12:00:00")
-  et_eq(@model.process_time(Some("-1d"), et_empty()), "2026-02-28 12:00:00", "回拨跨月")
+  // issues/137 D owner 2026-10-01 拍判非负：原断 `-1d` 回拨跨月生效＝放行负偏移，本格按裁定翻面
+  // （负前缀算「解析不出来」⇒ 落穿绝对档 ⇒ NULL；放行即新建行当场已逾期，正是 issues/126 病灶形状）
+  et_none(
+    @model.process_time(Some("-1d"), et_empty()),
+    "负数天档（原「回拨跨月」格）：判非负后必须 NULL",
+  )
+  // 翻面后这一格不再走 add_days 倒退，原由它承担的跨月历日算术用**正数**补回同等覆盖：
+  // 同一条 Feb/Mar 边界（正向进位）+ 跨月大档 + 跨年大档
+  et_clock("2026-02-28 12:00:00")
+  et_eq(@model.process_time(Some("1d"), et_empty()), "2026-03-01 12:00:00", "正向进位跨月 Feb→Mar")
+  et_clock("2026-01-01 12:00:00")
+  et_eq(@model.process_time(Some("31d"), et_empty()), "2026-02-01 12:00:00", "跨月大档（Jan→Feb）")
+  et_clock("2026-12-15 08:00:00")
+  et_eq(@model.process_time(Some("20d"), et_empty()), "2027-01-04 08:00:00", "跨年大档（Dec→Jan）")
   et_clock("2026-09-28 10:00:00")
   et_eq(@model.process_time(Some("30d"), et_empty()), "2026-10-28 10:00:00", "进月")
 }
@@ -226,4 +240,48 @@ test "i126-e11 parse_time_secs 与 format_unix_utc 互逆 + 严格拒绝（差�
       Some(v) => abort("该拒的串被收下了：" + s + " -> " + @model.format_unix_utc(v))
     }
   }
+}
+
+///|
+/// issues/137 D（owner 2026-10-01 拍「判非负」；基准＝jeeflow-java `1649955`
+/// `ExpireTimeOnCreateTest.negativeRelativeExpressionStaysNull` ＋ spec/04「相对档前缀须非负整数」）：
+/// 四档（s/m/h/d）负前缀一律算「解析不出来」⇒ 落穿绝对档 ⇒ 仍失败就 NULL，任何一档都不许退回当前
+/// 时间——放行 `-5h` 会算出**过去**的时刻 ⇒ 新建行当场即逾期，比"没配到期时间"更难发现。
+/// 正向对照钉 `+2h`/`+45s`：只裁负、**不裁加号**（python `[+-]?`／node `[-+]?\d+`／php
+/// `[+-]?\d{1,18}` 都收 '+'，裁加号等于新造一处跨栈分叉），顺带钉变量档／绝对档／issues/137 C
+/// 的坏前缀落穿档**都没被波及**（判负点在相对档前缀解析，毫秒变量档走 parse_int64_strict 不在路上）。
+test "i137d1 负数相对档四单位 ⇒ NULL 落穿；加号档/变量档/绝对档/坏前缀档不变" {
+  et_clock("2026-09-28 10:00:00")
+  defer { @model.set_clock(None) }
+  let a = et_empty()
+  // ① 负数四档：逐档钉（本栈四档共用同一处判负，一处裁完，无旁路）
+  for (expr, why) in [
+    ("-5h", "负数时档"),
+    ("-5d", "负数天档（日历加天会倒退）"),
+    ("-30s", "负数秒档"),
+    ("-10m", "负数分档"),
+  ] {
+    et_none(@model.process_time(Some(expr), a), why + "（expr=" + expr + "）")
+  }
+  // ② 正向对照：加号档仍算得出 ⇒ 上面四判不是「带符号一律拒」的恒真
+  et_eq(@model.process_time(Some("+2h"), a), "2026-09-28 12:00:00", "+2h 加号档仍合法")
+  et_eq(@model.process_time(Some("+45s"), a), "2026-09-28 10:00:45", "+45s 加号秒档")
+  et_eq(@model.process_time(Some("2h"), a), "2026-09-28 12:00:00", "2h 不变")
+  et_eq(@model.process_time(Some("2d"), a), "2026-09-30 10:00:00", "2d 不变")
+  et_eq(
+    @model.process_time(Some("-0s"), a),
+    "2026-09-28 10:00:00",
+    "-0s 不算负数：同 java `Integer.parseInt(\"-0\") == 0`，放行",
+  )
+  // ③ 变量档 / 绝对档不变
+  let v = et_args([("dueAt", @json.string_of("2026-12-31 10:00:00"))])
+  et_eq(@model.process_time(Some("dueAt"), v), "2026-12-31 10:00:00", "变量档不变")
+  et_eq(
+    @model.process_time(Some("2026-12-31 10:00:00"), a),
+    "2026-12-31 10:00:00",
+    "绝对档不变",
+  )
+  // ④ 坏前缀行为不变（issues/137 C 的落穿口径不因本次判负而漂）
+  et_none(@model.process_time(Some("xh"), a), "坏前缀 xh 照旧落穿 ⇒ NULL")
+  et_none(@model.process_time(Some("2.5h"), a), "小数前缀照旧落穿 ⇒ NULL")
 }

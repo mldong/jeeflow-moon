@@ -334,3 +334,39 @@ async test "i126-t9 变量源两档对撞：建单读实例变量、回退新建
   let revived = exp_must(exp_doing_row(repo, iid, "apply", "applicant"), "写点⑤ 复活行")
   assert_expire_eq(revived, "2031-07-08 09:10:11", "回退档＝随行拷贝那份变量（boot2 hisVariable）")
 }
+
+///|
+/// issues/137 D（owner 2026-10-01 拍「判非负」）：java 基准 `1649955` 的这组判据是**行级**的
+/// `ExpireTimeOnCreateTest.negativeRelativeExpressionStaysNull`，本栈同样在写点①上钉一遍——
+/// 节点配负数相对档 ⇒ **行读得到、create_time 有值、而这一列为空**（算不出 ⇒ 落穿绝对档 ⇒ NULL），
+/// 不许算出一个过去的时刻（新建即逾期比"没配"更难发现，issues/126 病灶形状）。
+/// 正向对照 `+2h` 走同一夹具仍算出 ≈2h ⇒ 证明上面四格不是"任何表达式都留空"的恒真（只裁负不裁加号）。
+async test "i137d2 引擎写点①：配 -5h/-5d/-30s/-10m ⇒ 行在读回值里存在而该列为空；+2h 对照仍 ≈2h" {
+  let (engine, repo) = make_compliance_engine()
+  let mut n = 0
+  for expr in ["-5h", "-5d", "-30s", "-10m"] {
+    let name = "i137d_neg_" + n.to_string()
+    n = n + 1
+    let did = save_flow_define(
+      repo, name, exp_flow(name, [
+        ("apply", "\"assignee\":\"applicant\""),
+        ("approve", "\"assignee\":\"boss\",\"expireTime\":\"" + expr + "\""),
+      ]),
+    )
+    let iid = exp_start_apply(engine, repo, did, @json.FlowData::new(), @json.FlowData::new())
+    // 先断"行真读到了"（否则"值为空"那条恒真，等于没测）——沿用 assert_expire_null 的三件事分断
+    let row = exp_must(exp_doing_row(repo, iid, "approve", "boss"), "i137d " + expr)
+    assert_expire_null(row, "i137d 负数相对档 expr=" + expr)
+  }
+  let plus_did = save_flow_define(
+    repo, "i137d_plus", exp_flow("i137d_plus", [
+      ("apply", "\"assignee\":\"applicant\""),
+      ("approve", "\"assignee\":\"boss\",\"expireTime\":\"+2h\""),
+    ]),
+  )
+  let plus_iid = exp_start_apply(
+    engine, repo, plus_did, @json.FlowData::new(), @json.FlowData::new(),
+  )
+  let plus_row = exp_must(exp_doing_row(repo, plus_iid, "approve", "boss"), "i137d +2h 对照")
+  assert_expire_delta(plus_row, 7200L, "i137d 加号档对照（写点① +2h）")
+}

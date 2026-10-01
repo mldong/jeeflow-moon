@@ -37,7 +37,8 @@ priv enum VarTier {
 ///   ⓪ expr 为 None / 去空白后为空 ⇒ None（这一列保持 NULL：不写 now()、不写 ''、不写 0）
 ///   ① args 里存在**键名 == expr 原串**的项 ⇒ 取该项的值：日期串 → 该时刻（解析失败 ⇒ **None，
 ///      且是终局**）；毫秒整数 → epoch + 该毫秒（秒级 floor）；其它类型 ⇒ **落穿**
-///   ② 以 s|m|h|d 结尾且前缀是整数 ⇒ 当前时刻 + N 秒/分/时/天（**d 走日历加天**）
+///   ② 以 s|m|h|d 结尾且前缀是**非负**整数 ⇒ 当前时刻 + N 秒/分/时/天（**d 走日历加天**；
+///      负前缀算「解析不出来」⇒ 落穿，issues/137 D）
 ///   ③ 否则把 expr 本身按 "yyyy-MM-dd HH:mm:ss" 严格解析 ⇒ 该时刻；失败 ⇒ None
 ///
 /// **任何一档都不许返回"当前时间"**：本案病灶恰是"非空但错"的占位 now()（建单即逾期、
@@ -207,8 +208,15 @@ fn millis_of(n : Double, repr : String?) -> Int64? {
 }
 
 ///|
-/// 相对档 Ns/Nm/Nh/Nd。后缀不认识、或前缀不是整数 ⇒ None（交回调用方走绝对档）。
+/// 相对档 Ns/Nm/Nh/Nd。后缀不认识、或前缀不是**非负**整数 ⇒ None（交回调用方走绝对档）。
 /// 前缀**不做 trim**，与 Java `Integer.parseInt(substring(...))` 同判据。
+///
+/// issues/137 D（owner 2026-10-01 拍「判非负」，基准＝jeeflow-java `1649955` 的
+/// `FlowUtil.parseIntOrNull`）：**负前缀同样算解析不出来** ⇒ 落穿绝对档 ⇒ 仍失败就 NULL。
+/// 放行 `-5h` 会算出一个**过去**的时刻 ⇒ 新建行当场即逾期，比「没配到期时间」更难发现，也与
+/// 上面那条「不允许退化成取当前时间」（issues/126 病灶）同向。四档共用这一处判负：本栈的
+/// `d` 档唯一入口就是下面那个 `add_days`（日历加天，负数＝历日倒退，不是乘 86400），
+/// 无旁路，故一处裁完 s/m/h/d 四档。只裁负、**不裁加号**。
 fn relative_secs(expr : String) -> Int64? {
   let cs = expr.to_array()
   let len = cs.length()
@@ -219,7 +227,7 @@ fn relative_secs(expr : String) -> Int64? {
   if !(unit == 's' || unit == 'm' || unit == 'h' || unit == 'd') {
     return None
   }
-  let n = match parse_int_strict(expr[0:len - 1].to_owned()) {
+  let n = match parse_int_non_negative(expr[0:len - 1].to_owned()) {
     Some(v) => v
     None => return None
   }
@@ -277,6 +285,29 @@ fn digits(cs : Array[Char], from : Int, len : Int) -> Int? {
 /// Java parseInt 宽（前导空白），口径以这里为准。
 fn parse_int_strict(s : String) -> Int? {
   parse_int_sign(s, false)
+}
+
+///|
+/// 相对档前缀取整数（逐字对齐 java `FlowUtil.parseIntOrNull`，issues/137 D · owner 2026-10-01
+/// 拍「判非负」）：非整数（`x`/`2.5`/`3h`）或**负数** ⇒ None，交调用方**落穿**，不抛。
+///
+/// 为什么不是给 `parse_int_sign` 传 `neg=true`（实读结论，别按字面猜这个参数）：`neg` 是
+/// 「串首没有显式 +/- 号时**结果的默认符号**」，不是「是否允许负号」——串里一旦出现 `-`/`+`，
+/// 它就覆盖你传的值（`negative = cs[0] == '-'`）。本文件两处调用都传 false，却依旧解析得出
+/// `-5`，证明负号从来不被这个开关门控。改传参既裁不住负档，还会把无符号串整体变负。
+///
+/// 只裁负**不裁加号**：各栈整数解析（python `[+-]?`、node `[-+]?\d+`、php `[+-]?\d{1,18}`）都
+/// 收 '+'，裁掉加号等于新造一处跨栈分叉。`-0` 同 java（`Integer.parseInt("-0") == 0`，不算负、
+/// 放行）。
+fn parse_int_non_negative(s : String) -> Int? {
+  match parse_int_strict(s) {
+    Some(v) => if v < 0 {
+      None
+    } else {
+      Some(v)
+    }
+    None => None
+  }
 }
 
 ///|
