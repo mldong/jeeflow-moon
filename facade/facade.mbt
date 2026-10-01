@@ -37,15 +37,22 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   let outcome = try {
     ok_data(self.dispatch(action, args))
   } catch {
-    // issues/137-G：出口 msg 只给 e.message()——对 ParseErrorWithCause 那就是 java 逐字基准文案；
-    // 底层原文走 detail() 落日志（cause 分离）。尺子同 java JeeflowFacade.isForeignDetail／
+    // issues/137-G／137 §3-1（spec 06 §2.12）：出口 msg 按「这段文案是谁写的」判——引擎自己
+    // 写的契约文案（Business/ParseErrorWithCause/TaskNotFound…，对 ParseErrorWithCause 那就是
+    // java 逐字基准文案）照旧透出；Internal 档（mysql 驱动五条腿 `mysql query: <驱动原文>`、
+    // tx 腿，及任何底层抬上来的内部错误）对外只给固定文案 `流程处理失败`，原文经 detail()
+    // 只进日志（cause 分离）。尺子同 java JeeflowFacade.isForeignDetail＋INTERNAL_FAILURE_MSG／
     // rust ParseErrorWithCause，别把 cjson/驱动的原文拼进用户面。
     e => {
       match e.detail() {
         Some(d) => println("[jeeflow] action 执行失败: \{action} detail=\{d}")
         None => ()
       }
-      err(e.message())
+      if e.is_foreign_detail() {
+        err(@error.INTERNAL_FAILURE_MSG)
+      } else {
+        err(e.message())
+      }
     }
   }
   transform_output(outcome)

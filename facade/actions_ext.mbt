@@ -553,7 +553,17 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::biz_data(self : Facade[R, E]
       let rows = try {
         (reader)(table, instance_id)
       } catch {
-        e => raise @error.Business("业务数据读取失败: \{e.message()}")
+        // issues/137 §3-1（spec 06 §2.12 覆盖面② bizData 族；java 基准 JeeflowFacade#bizData
+        // 只给固定文案「业务数据读取失败」，原文进 SEVERE 日志）：reader 是第三方 provider／
+        // persist 腿，它抛的原文不是引擎写的契约文案，不得拼进 Business 档对外 msg——Business
+        // 是契约档、出口逐字透出，判别式在出口挡不住它（形状上就是引擎自己写的文案），必须在
+        // 构造点收口。旧形状把 e.message() 拼进 msg，正是批三 §1 普查点名的泄漏（php :891／
+        // csharp 批二修掉的同形）。原文只进日志。
+        e => {
+          let detail = e.detail().unwrap_or("")
+          println("[jeeflow] bizData 读取失败: table=\{table} cause=\{e.message()} detail=\{detail}")
+          raise @error.Business("业务数据读取失败")
+        }
       }
       match rows {
         Some(row) => obj_json(row)
