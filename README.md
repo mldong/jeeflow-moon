@@ -43,6 +43,14 @@ bash scripts/smoke_t2.sh                                  # start → todo → a
 > Fresh toolchain? Run `moon update` once before the first `moon test` / `moon add` — the index
 > bundled with the compiler can be too old to resolve `moonbitlang/async` / moonmysql deps.
 >
+> **为什么上面每条命令都带 `--target wasm`**：native 目标在 MinGW/MSYS 工具链上**编不出来**——
+> 依赖 `moonbitlang/async` 里的 C 声明只支持 MSVC，`moon build --target native` 挂在 C 后端
+> （`moonc` 自身报 0 errors），所以本机/开发口径一律走 wasm。**native 并非无门禁，门禁在 CI**（ubuntu）：
+> `.github/workflows/demo-deploy.yml` 的作业名就是 `Check / Build / Test (wasm + native)`，两个目标都 build
+> 也都 test；`native-probe.yml` 是 native 专档（build → 起 native 二进制跑 demo 健康检查 → `moon test --target native`）；
+> `publish.yml` 把「native 构建绿」列进发版通道自检。已知缺口＝没有 MSVC 那条腿（CI 的 native 是 Linux）。
+> 换言之：本机请照抄 `--target wasm`，别把 native 编不过当成本仓坏了。
+>
 > One demo per port: a second `moon run demo/cmd/main` dies with
 > `通常每个套接字地址(协议/网络地址/端口)只允许使用一次` — stop the first, or move it with
 > `LISTEN_ADDR=127.0.0.1:8093 moon run --target wasm demo/cmd/main` and point the smoke script at
@@ -167,6 +175,10 @@ first, then `startAndExecute`. Add `.with_user_provider(...)` / `.with_id_genera
 | T1 | `JEFFLOW_DB_*=… moon run --target wasm repository-mysql/smoke` | real MySQL: five-key pages, hydrate, `m_` filters over SQL, tx rollback leaves no half instance, double-execute is rejected, `update_user` really in the UPDATE statement |
 | T1-F | `JEFFLOW_DB_*=… moon run --target wasm demo/cmd/t1_mysql` | real MySQL over `JeeflowFacade`: withdraw (operator 硬必填 / 三条归属判据 / state 30 / `update_user` 回写 / 已完成行不改) + transfer (摘原人·加新人·三件留痕·账本只追加·不覆写 `operator` 列·doneList 不污染) |
 | T2 | `bash scripts/smoke_t2.sh` | demo HTTP: start → todo → approve → state 20 → highlight → 99999999 negative |
+
+> 上表四档在本机都跑 **wasm** 目标。**native** 目标由 CI 覆盖（见 Quickstart 那段说明）：
+> `demo-deploy.yml` 两个目标都 build＋test、`native-probe.yml` 跑 native demo 全链＋`moon test --target native`、
+> `publish.yml` 发版前要求 native 构建绿。条数以 CI 实跑读数为准，本表不写死数字。
 
 ## Design notes
 
