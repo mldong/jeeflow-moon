@@ -2,13 +2,13 @@
   "_meta": {
     "version": "1.0",
     "created": "2026-09-05",
-    "purpose": "jeeflow MoonBit 引擎（第 7 语言）M0 契约固化 —— 46 action 清单（Java 实查 ↔ 规范 ↔ MoonBit 三方核对基准；issues/115 补 processTask/transfer）",
+    "purpose": "jeeflow MoonBit 引擎（第 7 语言）M0 契约固化 —— 47 action 清单（Java 实查 ↔ 规范 ↔ MoonBit 三方核对基准；issues/115 补 processTask/transfer + processTask/removeTaskActor）",
     "sources": {
       "java": "jeeflow-java/jeeflow-core/src/main/java/com/mldong/jeeflow/facade/JeeflowFacade.java flow() switch（L100-L155）",
       "spec": "jeeflow-doc/docs/spec/06-facade.md",
       "plan": "jeeflow-hub/docs/moonbit-engine-implementation-plan.md §0.1/§3.3/§4"
     },
-    "count": 46,
+    "count": 47,
     "baseline": {
       "note": "spec 基线锚定（方案 §5 M0 通过条件）——每阶段收尾复核上游漂移",
       "java_head": "58fd0b3 fix(demo): Dockerfile.demo 先 install -N 装 parent pom",
@@ -287,6 +287,14 @@
           "resp": "ok(data=null)；留痕三件写任务变量：submitType=7 槽位 + tf_transferHistory 追加式账本{submitType,fromActor,toActor,reason,time,operator} + tf_transferTo/tf_transferReason + 末跳 tf_approvalComment；失败 msg 逐字见 spec/06 §processTask/transfer"
         },
         {
+          "action": "processTask/removeTaskActor",
+          "method": "taskRemoveActor",
+          "permission": "wf:processTask:removeTaskActor",
+          "note": "issues/115 残留·第 47 个 action：**只摘不加、零留痕、不 fire 事件**（132 定稿事件集没有「摘人」码，码 7 的语义是参与者被替换）；归属判据同 transfer——只能摘自己那一票，flow.auto/flow.admin 例外；仅 DOING 可摘；不得摘空（判据＝集合差，且只数归一后非空的行，历史 actor_id='' 脏行不算一个人）；匹配取归一值、DELETE 取行上的原值（喂归一值＝假成功）；非参与者静默忽略（幂等重放第二次仍成功信封）",
+          "req": "{processTaskId 必填, actorIds 必填(数组|逗号串两形同判据，过 @model.normalize_actors), operator 硬必填(严禁回落 user1)}",
+          "resp": "ok(data=null)；失败 msg 逐字见 spec/06 §processTask/removeTaskActor：operator 必填 / processTaskId/actorIds 缺失 / 任务不存在 / 无权限摘除该任务参与人 / 任务非进行中，不可摘除参与人 / 至少需保留一名参与人；守卫次序同上节（不接受各栈自行排序）"
+        },
+        {
           "action": "processTask/latest",
           "method": "taskLatest",
           "permission": null,
@@ -417,11 +425,11 @@
     }
   },
   "summary": {
-    "total": 46,
+    "total": 47,
     "byGroup": {
       "processDefine": 8,
       "processInstance": 14,
-      "processTask": 10,
+      "processTask": 11,
       "processDesign": 9,
       "processSurrogate": 5
     },

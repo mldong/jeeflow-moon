@@ -850,6 +850,102 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::task_transfer(self : Facade[
 }
 
 ///|
+/// 摘除参与人（issues/115 残留 · 门面第 **47** 个 action，spec 06 §processTask/removeTaskActor）。
+/// SPI 的 `remove_task_actor` 从第一天起就是必选方法（两仓都实现），本 action 补的是"上到门面"
+/// 这一段，逐字基准＝java `JeeflowFacade.taskRemoveActor`。三个兄弟 action 的分工：
+/// · `processTask/surrogate`/`addCandidate` = **只加**（追加，原人保留可办）；
+/// · `processTask/transfer` = **换人**（摘 A 加 B + submitType=7 留痕 + tf_transferHistory）；
+/// · 本 action = **只摘不加、零留痕、不 fire 事件**：删掉 actorIds 在本任务的参与者行，不新建任务、
+///   不写任何任务变量、不覆写任务 actor_id/operator 列，也**一次事件都不发**——issues/132 §11.3
+///   定稿事件集里没有"摘人"这一码，码 7 TASK_TRANSFER 的语义是"参与者被替换"，只摘不加套它
+///   等于凭空造出一条没发生的转办事实（要留痕请用 transfer）。
+///
+/// 守卫次序（spec 同节钉死、逐栈一致，门禁按 msg 断言，不接受本栈自行排序）：
+/// operator 必填 → processTaskId/actorIds 缺失 → 任务不存在 → 无权限摘除该任务参与人 →
+/// 任务非进行中，不可摘除参与人 → 至少需保留一名参与人 → 落库。
+pub async fn[R : @spi.ProcessRepository, E] Facade::task_remove_actor(
+  self : Facade[R, E],
+  args : Map[String, Json]
+) -> Json raise @error.JeeflowError {
+  // ① operator 硬必填，且排在"缺参数"档之前：参数全缺时若先报主键缺失，会把鉴权缺口
+  //    藏进参数报错里。**严禁**用 operator_arg()——那支缺省回落 demo 的 user1，本 action 不接受。
+  //    arg_required_str 内部走 @model.normalize_actor，返回值已是归一形（trim 后）。
+  let operator = arg_required_str(args, "operator", "operator 必填")
+  // ② 缺参数档（spec 语义 8）：`processTaskId` **缺键或空串/纯空白**、`actorIds` 归一后为空、
+  //    主键为 0/负数 ⇒ 逐字 `processTaskId/actorIds 缺失`，与 surrogate 同族同文案、不另造。
+  // ⚠️ 只统一"缺键/空值"这一档：`processTaskId` **给了但不是数字**（如 "abc"）是另一种事实，
+  //    沿用本栈既有 `非法id: …` 信封原样透出——把它伪装成"参数没传"，调用方排障时就再也
+  //    看不出是传错了类型。旧形状是空串也一起落进"非法id"（arg_i64 里 parse_int64 直接 raise），
+  //    与本 action 的跨栈逐字文案冲突，故在调用 arg_i64 **之前**先把空值档截出来判。
+  let pk_blank = match args.get("processTaskId") {
+    Some(Json::String(s)) => @model.normalize_actor(s).is_none()
+    _ => false
+  }
+  if pk_blank {
+    raise @error.Business("processTaskId/actorIds 缺失")
+  }
+  let task_id = match arg_i64(args, "processTaskId") {
+    Some(v) => v
+    None => raise @error.Business("processTaskId/actorIds 缺失")
+  }
+  let actors = arg_actor_ids(args)
+  if task_id <= 0L || actors.is_empty() {
+    raise @error.Business("processTaskId/actorIds 缺失")
+  }
+  // ③ 任务存在。逐字判据是 `任务不存在`（spec 同节：新增 action 一律用这句，八栈不得各写各的），
+  //    所以这里走 Business 而不是 @error.TaskNotFound——后者消息带 id 尾巴（"任务不存在: \{id}"），
+  //    是 transfer/execute 既有断言钉住的旧形状，本轮不回改它，也不借它凑本档的文案。
+  let task = match (self.repo).find_task_by_id(task_id) {
+    Some(t) => t
+    None => raise @error.Business("任务不存在")
+  }
+  // ④ 归属判据同 transfer：operator ∈ 被摘集合（两边都取归一值，比较才咬得上）或 auto/admin。
+  //    transfer 能"摘 A 加 B"是因为 A 就是操作人本人；本 action 同理不得成为借道摘他人的口子。
+  if !is_privileged_operator(operator) && !actors.contains(operator) {
+    raise @error.Business("无权限摘除该任务参与人")
+  }
+  // ⑤ 仅进行中（DOING=10）可摘：已办结/撤回/废弃任务的参与人行是 approvalRecord 的取证依据
+  //    （它读全状态任务行），摘它等于改写审批历史。
+  if task.task_state != @model.TaskState::Doing.code() {
+    raise @error.Business("任务非进行中，不可摘除参与人")
+  }
+  // 以参与者表为判据（聚合副本会滞后于加签/转办的增量写入，与 transfer 同源）
+  let current = (self.repo).find_task_actors(task_id)
+  // 语义 6「匹配取归一值、DELETE 取行上的原值」（§2.11 硬要求②的删除腿）：库里的行可能是修复前
+  // 落下的未 trim 原值 " leader "，入参 "leader" 必须判成同一个人**并连同那一行的原值**交给仓储。
+  // 喂归一值去删＝"判成同一人却一条没删"：门面报成功而被摘的人待办还在，是假成功（go 栈实测形状）。
+  //
+  // 语义 5「不得摘空」的下限判据同时落在这个循环里，两条都不可省：
+  // · remaining 只数**归一后非空**的行——历史 actor_id=''／纯空白的脏行谁也办不了单，拿它撑住
+  //   下限会让"摘空"伪装成成功，留下永远无人可办、也无法撤回重派的死单；
+  // · 判据是集合差（当前参与者 − 归一后的 actorIds），不是入参条数——入参里混非参与者 id 也绕不过。
+  let to_delete : Array[String] = []
+  let mut remaining = 0
+  for row in current {
+    match @model.normalize_actor(row) {
+      // 归一后为空的历史脏行：既不匹配任何入参，也不算"一个人"，更绝不能进 DELETE
+      None => ()
+      Some(n) =>
+        if actors.contains(n) {
+          to_delete.push(row)
+        } else {
+          remaining += 1
+        }
+    }
+  }
+  if !to_delete.is_empty() && remaining == 0 {
+    raise @error.Business("至少需保留一名参与人")
+  }
+  // 语义 7「幂等（非参与者静默忽略）」：入参里不属于本任务参与者的人一条都不点名 ⇒ 空操作、
+  // 照常成功信封（前端双点、集成层重放第二次不再报错）；to_delete 为空时仓储一次都不碰，
+  // 于是"报错档零删除"与"没命中零删除"是同一条判据。要"人不在任务里就报错"请用 transfer。
+  if !to_delete.is_empty() {
+    (self.repo).remove_task_actor(task_id, to_delete)
+  }
+  @json.null_json()
+}
+
+///|
 pub async fn[R : @spi.ProcessRepository, E] Facade::task_latest(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let instance_id = match arg_i64(args, "processInstanceId") {
     Some(v) => v

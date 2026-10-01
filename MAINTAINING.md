@@ -25,7 +25,7 @@
 >   `repository-mysql/smoke/smoke.mbt`）；改的是已发布模块的源码，所以随那次发版一起走，没单独改。
 >
 > 结论：这些引用**不是缺陷、也不影响跑通**（Quickstart / T0 / T2 全部仓内自洽）；需要跨语言契约细节时
-> 去上面两个公开仓，或直接读本仓 `scripts/action-manifest.json`（46 action 的权威清单）。
+> 去上面两个公开仓，或直接读本仓 `scripts/action-manifest.json`（47 action 的权威清单）。
 
 > **09-30 文档收尾批（`2cdfb40`）明确未做，登记给后续批次**：
 > ① ~~已发布模块里的历史注释仍指 `docs/decisions-log.md` / `docs/m1-progress.md`~~
@@ -510,7 +510,7 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
    仅限无网开发机，发版机 fail）
 4. T1-F `moon run --target wasm demo/cmd/t1_mysql` ALL PASS（门面级真机对拍）
 5. `bash scripts/smoke_t2.sh` ALL PASS（demo 起着）
-6. `node scripts/check-action-manifest.mjs` PASS（46 action 双向无差集）
+6. `node scripts/check-action-manifest.mjs` PASS（47 action 双向无差集）
 7. `consistency/moon.json` 载荷逐字节等值（**按载荷比、不按文件字节比**：本工具链
    `moon run` 的 stdout 末尾多一个 `
 `，见 §1「依赖版本」）
@@ -771,14 +771,14 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
 |---|---|---|
 | processDefine | 8 | page / detail / startAndExecute / deploy / redeploy / remove / upAndDown / getLastByName |
 | processInstance | 14（含 stats 3） | page / detail / startAndExecute / withdraw / bizData / highLight / approvalRecord / getAssigneeTextData / createCCInstance / updateCCStatus / ccList / stats/overview / stats/trend / stats/group |
-| processTask | 10 | todoList / doneList / execute / detail / jumpAbleTaskNameList / candidatePage / surrogate / addCandidate / transfer / latest |
+| processTask | 11 | todoList / doneList / execute / detail / jumpAbleTaskNameList / candidatePage / surrogate / addCandidate / transfer / removeTaskActor / latest |
 | processDesign | 9（需扩展仓储） | page / detail / save / update / updateDefine / remove / deploy / redeploy / listByType |
 | processSurrogate | 5（需扩展仓储） | page / save / update / detail / remove |
 
 > ⚠️ 本表只列 **wire 名**（HTTP 实参）。snake_case 一律 `99999999 未知 action`——实测
 > `start_and_execute` / `todo_list` / `task_detail` / `stats_overview` 全被打回。引擎内部方法名
 > （`definePage` / `taskTransfer` …）见 `scripts/action-manifest.json` 每条的 `method` 字段；
-> 该文件是 46 action 的权威清单，`summary.byGroup` 与本表计数同源（改一处必核对另一处）。
+> 该文件是 47 action 的权威清单，`summary.byGroup` 与本表计数同源（改一处必核对另一处）。
 
 ### 契约要点（方案 §4 C 条目 → moon 落点）
 
