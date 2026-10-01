@@ -209,7 +209,18 @@ fn millis_of(n : Double, repr : String?) -> Int64? {
 
 ///|
 /// 相对档 Ns/Nm/Nh/Nd。后缀不认识、或前缀不是**非负**整数 ⇒ None（交回调用方走绝对档）。
-/// 前缀**不做 trim**，与 Java `Integer.parseInt(substring(...))` 同判据。
+/// 前缀**判整数前先裁两端空白**（issues/137 E · owner 2026-10-01 拍「统一 trim」，基准＝jeeflow-java
+/// `bf1f401` 的 `FlowUtil.parseIntOrNull`）：到期表达式是设计器手填/JSON 搬运的串，夹一个空格是常态，
+/// 而各栈整数解析对空白的容忍度天然不同（go `strconv.Atoi` 前显式 `TrimSpace`、rust `.trim()`、
+/// .NET `TryParse` 与 python `int()` 默认就收前后空白）⇒ 不裁就是「同一份流程定义这一家没到期时间、
+/// 别家有」。裁的边界**只到前缀**，三条分界逐栈一致，落点是下面那处 `.trim(chars=...)`：
+///   ① `" 2h"`、`"2 h"`（空白落在前缀区内、末位仍是单位符）⇒ 照样算得出 now+2h；
+///   ② `"2h "`（单位符后面还带空白）⇒ 末位不是 `s/m/h/d`、认不出单位 ⇒ 落穿绝对档 ⇒ None；
+///      **单位符判定用未 trim 的原串末位**（上面那句 `cs[len - 1]`），别顺手改成整串先去空白
+///      再判末位——那是「整体去空白」，契约里没立过法；
+///   ③ `" 2.5h"` ⇒ trim 之后仍是误配（小数）⇒ 仍落穿，裁空白 ≠ 裁容错。
+/// 判负（issues/137 D）在 trim **之后**照旧生效：`" -5h"` ⇒ None。变量档的键名与绝对档的时间串
+/// 本身**都不做 trim**——那是键名/时间串，裁它会改的是另一件事。
 ///
 /// issues/137 D（owner 2026-10-01 拍「判非负」，基准＝jeeflow-java `1649955` 的
 /// `FlowUtil.parseIntOrNull`）：**负前缀同样算解析不出来** ⇒ 落穿绝对档 ⇒ 仍失败就 NULL。
@@ -227,7 +238,9 @@ fn relative_secs(expr : String) -> Int64? {
   if !(unit == 's' || unit == 'm' || unit == 'h' || unit == 'd') {
     return None
   }
-  let n = match parse_int_non_negative(expr[0:len - 1].to_owned()) {
+  // issues/137 E：裁空白发生在**判整数之前**，且只裁**前缀**这一段子串；上面那个 `unit` 判定用的
+  // 是未 trim 的原串末位（分界②靠它）。判负/判形仍归 parse_int_non_negative 那枚单点，这里不掺和。
+  let n = match parse_int_non_negative(expr[0:len - 1].trim(chars=" \t\r\n").to_owned()) {
     Some(v) => v
     None => return None
   }

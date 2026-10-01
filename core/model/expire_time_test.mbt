@@ -285,3 +285,51 @@ test "i137d1 负数相对档四单位 ⇒ NULL 落穿；加号档/变量档/绝�
   et_none(@model.process_time(Some("xh"), a), "坏前缀 xh 照旧落穿 ⇒ NULL")
   et_none(@model.process_time(Some("2.5h"), a), "小数前缀照旧落穿 ⇒ NULL")
 }
+///|
+/// issues/137 E（owner 2026-10-01 拍「统一 trim」；基准＝jeeflow-java `bf1f401` 的
+/// `ExpireTimeOnCreateTest.paddedRelativePrefixStillApplies` ＋ spec/04「相对档前缀允许两端空白」）：
+/// 裁空白发生在**判整数之前**，且**只裁前缀**——单位符判定仍用未 trim 的原串末位（分界②就钉这一条）。
+/// 判负（issues/137 D）在 trim 之后照旧生效；变量档的键名与绝对档的时间串本身都不裁。
+test "i137e1 相对档前缀裁两端空白：①两形照样算得出 ②单位符后带空白落穿 ③小数／④负数照旧拒" {
+  et_clock("2026-09-28 10:00:00")
+  defer { @model.set_clock(None) }
+  let a = et_empty()
+  // ① 空白落在前缀区内（前带空格／数字与单位符之间带空格）⇒ 仍算出 now+2h；
+  //    四档（s/m/h/d）共用 relative_secs 里那一处 trim，逐档各钉一格（`d` 仍走日历加天）
+  et_eq(@model.process_time(Some(" 2h"), a), "2026-09-28 12:00:00", "①前带空格的 2h")
+  et_eq(@model.process_time(Some("2 h"), a), "2026-09-28 12:00:00", "①数字与单位符之间带空格")
+  et_eq(@model.process_time(Some(" 45s"), a), "2026-09-28 10:00:45", "①秒档带空白")
+  et_eq(@model.process_time(Some(" 30m"), a), "2026-09-28 10:30:00", "①分档带空白")
+  et_eq(@model.process_time(Some(" 2d"), a), "2026-09-30 10:00:00", "①天档带空白（仍走日历加天）")
+  et_eq(@model.process_time(Some("\t+2h"), a), "2026-09-28 12:00:00", "①制表符同属空白，且加号照收（137 D 只裁负）")
+  // 正向对照：不带空格的同形照样算得出 ⇒ 上面几格不是「带空白就放行」式的恒真断言
+  et_eq(@model.process_time(Some("2h"), a), "2026-09-28 12:00:00", "对照 2h")
+  et_eq(@model.process_time(Some("+2h"), a), "2026-09-28 12:00:00", "对照 +2h")
+  // ② 单位符后面还带空白 ⇒ 末位不是 s/m/h/d ⇒ 认不出单位 ⇒ 落穿绝对档 ⇒ NULL
+  //    （把 trim 做成「整串先去空白再判末位」就在这里当场红：裁的边界只到前缀）
+  et_none(@model.process_time(Some("2h "), a), "②单位符后带空格")
+  et_none(@model.process_time(Some(" 2h "), a), "②两端都带空白（末位仍是空格）")
+  et_none(@model.process_time(Some("2h\t"), a), "②单位符后带制表符")
+  // ③ trim 之后仍是误配（小数）⇒ 仍落穿：裁空白 ≠ 裁容错
+  et_none(@model.process_time(Some(" 2.5h"), a), "③trim 后仍是小数误配")
+  // ④ trim 后判负照旧生效（别因为加了 trim 把 issues/137 D 绕过去）
+  et_none(@model.process_time(Some(" -5h"), a), "④trim 后判负照旧")
+  et_none(@model.process_time(Some(" -5d"), a), "④天档同判")
+  et_none(@model.process_time(Some(" xh"), a), "坏前缀带空白照旧落穿（137 C 口径不漂）")
+  // 边界：变量档的**键名**与绝对档的**时间串本身**都不做 trim（那是键名/时间串，裁它会改另一件事）
+  let v = et_args([("dueAt", @json.string_of("2026-12-31 10:00:00"))])
+  et_none(
+    @model.process_time(Some(" dueAt"), v),
+    "变量档：表达式前的空格不当键名裁掉（裁了就会命中 dueAt 那个键）",
+  )
+  let v_pad = et_args([(" dueAt", @json.string_of("2026-12-31 10:00:00"))])
+  et_eq(
+    @model.process_time(Some(" dueAt"), v_pad),
+    "2026-12-31 10:00:00",
+    "变量档：带空白的键按原串命中（键名没被裁走）",
+  )
+  et_none(
+    @model.process_time(Some(" 2026-12-31 10:00:00"), a),
+    "绝对档：时间串不裁空白（裁了就把 20 位串当 19 位收下）",
+  )
+}
