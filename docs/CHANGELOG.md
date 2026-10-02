@@ -54,6 +54,57 @@
   ⇒ 方案 §6 决策点 C（演示站要不要换代）随 tag 的自动通道一并兑现，不需要另触发。
   **sync-cn** run `36997325879` success ⇒ Gitee/GitCode 同步到同一代次。
 
+## 0.1.25（2026-10-02）· **本节为补记**
+
+> 补记说明：0.1.25 发版当时**没有写 CHANGELOG**，本节是 10-02 随 0.1.26 轮回头补的。
+> 内容与读数不靠回忆——进版清单按 `git log v0.1.24..v0.1.25` 逐笔核（12 笔＝11 进版＋1 bump，
+> 34 files +2624/−57），发布链读数按 `gh` 现查 run id 与 `moon update` 后的注册表索引，
+> 门禁读数有两处互证：该轮 bump commit 里留痕的现跑读数，与本轮（0.1.26）**改前基线在同一棵树上独立复现**。
+
+**批三（issues/137）＋ 115 第 47 个 action 落地。** 代次从 0.1.24 前进一格，四模块同号重发，
+接力 pin 一次改 12 处＝5 version＋7 pin，tag 打在 bump 之后（`529846a`）。
+
+- **门面出口不再漏内部原文**（issues/137 §3-1，`207b3e5`）：出口层加判别式 `is_foreign_detail()`
+  （命名对应 java `isForeignDetail`；**moon 的错误变体本身就是档位**，所以判据收敛成"`Internal` ⇒ true"一条，
+  没有移植 java 那套运行时类型族启发式），命中则对外 msg 逐字＝`INTERNAL_FAILURE_MSG = "流程处理失败"`，
+  原文改由扩展后的 `detail()` 进门面日志。承重前提是先追清再动手的：`core/error/error.mbt:46`
+  的 `Internal(msg) => "内部错误: \{msg}"` 确实会把原文搬进 `message()`，经 `facade.mbt:48` 顶层 catch
+  落到 `{code:99999999, msg:<原文>}`——变异 M1 实测出的是**带主机与账号的凭据串**。
+  有意例外一处：`actions_ext.mbt:556` 的 bizData 腿把第三方原文拼进了**契约档**（`Business`），
+  出口判别式按"是不是 `Internal`"判、挡不住这种形状 ⇒ 只能在构造点收口，改成 java 基准同文 `业务数据读取失败`。
+- **实例级 `expire_time` 按定义级表达式求值**（issues/137 A §3-4，`973d224`，两处写点），
+  并新增**真库腿** `demo/cmd/i137a_mysql`（`e271d77`）：这一列必须真过 160 那台 MySQL 的
+  `wf_process_instance.expire_time DATETIME(3)` 再读回来，判据一律取库里的值。
+  修前形状是原串搬运（把 `"2h"` 直接塞进 datetime 参数），160 实测 `@@sql_mode` 含 `STRICT_TRANS_TABLES`
+  ⇒ 服务端直接拒（`ERROR 1292`）、整条发起 INSERT 失败；**内存仓不校验这一列，T0 全绿照不出来**。
+  该腿只允许指向自建隔离库（`JEFFLOW_DB_NAME` 未设或指向 `jeeflow`/`jeeflow_test` 等共享库即 fail，不 connect 不 DELETE）。
+- **删除腿收口为「原值 ∪ trim 值」两形并集**（issues/137 §3-6，`54ed4d9`）；
+  **相对档前缀判非负**（issues/137 D，`924fcae`：新增 `parse_int_non_negative`，一处裁四档）；
+  **相对档前缀统一 trim**（issues/137 E，`c282971`：裁在调用点，判负单点不掺和）；
+  §3-11 过期注释随批（`e2b6147`：误配档是八栈一致落穿，本栈不再是"与 Java 的故意差异"方）。
+- **门面第 47 个 action `processTask/removeTaskActor`**（issues/115 §3-8，`efc6e49`）——
+  引擎自有扩展，内置版无对应端点（只有按行 id 删的 `/wf/processTaskActor/remove`）。
+- **坏 JSON 出口只给 java 逐字基准文案**（issues/139＋137-G，`6384f27`），底层原文走 `detail()` 落日志；
+  文档侧两笔：`974620b` 批一 A6 补 native 目标说明、`2ab1e34` 发布后措辞归位。
+- **本版门禁**（该轮 bump commit 留痕，wasm 档——本仓 `preferred_target = "wasm"`，
+  wasm-gc 会静默丢 async 用例还 exit 0）：T0 `moon test --target wasm` **402/402**；
+  T1 `repository-mysql/smoke` **`T1 ALL PASS (wasm → 160)`**（专用库 `jeeflow_moon_t1`）；
+  T1-F `demo/cmd/t1_mysql` **130 PASS / `T1-F ALL PASS`**。
+  独立复现：0.1.26 轮在**摘 vendored 之前**的同一棵树上取改前基线 ⇒ check **0 error / 22 条警告**
+  （指纹 E0053×10 E0020×4 E0024×4 E0027×2 E0002×1 E0067×1）、T0 **402/402**、T1 **111 断言**、
+  T1-F **130 断言**、`consistency` 载荷等值、T2 **7/7**——两处读数一致。
+- **发布链读数**（`gh` 现查 ＋ `moon update` 后索引）：publish run **36970936645** success、
+  Demo Deploy run **36970936742** success、sync-cn run **36970936789** success；
+  注册表索引四件 `0.1.25` 的 `created_at=2026-10-02T05:53`（本轮再读仍在，且
+  `jeeflow-repository-mysql@0.1.25` 的 deps 写的是 `moonbitstack/moonmysql: 0.7.2`——那一代还带 vendored）。
+- **⚠️ 两处归属纠偏**（AGENTS §6.7 第 ① 条：「已落地」与「已发版」是两个状态）：
+  bump commit message 把 **142 内存仓水合**、**143 §3-5 边落穿日志腿**、**§3-9** 一并列为"v0.1.24 之后进版"，
+  现跑 `git merge-base --is-ancestor` 判：142 水合两笔（`8bb6a2d`、`5ab9dc0`）**已在 v0.1.24 内**；
+  "落穿/未知档"形状在 v0.1.24 的树里已有 6 个文件命中，且 `v0.1.24..v0.1.25` 区间内
+  **没有任何一笔**的 subject 归属 143 或 §3-9。⇒ 0.1.25 的真实进版以本节上面几条为准。
+  同一条偏高表述也写在 `jeeflow-hub/RELEASE.md` §三 的旧行里（"…＋ 142 内存仓水合"），
+  该行已随 0.1.26 换代改成"只记当前代＋实读凭据"。
+
 ## 0.1.24（2026-09-30 深夜）
 
 **截止夜文档收尾攒下的源码侧欠账，一次清掉。** 代次从 0.1.23 前进一格，四模块
