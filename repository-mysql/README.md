@@ -10,7 +10,7 @@
 </div>
 
 Implements the full jeeflow SPI (process define / instance / task / actors / CC + design /
-surrogate) over a vendored pure-MoonBit MySQL wire client — **no C, runs on wasm** — for
+surrogate) over the upstream pure-MoonBit MySQL wire client (`moonbitstack/moonmysql/client`) — **no C, runs on wasm** — for
 [jeeflow-moon](https://github.com/mldong/jeeflow-moon).
 
 ## Quickstart

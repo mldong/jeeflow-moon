@@ -5,6 +5,12 @@
 > 发版通道、设计决策、契约对照——收在本文件（仓根，**不进 `docs/`、不上文档站**）。
 > 用户向版本历史见 [docs/CHANGELOG.md](./docs/CHANGELOG.md)。
 
+> **2026-10-02 一条全局销账（先读这条再读下面的历史）**：`repository-mysql/vendored/` 整目录已随
+> **0.1.26** 摘除——上游 `moonbitstack/moonmysql@0.7.3`（2026-10-01 10:47 UTC 发布）把 `client/moon.pkg`
+> 从 `supported_targets = "native"` 改成 `"+native+wasm"`，D-M0-2 的 vendoring 理由消失。
+> 本文件下方所有"vendored 解锁必须继续保留 / 混代是真的 / `supported_targets="native"` 没有放开"的表述
+> 都是 **2026-09-26 之前的量路留痕**，现行事实以 §4 **D-M0-2′** 为准。不抹史，只在断掉的那几条就地标注。
+
 > ### 跨仓引用怎么读（公开 clone 里点不开的那些）
 >
 > 本文件与 `docs/` 里大量出现的「**方案 §x.y**」、「`jeeflow-hub` AGENTS.md / 凭据基准」、
@@ -83,7 +89,7 @@ export PATH="$HOME/.moon/bin:$PATH"
 |---|---|---|
 | 日常开发/单测（全模块含 async） | `--target wasm` | 本机 |
 | 纯计算包快速单测 | native 可直跑 | 本机（不 import async 的包） |
-| MySQL 冒烟（T1） | `--target wasm` | 本机 → 开发服务器 `<DB_HOST>`:3306（vendored 解锁，见 §4 D-M0-2） |
+| MySQL 冒烟（T1） | `--target wasm` | 本机 → 开发服务器 `<DB_HOST>`:3306（上游 0.7.3 起 client 原生支持 wasm，见 §4 D-M0-2′） |
 | 验收正式口径 / demo 生产态 | native | CI（GitHub runner）/ 开发服务器（debian:bookworm + build-essential 独立容器，O4） |
 
 > ⚠️ Windows 上 **native + async 结构性不可编译**（moonbitlang/async 运行时 C 源硬编码
@@ -95,7 +101,7 @@ export PATH="$HOME/.moon/bin:$PATH"
 ### 依赖版本（registry 包，非工具链）
 
 registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）：
-`moonbitstack/moondb@0.2.0`、`moonbitstack/moonmysql@0.7.2`、`moonbitlang/async@0.22.4`。
+`moonbitstack/moondb@0.2.0`、`moonbitstack/moonmysql@0.7.3`、`moonbitlang/async@0.22.4`。
 这与「工具链 latest-only」是两回事——**依赖包钉版本、编译器不钉**。
 
 > **2026-09-26 依赖换代（随 0.1.14 发出）**：async `0.20.3→0.22.4`、moondb `0.1.8→0.2.0`、
@@ -120,13 +126,17 @@ registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）
 > 且摘掉后 `.mooncakes/` 只剩 `async / moondb / moonpool / moondate`——
 > 说明 `moonbase/mooncred/mooncrypt/moonjson/moonvar` 这一串**确实只由这条声明带进来**，
 > 但那是"摘不动"的代价，不是"可以摘"的理由。**要真摘，得先把 codec 一起 vendored，那是独立一轮工程。**
+> ↑ 这条"独立一轮"最终没走：2026-10-02 是上游把 client 放开 wasm，摘的方向反了——不需要连 codec 一起 vendor，而是把本仓的 vendor 全部清掉（见下一段终局与 §4 D-M0-2′）。
 >
 > 翻案后留下一条更该盯的事实：**混代是真的**——vendored client 拷自 **0.4.0**，
 > registry codec 本轮升到 **0.7.2**，两者同时在跑。`moon check` 管不到它（类型层面对得上），
 > 判据只能落在真机协议路径：0.7.2 物化状态下 T1 仓储级 **111 格** + T1-F 门面级 **104 格** 全绿
 > （握手、认证、报文编解码都在其中；收口后又以同窗口读数复跑一次，0 FAIL）。
-> 下一轮若上游 client 放开 native（D-M0-2 的 vendoring 理由消失），就把 client 与 codec 一起回到
-> 同源版本，届时这条混代说明可撤。
+> **终局（2026-10-02，随 0.1.26）**：上游 0.7.3 放开 client 的 wasm ⇒ `repository-mysql/vendored/` 整目录
+> 摘除，client 与 codec 回到**同源同代**（同一份注册表包体），本段"混代"问题从根上消失——
+> 也就是上面那句"届时这条混代说明可撤"到期了。**戒律换形而不撤销**：以后每次 bump moonmysql 都是
+> client+codec 一起动，T1 仓储级与 T1-F 门面级必须在同一窗口跑，报告里写清消费的 moonmysql 代次
+> （本轮 0.7.3 实测：T1 111 格、T1-F 130 格、i137a 真库腿 ALL PASS，与摘前同窗对拍零差异）。
 >
 > 另记一条解析行为：moonmysql 声明自己要 `async@0.20.3`，本仓钉的是 `0.22.4`，
 > moon 取高版本、无冲突（所以本仓最终物化 0.22.4）。
@@ -149,7 +159,7 @@ registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）
 - 字符串插值 `"\{expr}"`；闭包调用加括号 `(f)(x)`
 - async test：黑盒 `_test.mbt` + 包 moon.pkg `import { "moonbitlang/async", } for "test"` 即可（白盒 `_wbtest.mbt` 不解锁 async test，须运行时 import——见 §4 D-M0-1）
 - `moon.mod`/`moon.pkg` 为 TOML 风格；workspace 互依赖版本化全名 `"mldong/jeeflow-core@0.1.0"`
-- `moon info` 生成 `.mbti`；包级可 `supported_targets`（moonmysql client 即用此钉 native，本仓 vendored 解锁）
+- `moon info` 生成 `.mbti`；包级可 `supported_targets`（moonmysql client 曾以此钉 native、本仓靠 vendored 解锁；上游 0.7.3 起改为 `"+native+wasm"`，vendored 已摘，见 §4 D-M0-2′）
 
 ## 1.1 工具链版本与本机口径（2026-09-26 升到 latest）
 
@@ -552,6 +562,44 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
 - **风险与回退**：若后续 wasm 出现目标特有 bug（大包分帧/流式查询），回退候选 2（160 native 口径，方案 §2.4 本就有此行）。
 - **状态**：已追认（2026-09-05）。
 - **关联**：方案 §2.4 表「T1 MySQL 冒烟 wasm 本机→160」一行因此依赖本 vendored 解锁，方案文档不改，以本日志为准。
+- **终局（2026-10-02）**：本决策**作废**，由下方 **D-M0-2′** 取代——上游 `moonmysql@0.7.3` 放开
+  client 的 wasm，vendoring 理由消失，`repository-mysql/vendored/` 整目录已删除。
+
+### D-M0-2′ vendored 摘除（上游 moonmysql 0.7.3 原生支持 wasm）
+
+- **触发**：2026-10-01 10:47 UTC 上游发布 `moonbitstack/moonmysql@0.7.3`，`client/moon.pkg` 的
+  `supported_targets` 由 `"native"` 改为 `"+native+wasm"`（PR #2 `fix/mysql-client-wasm`）。
+  与 0.7.2 的包体差异只有三处、全是声明与文案：`client/moon.pkg` 一行、根 `moon.pkg` 注释、`README.md`；
+  **`.mbt` 逐文件零差异**，deps 也完全一致 ⇒ 本轮摘 vendored 不带任何行为变化，真机门禁是**回归判据**而非变化判据。
+- **动作（代码侧只有 2 行 + 1 次删目录）**：
+  ① `repository-mysql/moon.mod` pin `moonbitstack/moonmysql@0.7.2 → @0.7.3`（全仓唯一声明处）；
+  ② `repository-mysql/repo/moon.pkg:7` 的 import 改指 `"moonbitstack/moonmysql/client" @client`
+  （**别名不变** ⇒ `repo/conn.mbt` 5 处、`repo/repository.mbt` 2 处、`repo/tx.mbt` 3 处
+  `@client.MysqlConn` 一个字都不用改）；
+  ③ `repository-mysql/vendored/moon_mysql_client/` 整目录删除（`conn.mbt` 547 + `driver.mbt` 134 +
+  `extend_driver.mbt` 7 + `moon.pkg` 15 = **净删 703 行 / 24.4 KB**）。
+  其中 `extend_driver.mbt`（本仓因 `implicit_impl_as_method` 弃办另立的
+  `pub extend MysqlDriver with @moondb.Driver::{…}`）**必须一并删**：上游 0.7.2 起已把同一条声明写进
+  `client/driver.mbt` 尾部 12 行，留着就撞重复 extend。
+- **同源证据（摘前逐字节核过，非推断）**：`vendored/conn.mbt` vs 0.7.3 `client/conn.mbt` **完全相同**；
+  `vendored/driver.mbt` = 0.7.3 那份**减去尾部 12 行 extend**；vendored `moon.pkg` vs 上游只差
+  本仓那段 vendoring 说明＋被去掉的 `supported_targets` 行。
+- **收益（除删码之外）**：结掉 §1 依赖版本挂着的历史欠账——client 与 codec 同源同代，"判据只能落在真机
+  协议路径"这条额外戒律撤除（换形成上面那条"每次 bump 同窗口跑 T1+T1-F"）。
+- **代价**：失去"上游 client 出问题就地打补丁"的能力。本仓从未改过 vendored 一行（逐字节原样）⇒
+  这项能力实际没用过，风险接受；真要用时重新 vendored 即可，路径与本决策历史互不冲突。
+- **不在支持面（别读错）**：browser wasm 仍不支持——上游 README 写明 wasm 执行需 host 提供 TCP 绑定
+  （moonrun 实测过）。本仓 T1 口径一字不变：`--target wasm` + moonrun → 160:3306。
+- **验证（2026-10-02 同窗口，改前/改后背靠背，工具链 moon 0.1.20260920 / moonc v0.10.14）**：
+  `moon check --target wasm --no-render` 0 error，警告按 `[E码] 类别` 分组的指纹与改前 **diff 为空**
+  （22 条：E0053×10、E0020×4、E0024×4、E0027×2、E0002×1、E0067×1）；
+  T0 `moon test --target wasm` **402/402**（与改前同数）；T1 `repository-mysql/smoke` **111 断言 + T1 ALL PASS**；
+  T1-F `demo/cmd/t1_mysql` **130 断言 + T1-F ALL PASS**；i137a 真库腿 `demo/cmd/i137a_mysql` **ALL PASS**
+  （自建隔离库 `jeeflow_moon_i137a`，跑完即 DROP，不碰 jeeflow/jeeflow_test）；
+  `demo/cmd/consistency` 与仓内 `consistency/moon.json` **载荷等值**；T2 `scripts/smoke_t2.sh` **7/7 ALL PASS**
+  （demo 起着打到 :8092，测完按 PID 杀干净）。native 档 Windows 结构性编不了（R8），native 验证归 CI。
+- **状态**：待追认（2026-10-02，随 0.1.26 发出）。
+
 
 ### D-M0-3 Clock SPI 的默认实现来源（core/env.now() 的发现）
 
@@ -702,6 +750,7 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
   `MysqlConn`/`MysqlDriver`/`MysqlRowStream` 签名与旧版一致）。
 - **vendor 面积**：`conn.mbt`/`driver.mbt` 现为上游 0.4.0 **逐字节原样拷贝**（sha256 已核），
   与上游的唯一偏差仍只在 vendored `moon.pkg`（去掉 `supported_targets` 行）。
+- **2026-10-02 销账**：上面"D-M0-2 仍然成立"与"vendor 面积"两条是 0.4.0 复测当时的结论，现已随 0.1.26 失效——上游 0.7.3 放开 wasm、vendored 整目录摘除，现行见 §4 D-M0-2′。本条记录的半迁实测（两套 moondb 同时物化 ⇒ 同名类型互为不同类型）不受影响，仍是升级时的硬约束。
 - **状态**：待追认（2026-09-19）。
 - **验证**：T0 `moon test --target wasm` 119/119（**当时读数**，别当现行——本代次 T0 以
   `moon test` 现场输出为准，§2 T0 那条已定调「用例数以实跑读数为准、别手写（本文件不存计数）」）；T1 `moon run --target wasm

@@ -32,7 +32,7 @@ moon new my-flow && cd my-flow                    # 消费者工程（没有 moo
 moon add mldong/jeeflow-core                  # 引擎核心（运行时零 registry 依赖）
 moon add mldong/jeeflow-facade                # 40+ action 统一门面
 moon add mldong/jeeflow-persist               # 可选：业务数据动态入库（ARCHIVE/SYNC）
-moon add mldong/jeeflow-repository-mysql      # 可选：MySQL 仓储（含 vendored 解锁的 client）
+moon add mldong/jeeflow-repository-mysql      # 可选：MySQL 仓储（上游 moonmysql client，wasm 可直连）
 moon add moonbitlang/async                    # flow() 是 async，async main 必须有它
 ```
 

@@ -1,5 +1,5 @@
 // MySQL 仓储连接层 —— 每操作连接即取即用（方案 §2.3，autocommit，行为等同 rust 现状）
-// vendored moonmysql async MysqlConn（D-M0-2）；凭据只走 JEFFLOW_DB_* env（R6）。
+// 上游 moonbitstack/moonmysql/client 的 async MysqlConn（0.7.3 起原生 wasm，见 D-M0-2′）；凭据只走 JEFFLOW_DB_* env（R6）。
 
 ///|
 pub(all) struct MysqlConfig {

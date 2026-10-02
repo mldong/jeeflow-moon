@@ -12,6 +12,8 @@
  2. vendored 目录特殊：`repository-mysql/vendored/moon_mysql_client/` 的上游两文件
     纪律是逐字节原样拷贝（MAINTAINING D-M6-1），所以那条 extend 落在**本仓自有的新文件**
     `extend_driver.mbt` 里，上游文件零改动；
+    （**2026-10-02 注**：`repository-mysql/vendored/` 已于 0.1.26 整目录摘除——上游 moonmysql 0.7.3
+     原生支持 wasm。本脚本是迁移期一次性工具，上面这条与 VENDORED_DIR 分支留作历史，逻辑不动。）
  3.  trait 名按"该文件里能写通的形式"映射（@mldong/jeeflow-core/spi.X → @spi.X、
     @moonbitlang/core/debug.Debug → Debug 由 derive 已在作用域、@moonbitstack/moondb.Driver
     → @moondb.Driver），错了编译器会直接说，不猜第二遍。

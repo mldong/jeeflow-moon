@@ -8,6 +8,6 @@ description = "jeeflow MySQL repository (moondb Driver trait + moonmysql async c
 import {
   "mldong/jeeflow-core@0.1.25",
   "moonbitstack/moondb@0.2.0",
-  "moonbitstack/moonmysql@0.7.2",
+  "moonbitstack/moonmysql@0.7.3",
   "moonbitlang/async@0.22.4",
 }

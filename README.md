@@ -145,8 +145,8 @@ first, then `startAndExecute`. Add `.with_user_provider(...)` / `.with_id_genera
   `persistMode`: **ARCHIVE** (one idempotent INSERT at end+agree, keyed by `process_instance_id`)
   or **SYNC** (INSERT at start → per-task UPDATE filtered by the target node's
   `PERMISSION_*` field rights → final-state UPDATE), with table-name safety checks.
-- **MySQL repository** (separate module) — all SPI methods over a vendored pure-MoonBit
-  MySQL wire client (works on wasm), `m_` three-segment filters, NULL-safe row hydration,
+- **MySQL repository** (separate module) — all SPI methods over the upstream pure-MoonBit
+  MySQL wire client (`moonbitstack/moonmysql/client`, native + wasm host), `m_` three-segment filters, NULL-safe row hydration,
   DATETIME text normalization, and a real `BEGIN/COMMIT/ROLLBACK` transaction template
   (connection-bound via ambient single-thread context).
 - **Memory repository** (in core) — the T0 store: same behavior, no I/O; row listing is
