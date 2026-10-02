@@ -40,6 +40,19 @@
   写的是 `bump-version.sh 0.1.25`，而 0.1.25 已在 10-02 05:53 被批三（issues/137）发掉——registry 索引
   四件 `created_at=2026-10-02T05:53`、HEAD `529846a` 即那笔 bump commit 且与远程 `0 0`。照抄必然 409，
   更阴的是 `pull_verify.sh 0.1.25` 会回拉到**摘 vendored 之前**那一代还全绿，把物证做成假证。⇒ 本轮 0.1.26。
+- **发布链终局（2026-10-02，UTC 10:46–10:49 实测留痕）**：bump commit `810d381`（12 处＝5 version＋7 pin）
+  上打轻量 tag `v0.1.26` ⇒ master 快进 `529846a..810d381` ＋ **单 tag 推**（严禁 `--tags` 全量推）。
+  **publish** run `36997325872`：`Publish core / persist / repository-mysql / facade` **逐步 success**
+  （判发布看 job steps，不看 workflow 总结论）。`moon update` 后注册表索引四件末行全 `0.1.26`
+  （created_at 10:46:48 / 10:46:53 / 10:46:57 / 10:47:01），**其中 `jeeflow-repository-mysql` 的 deps
+  已写成 `moonbitstack/moonmysql: 0.7.3`**——摘 vendored 在发布元数据层留了名。
+  消费者侧 `bash scripts/pull_verify.sh 0.1.26` ⇒ `PULL-VERIFY OK`（正向 `processInstance/page` `code=0`
+  含分页五键；负向 `processInstance/no_such_action` `code=99999999`），并打印"用户实际装到的那一代"：
+  `async 0.22.4 / moondb 0.2.0 / moonmysql 0.7.3`——这一行就是本轮的物证。
+  **Demo Deploy** run `36997325910` success：镜像由不再 vendored 的 tag 重建，落到 160 后
+  服务端 `T2 SMOKE ALL PASS (instanceId=2105973316048134144)` ＋ `✅ Moon demo deployed (port 16086->8092)`
+  ⇒ 方案 §6 决策点 C（演示站要不要换代）随 tag 的自动通道一并兑现，不需要另触发。
+  **sync-cn** run `36997325879` success ⇒ Gitee/GitCode 同步到同一代次。
 
 ## 0.1.24（2026-09-30 深夜）
 

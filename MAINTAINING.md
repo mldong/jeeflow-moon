@@ -598,7 +598,7 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
   （自建隔离库 `jeeflow_moon_i137a`，跑完即 DROP，不碰 jeeflow/jeeflow_test）；
   `demo/cmd/consistency` 与仓内 `consistency/moon.json` **载荷等值**；T2 `scripts/smoke_t2.sh` **7/7 ALL PASS**
   （demo 起着打到 :8092，测完按 PID 杀干净）。native 档 Windows 结构性编不了（R8），native 验证归 CI。
-- **状态**：待追认（2026-10-02，随 0.1.26 发出）。
+- **状态**：已追认（owner 2026-10-02 点名开工并授权「全链发版＋:8092 demo 镜像换代」）；**已发版＝tag `v0.1.26`（commit `810d381`）**——publish run 36997325872 四步逐步 success、注册表索引四件 0.1.26 且 deps 解析到 `moonmysql 0.7.3`、`pull_verify.sh 0.1.26` OK、Demo Deploy run 36997325910 服务端 T2 ALL PASS（16086→8092）。CI 侧 `Test (wasm + native)` 同 run success ⇒ native 档验证也已补齐（本机 Windows 编不了，R8）。
 
 
 ### D-M0-3 Clock SPI 的默认实现来源（core/env.now() 的发现）
