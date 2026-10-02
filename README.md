@@ -43,23 +43,13 @@ bash scripts/smoke_t2.sh                                  # start → todo → a
 > Fresh toolchain? Run `moon update` once before the first `moon test` / `moon add` — the index
 > bundled with the compiler can be too old to resolve `moonbitlang/async` / moonmysql deps.
 >
-> **为什么上面每条命令都带 `--target wasm`**：native 目标在 MinGW/MSYS 工具链上**编不出来**——
-> 依赖 `moonbitlang/async` 里的 C 声明只支持 MSVC，`moon build --target native` 挂在 C 后端
-> （`moonc` 自身报 0 errors），所以本机/开发口径一律走 wasm。**native 并非无门禁，门禁在 CI**（ubuntu）：
-> `.github/workflows/demo-deploy.yml` 的作业名就是 `Check / Build / Test (wasm + native)`，两个目标都 build
-> 也都 test；`native-probe.yml` 是 native 专档（build → 起 native 二进制跑 demo 健康检查 → `moon test --target native`）；
-> `publish.yml` 把「native 构建绿」列进发版通道自检。已知缺口＝没有 MSVC 那条腿（CI 的 native 是 Linux）。
-> 换言之：本机请照抄 `--target wasm`，别把 native 编不过当成本仓坏了。
+> Every command above carries `--target wasm` on purpose: native can't compile against
+> `moonbitlang/async` on a MinGW/MSYS host (that C layer is MSVC-only on Windows) — it's the
+> toolchain, not this repo. Native is still gated, just in CI; the full policy lives in
+> [MAINTAINING.md](./MAINTAINING.md) §构建目标纪律.
 >
-> One demo per port: a second `moon run demo/cmd/main` dies with
-> `通常每个套接字地址(协议/网络地址/端口)只允许使用一次` — stop the first, or move it with
-> `LISTEN_ADDR=127.0.0.1:8093 moon run --target wasm demo/cmd/main` and point the smoke script at
-> it (`BASE=http://127.0.0.1:8093 bash scripts/smoke_t2.sh`).
-> The demo defaults to the in-memory store — zero setup, 16 shared flows preseeded.
-> `JEEFLOW_DEMO_STORE=mysql` expects a **dedicated database** with
-> [`repository-mysql/schema/schema-mysql.sql`](./repository-mysql/schema/schema-mysql.sql) applied
-> first and does **not** auto-seed: the define list starts empty until you `processDesign/save`
-> + `deploy`. See [docs/demo.md](./docs/demo.md).
+> Running the demo? One instance per port, and the MySQL store needs a pre-created schema and
+> ships no flows — both covered in [docs/demo.md](./docs/demo.md).
 
 ## Live demo
 

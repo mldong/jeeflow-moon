@@ -97,6 +97,13 @@ export PATH="$HOME/.moon/bin:$PATH"
 > `#error "Currently only MSVC is supported on Windows"`，0.20.3 起即如此，**升依赖不会修好也不会更坏**；
 > MinGW 侧另会撞 `FileRenameInfoEx`/`SO_REUSE_MULTICASTPORT` 等未声明符号），
 > Windows 本机一律 wasm；不得为绕过而改工具链 C 源。native 通道的真验证在 CI（Linux）。
+>
+> **native 的门禁具体在哪三条腿**（2026-10-02 自 README 挪进来——README 只留"本机照抄 wasm"一句）：
+> ① `.github/workflows/demo-deploy.yml` 的作业名就是 `Check / Build / Test (wasm + native)`，
+>    两个目标都 build 也都 test；② `native-probe.yml` 是 native 专档
+>    （build → 起 native 二进制跑 demo 健康检查 → `moon test --target native`）；
+>    ③ `publish.yml` 把「native 构建绿」列进发版通道自检。
+>    已知缺口＝**没有 MSVC 那条腿**（CI 的 native 是 Linux）⇒ 本仓对"Windows 上 MSVC 能不能编"不承诺。
 
 ### 依赖版本（registry 包，非工具链）
 
