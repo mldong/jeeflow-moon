@@ -1,5 +1,46 @@
 # CHANGELOG
 
+## 0.1.26（2026-10-02）
+
+**摘掉 vendored——上游 `moonbitstack/moonmysql@0.7.3` 把 client 的 wasm 放开了。** 代次从 0.1.25 前进一格，
+四模块（core / persist / repository-mysql / facade）同号重发，接力 import pin 同步（5 version＋7 pin）。
+本轮**零行为变化**：改动本身是把一份"本仓拷贝"换回它对应的那份注册表原件。
+
+- **代码侧只有 2 行 ＋ 一次删目录**（`3f3928f`）：
+  `repository-mysql/moon.mod` pin `moonbitstack/moonmysql@0.7.2 → @0.7.3`（全仓唯一声明处）；
+  `repo/moon.pkg` 的 import 由本仓 `vendored/moon_mysql_client` 改指 `"moonbitstack/moonmysql/client" @client`
+  ——**别名不变** ⇒ `repo/conn.mbt`（5 处）/`repo/repository.mbt`（2 处）/`repo/tx.mbt`（3 处）
+  里那 10 处 `@client.MysqlConn` 一个字都没改；
+  `repository-mysql/vendored/moon_mysql_client/` 整目录删除，**净删 703 行 / 24.4 KB**
+  （`conn.mbt` 547＋`driver.mbt` 134＋`extend_driver.mbt` 7＋`moon.pkg` 15）。
+  其中 `extend_driver.mbt` 是**必须一并删**的那枚：本仓当年因 `implicit_impl_as_method` 弃办、
+  又受"逐字节原样拷贝"纪律约束不能改 vendored，才另立这 7 行 `pub extend MysqlDriver with @moondb.Driver::{…}`；
+  上游 0.7.2 起已把同一条声明写进 `client/driver.mbt` 尾部 12 行，留着就是重复 extend。
+- **vendoring 的理由消失**：§4 **D-M0-2 作废、由 D-M0-2′ 取代**。上游 2026-10-01 10:47 UTC 把
+  `client/moon.pkg` 的 `supported_targets` 从 `"native"` 改成 `"+native+wasm"`。摘前逐字节核过同源：
+  vendored `conn.mbt` 与 0.7.3 那份**完全相同**，`driver.mbt` = 上游那份减去尾部 extend 块；
+  0.7.2→0.7.3 的包体差异只有 `client/moon.pkg` 一行＋根 `moon.pkg`/`README.md` 文案，**`.mbt` 零差异**
+  ⇒ 真机门禁在这里是回归判据而不是变化判据。
+- **顺带结掉一条历史欠账**：MAINTAINING §1 挂着的那条"**混代是真的**"（vendored client 拷自 0.4.0、
+  registry codec 已到 0.7.2，两者同跑而 `moon check` 测不到，判据只能落在真机协议路径）从此不成立——
+  client 与 codec 同源同代。戒律换形而不撤销：**以后每次 bump moonmysql 都是 client＋codec 一起动**，
+  T1 仓储级与 T1-F 门面级必须在同一窗口跑，报告里写清消费的 moonmysql 代次。
+- **不在支持面（别把这次解锁读错）**：browser wasm 仍不支持——上游 README 写明 wasm 执行需 host 提供
+  TCP socket 绑定（moonrun 实测过）。本仓 T1 口径一字不变：`--target wasm` + moonrun → 160:3306。
+- **本版门禁**（2026-10-02 真仓改前/改后同窗口背靠背，moon 0.1.20260920 / moonc v0.10.14，
+  真库用专用库 `jeeflow_moon_t1`）：`moon check --target wasm --no-render` **0 error**，
+  警告按 `[E码] 类别` 分组的**指纹与改前 diff 为空**（22 条：E0053×10 E0020×4 E0024×4 E0027×2 E0002×1 E0067×1）；
+  T0 `moon test --target wasm` **402/402**（与改前同数）；T1 **111 断言** `T1 ALL PASS (wasm → 160)`；
+  T1-F **130 断言** `T1-F ALL PASS`；**i137a 真库腿 ALL PASS**（该腿是 10-02 `e271d77` 才立的，
+  方案文档写它时还没有，本轮补跑；隔离库 `jeeflow_moon_i137a` 自建自删）；
+  `consistency` 载荷**等值**；T2 `smoke_t2.sh` **7/7**（demo 起 :8092，`/health` 身份指纹
+  `{"engine":"jeeflow-moon","store":"memory"}`，测完按 PID 杀干净）。
+  native 档 Windows 结构性编不了（R8），native 验证归 CI。
+- **一条目标号纠偏（给下一轮看）**：立项文档 `jeeflow-hub/docs/moon-摘vendored-moonmysql0.7.3-方案.md`
+  写的是 `bump-version.sh 0.1.25`，而 0.1.25 已在 10-02 05:53 被批三（issues/137）发掉——registry 索引
+  四件 `created_at=2026-10-02T05:53`、HEAD `529846a` 即那笔 bump commit 且与远程 `0 0`。照抄必然 409，
+  更阴的是 `pull_verify.sh 0.1.25` 会回拉到**摘 vendored 之前**那一代还全绿，把物证做成假证。⇒ 本轮 0.1.26。
+
 ## 0.1.24（2026-09-30 深夜）
 
 **截止夜文档收尾攒下的源码侧欠账，一次清掉。** 代次从 0.1.23 前进一格，四模块
