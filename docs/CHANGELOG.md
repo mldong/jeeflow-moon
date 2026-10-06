@@ -1,5 +1,65 @@
 # CHANGELOG
 
+## 0.1.27（2026-10-06）
+
+**issues/144：事务句柄从进程级全局槽改挂仓储实例，并把"一个请求＝一个实例"做成有通道可走。**
+四模块同号重发（core / persist / repository-mysql / facade，5 version ＋ 7 pin），demo 不发布。
+本轮**有破坏性 API 变化**（见下"破坏面"），但 `execute_in_tx` 现读零生产调用点 ⇒ 实际受害者只有 smoke/T1-F。
+
+- **病灶**（`repository-mysql/repo/tx.mbt` 原形状）：`let tx_conn : Ref[MysqlConn?]` 是**进程级**槽，
+  `in_tx()` 判的是"进程里有没有事务"。本栈单线程事件循环 + 无 task-local ⇒ 并发请求在 await 点交错时
+  互相看见对方的槽：B 进模板既不 BEGIN 也不 COMMIT、写并进 A 的事务；A 抛错回滚时
+  **把 B 已经返回给调用方的确认写入一起抹掉**（案文 §2 X2，160 真库实测 `has400=0`）。
+  头注释那句"环境连接即上下文绑定，对齐 contextvars/ALS"是误导源——那两者 task-scoped，全局 `Ref` 不是。
+- **落地形态（owner 拍方案 b）**：`MysqlRepository` 加实例字段 `tx : Ref[(@client.MysqlConn?)]`，
+  `open_or_tx`/`tx_active`/`current_tx_conn`/`close_conn` 一律读 `self`；`new_request()` 派生请求级实例
+  （同 config、独立槽）；`execute_in_tx(op)` 上提到仓储实例并把**绑定后的实例**交给回调
+  （这样"用错实例而静默走 autocommit"没有通道）；`MysqlTxTemplate` 保留为 spec/05 的命名位、改为持 repo 委派。
+  **SPI 42 个方法签名零改动**——不选"每次仓储调用传句柄"那条的原因：那是动 spec/05 的八语言一致契约。
+- **配套新增 `Ctx::for_request(repository, ext_repository)`**（core）：本栈结构体是**引用语义**
+  （实测 `let b = a` 后写 `b` 的可变字段改到 `a`；`Map`/`Array` 赋值共享底层），而既有 `with_*` 全是
+  "原地改 `self` 再返回 `self`" ⇒ 若照那个样式加 `with_repository`，请求 A 换的仓储全进程可见＝144 换载体重演。
+  `for_request` 因此**新建注册表**、六个容器字段逐个 `copy()`，而闭包字段（尤其 `id_generator`）**按引用共享**——
+  雪花 `worker_id` 固定、`sequence` 每毫秒归零，每请求新建生成器会在同一毫秒撞出同一个 id ⇒ 主键冲突。
+  纪律随之立死：SPI 注册只允许启动期做。
+- **⚠ 破坏面（三处）**：① `MysqlTxTemplate::make(MysqlConfig)` → `make(MysqlRepository)`；
+  ② 自由函数 `current_tx_conn()` / `close_conn(conn)` → 仓储实例方法（`close_conn` 转私有；
+  仓外 22 处 `@repo.close_conn(X)` 改 `X.close()`，顺带修掉"事务态下误关裸连接"的旧隐患）；
+  ③ `pub(all) struct MysqlRepository` 多一个字段 ⇒ 外部用字面量 `MysqlRepository::{ config }` 构造者编译失败。
+  现读**代码侧零消费者**（全生态唯一命中是一处文档提法：mldong-moon `doc/layering.md` §5 那句
+  "参照 jeeflow-moon `MysqlTxTemplate`"，本轮已按修后形状改写；`moon-token` 四模块不依赖本仓）
+  ⇒ 无实际受害者，但形状已破，按实写。
+- **模板回调的错误集从闭集放开成开放 `raise`**（`execute_in_tx` 与 `MysqlTxTemplate` 同步）：
+  本栈 `async fn` 不带 `raise` 注解即被推成开放效应，而 `Facade::flow` 正是这种形状 ⇒
+  闭集签名下宿主**压根没法把一次门面动作包进事务**（编译期 4014/4118 直接拒）。
+  模板对"抛什么错"本就不该挑：任何错都回滚、原样外抛。
+- **钉出来的现状缺陷（不是本轮修）**：`Facade::flow` 把 raise 吞成 `{code,msg,data}` 信封 ⇒
+  **宿主外包事务时动作内部失败不会触发回滚**，半完成实例照旧 `COMMIT`。已写成 `T1-F122` 反题桩（钉现状不是认可），
+  契约侧对应 hub `jeeflow-doc/docs/spec/12-transaction.md` §12.2「宿主外包事务的两条硬义务」。
+- **判据**（事务这件事第一次有行为门禁；判据本体在 spec/12 §12.4，各栈用自己的机制去过）：
+  仓储级 `M6` 并发原子／`M7` 嵌套不重复 BEGIN／`M8` 归属边界两方向（T1）；
+  门面级 `T1-F120` 原子档（四张表逐个反查 ＋ "不包事务就有残留"的阳性对照）／`T1-F121` 空转档
+  （事务内写→同实例读得到、`new_request()` 另起连接读不到、回滚后无残留）／`T1-F122` 反题桩；
+  `Ctx::for_request` 的三句 T0 判据。**三枚变异对照**都在副本树跑：去掉容器 `copy()` → T0 红；
+  `repository` 改 mut＋原地改 → T0 红（这两枚恰是"最像现有 `with_*` 风格"的写法）；
+  把 `open_or_tx` 改成每句自取连接（模拟 145-1 的 Java 空转形状）→ `T1-F120` 原子档当场红
+  ⇒ **空转档抓得住别家栈的形状，不是只能抓自家**。
+- **本版门禁**（2026-10-06 同窗现跑，台账旧读数不采信；真库走 160/`jeeflow` ＋ i137a 腿自建隔离库跑完 DROP）：
+  T0 `moon test --target wasm` **403/403**（402→403，新增 `for_request` 那一格）；
+  T1 `repository-mysql/smoke` **111→124 断言** ALL PASS；T1-F `demo/cmd/t1_mysql` **130→141 断言** ALL PASS；
+  i137a 真库腿 ALL PASS；T2 `scripts/smoke_t2.sh` **ALL PASS**（demo 起着，:8092）；
+  `check-action-manifest.mjs` **47/47 双向无差集**；`consistency/moon.json` **载荷逐字节等值**（本轮零行为变化面）；
+  警告按两棵干净树（`git clone` HEAD ＋ 现树副本，各自清 `_build`）同窗对比 **21→21 同分布零新增**
+  ——中途 +1 条 `deprecated_syntax`（回调闭包缺显式 `raise` 注解），补注解后归零。
+  ⚠ 数警告不许用 `moon check --all`：**本机工具链无此 flag**，命令直接 Usage 报错而 grep 数到 0，是假绿灯。
+  demo 另做本机 wasm 真跑（`JEEFLOW_DEMO_STORE=mysql`，两个 F 的变量名会被忽略并打警告）：
+  `/health` 回 `store=mysql`、四次真实发起全 `code=0`、实例 id 跨请求递增（证明确实共享 id 生成器）。
+- **未做**（hub `jeeflow-hub/issues/145` 的 145-6 保留）：引擎/门面自身**零接线**（`core/`＋`facade/` 内
+  `execute_in_tx|for_request` 零命中，原子性目前依赖宿主外包并按 spec/12 检查出口 code）；
+  SPI 的 `InterceptorFn.run`／`event_listeners`／`DynamicTableWriter` 全是**同步**形状，
+  而同步函数调 async 判 4149 ⇒ 本栈拦截器与监听器碰不到数据库，"业务规则与流程同事务"缺的是 SPI async 形状
+  （跨栈立法，不随本版做）。native 档 Windows 结构性编不了（R8），native 验证归 CI。
+
 ## 0.1.26（2026-10-02）
 
 **摘掉 vendored——上游 `moonbitstack/moonmysql@0.7.3` 把 client 的 wasm 放开了。** 代次从 0.1.25 前进一格，
