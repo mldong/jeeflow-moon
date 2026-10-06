@@ -66,7 +66,7 @@ async fn clean_9x(repo : @repo.MysqlRepository) -> Unit raise {
     "DELETE FROM wf_process_cc_instance WHERE process_instance_id IN (SELECT id FROM wf_process_instance WHERE id >= 990000 AND id < 1000000)",
     [],
   )
-  @repo.close_conn(sub_conn)
+  sub_conn.close()
   let tables = [
     "wf_process_task_actor",
     "wf_process_task",
@@ -77,7 +77,7 @@ async fn clean_9x(repo : @repo.MysqlRepository) -> Unit raise {
   for t in tables {
     let conn = repo.open_raw()
     let _ = @repo.q(conn, "DELETE FROM \{t} WHERE id >= 990000 AND id < 1000000", [])
-    @repo.close_conn(conn)
+    conn.close()
   }
 }
 
@@ -89,7 +89,7 @@ async fn save_define_9x(repo : @repo.MysqlRepository, id : Int64, name : String,
     "INSERT INTO wf_process_define (id, name, display_name, type, state, content, version, create_time, create_user) VALUES (?, ?, ?, 'approval', 1, ?, 1, NOW(), 't1f')",
     [@moondb.Int64(id), @moondb.Text(name), @moondb.Text(name), @moondb.Text(content)],
   )
-  @repo.close_conn(conn)
+  conn.close()
 }
 
 ///|
@@ -137,7 +137,7 @@ async fn select_cell(
 ) -> String raise {
   let conn = repo.open_raw()
   let rows = @repo.q(conn, sql, params)
-  @repo.close_conn(conn)
+  conn.close()
   if rows.is_empty() {
     return "<无行>"
   }
@@ -153,7 +153,7 @@ async fn select_i64(
 ) -> Int64 raise {
   let conn = repo.open_raw()
   let rows = @repo.q(conn, sql, params)
-  @repo.close_conn(conn)
+  conn.close()
   if rows.is_empty() {
     return -1L
   }
@@ -175,7 +175,7 @@ async fn task_cell(repo : @repo.MysqlRepository, tid : Int64, col : String) -> S
 async fn set_sql(repo : @repo.MysqlRepository, sql : String, params : Array[@moondb.Value]) -> Unit raise {
   let conn = repo.open_raw()
   let _ = @repo.x(conn, sql, params)
-  @repo.close_conn(conn)
+  conn.close()
 }
 
 ///|
@@ -686,7 +686,7 @@ async fn actor_rows(repo : @repo.MysqlRepository, tid : Int64) -> Array[String] 
     "SELECT actor_id FROM wf_process_task_actor WHERE process_task_id = ? ORDER BY actor_id",
     [@moondb.Int64(tid)],
   )
-  @repo.close_conn(conn)
+  conn.close()
   let out : Array[String] = []
   for r in rows {
     let _ = out.push(cell(r, "actor_id"))
@@ -746,7 +746,7 @@ async fn t1_f116_surrogate_auto_apply() -> Unit raise {
     "SELECT id FROM wf_process_task WHERE process_instance_id = ? AND task_name = 'task1' AND task_state = 10",
     [@moondb.Int64(iid)],
   )
-  @repo.close_conn(conn)
+  conn.close()
   for r in rows {
     let _ = back_ids.push(@repo.row_i64(r, "id"))
   }
@@ -781,7 +781,7 @@ async fn t1_f116_surrogate_auto_apply() -> Unit raise {
     "SELECT actor_id FROM wf_process_task_actor WHERE process_task_id = ?",
     [@moondb.Int64(doing_task_id(repo, iid3, "task1"))],
   )
-  @repo.close_conn(conn3)
+  conn3.close()
   check(rows3.length() == 1, "F116 条款4：无扩展仓储时参与者原样（实际=\{rows3.length()}）")
   // ⑥ 窗外 / 停用不生效（SQL 侧判据，与内存仓同答案见 T1-I116）
   let _ = sg_save(facade, "f116-off", "f116-li3", "t1-f116", [("enabled", "0")])
@@ -829,7 +829,7 @@ async fn t1_f117_done_list() -> Unit raise {
       ],
     )
   }
-  @repo.close_conn(conn)
+  conn.close()
   let facade = make_facade_ext(repo, 990950L)
   // 正向：20/30/40/99 四条都在已办，DOING 不在
   let data = sg_done(facade, "f117-leader")

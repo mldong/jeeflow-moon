@@ -27,9 +27,11 @@ let facade = @facade.Facade::make(@spi.Ctx::new(repo, @spi.NoExtRepository::new(
   normalization, BLOB content decode.
 - **`m_` filters** — three-segment request params (`m_LIKE_name`, `m_pd_EQ_state`) parsed and
   compiled into parameterized WHERE fragments across all page queries.
-- **Transactions** — `MysqlTxTemplate::execute_in_tx(op)`: one checked-out connection, BEGIN →
-  op → COMMIT, full ROLLBACK on error; repository calls inside `op` share the connection via the
-  ambient single-thread context.
+- **Transactions** — `repo.execute_in_tx(op)`, also reachable through `MysqlTxTemplate`: one
+  checked-out connection, BEGIN → op → COMMIT, full ROLLBACK on error. The handle lives on the
+  **repository instance**, not in a process-global slot (issues/144): copies of an instance share
+  the transaction, while `repo.new_request()` derives a fresh one per request — so sharing an
+  instance across requests means sharing a transaction.
 - **T1 smoke** — `smoke/` runs against a real MySQL (`SKIP_MYSQL=1` to skip on dev machines;
   **unreachable = fail, not skip** on release machines).
 

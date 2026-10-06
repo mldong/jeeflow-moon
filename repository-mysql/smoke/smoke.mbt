@@ -35,7 +35,7 @@ async fn clean_9x(repo : @repo.MysqlRepository) -> Unit raise {
     "DELETE FROM wf_process_cc_instance WHERE process_instance_id IN (SELECT id FROM wf_process_instance WHERE id >= 990000 AND id < 1000000)",
     [],
   )
-  @repo.close_conn(sub_conn)
+  sub_conn.close()
   let tables = [
     "wf_process_task_actor",
     "wf_process_task",
@@ -49,7 +49,7 @@ async fn clean_9x(repo : @repo.MysqlRepository) -> Unit raise {
   for t in tables {
     let conn = repo.open_raw()
     let _ = @repo.q(conn, "DELETE FROM \{t} WHERE id >= 990000 AND id < 1000000", [])
-    @repo.close_conn(conn)
+    conn.close()
   }
   // 兜底：清理 operator/user9x 标记的历史残留（早前崩溃运行可能落雪花 id）
   let conn = repo.open_raw()
@@ -61,7 +61,7 @@ async fn clean_9x(repo : @repo.MysqlRepository) -> Unit raise {
   let _ = @repo.q(conn, "DELETE FROM wf_process_task WHERE process_instance_id IN (SELECT id FROM wf_process_instance WHERE operator = 'user9x')", [])
   let _ = @repo.q(conn, "DELETE FROM wf_process_cc_instance WHERE process_instance_id IN (SELECT id FROM wf_process_instance WHERE operator = 'user9x')", [])
   let _ = @repo.q(conn, "DELETE FROM wf_process_instance WHERE operator = 'user9x'", [])
-  @repo.close_conn(conn)
+  conn.close()
 }
 
 ///|
@@ -72,7 +72,7 @@ async fn save_define_9x(repo : @repo.MysqlRepository, id : Int64, name : String,
     "INSERT INTO wf_process_define (id, name, display_name, type, state, content, version, create_time, create_user) VALUES (?, ?, ?, 'approval', 1, ?, 1, NOW(), 't1')",
     [@moondb.Int64(id), @moondb.Text(name), @moondb.Text(name), @moondb.Text(content)],
   )
-  @repo.close_conn(conn)
+  conn.close()
 }
 
 ///|
@@ -116,7 +116,7 @@ async fn t1_m1_page() -> Unit raise {
       [@moondb.Int64(990010L + i.to_int64())],
     )
   }
-  @repo.close_conn(conn)
+  conn.close()
   let query = @model.PageQuery::new(1L, 1L)
   query.set_operator(Some("user9x"))
   let page = repo.page_instances(query)
@@ -187,8 +187,8 @@ async fn t1_m3_mparams() -> Unit raise {
 /// 事务体：两条 INSERT 后主动抛错。抽成具名 async fn 是因为内联 `fn() { … }` 闭包
 /// 在本工具链下两头堵——不标 async 吃 deprecated_syntax，标了 `async fn()` 又把效应推成
 /// 开放 Error、与 execute_in_tx 声明的闭集 raise JeeflowError 不匹配。
-async fn t1_m4_boom_tx() -> Unit raise @error.JeeflowError {
-  let conn = @repo.current_tx_conn().unwrap()
+async fn t1_m4_boom_tx(repo : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+  let conn = repo.current_tx_conn().unwrap()
   let _ = @repo.x(
     conn,
     "INSERT INTO wf_process_instance (id, process_define_id, state, operator, variable, create_time, create_user) VALUES (990020, 990001, 10, 'user9x', '{}', NOW(), 't1')",
@@ -221,7 +221,7 @@ async fn t1_m4_tx_rollback() -> Unit raise {
   let conn = repo.open_raw()
   let inst_rows = @repo.q(conn, "SELECT COUNT(*) AS c FROM wf_process_instance WHERE id = 990020", [])
   let task_rows = @repo.q(conn, "SELECT COUNT(*) AS c FROM wf_process_task WHERE id = 990021", [])
-  @repo.close_conn(conn)
+  conn.close()
   check(@repo.row_i64(inst_rows[0], "c") == 0L, "实例行回滚净")
   check(@repo.row_i64(task_rows[0], "c") == 0L, "任务行回滚净")
   clean_9x(repo)
@@ -335,7 +335,7 @@ async fn select_cell(
 ) -> String raise {
   let conn = repo.open_raw()
   let rows = @repo.q(conn, sql, params)
-  @repo.close_conn(conn)
+  conn.close()
   if rows.is_empty() {
     return "<无行>"
   }
@@ -395,7 +395,7 @@ async fn select_cell_dt(
 ) -> String raise {
   let conn = repo.open_raw()
   let rows = @repo.q(conn, sql, params)
-  @repo.close_conn(conn)
+  conn.close()
   if rows.is_empty() {
     return "<无行>"
   }
@@ -674,7 +674,7 @@ async fn t1_i117_done_state_set() -> Unit raise {
     "INSERT INTO wf_process_instance (id, process_define_id, state, operator, variable, create_time, create_user) VALUES (990600, 990601, 10, 'i117-applicant', '{}', NOW(), 'i117')",
     [],
   )
-  @repo.close_conn(conn)
+  conn.close()
   let specs : Array[(Int64, Int, String?)] = [
     (990611L, 20, Some("i117-leader")),
     (990612L, 30, Some("i117-leader")),
@@ -772,6 +772,166 @@ async fn t1_i117_done_state_set() -> Unit raise {
   clean_9x(repo)
 }
 
+// ── T1-M6/M7/M8：issues/144 的事务归属档（方案 b 的验收判据）──────────────────
+// 三档各自测一件事：并发请求不得互相提交（M6）、同一实例内嵌套仍属同一事务（M7）、
+// 归属边界的两个方向（同实例族拷贝共用槽 / 派生请求实例独立槽）（M8）。
+
+///|
+/// 夹具实例行（9xxxxx 段，测后 clean_9x）。走**真实仓储写路径** `save_instance`，
+/// 而不是手写 SQL：本案要测的就是 open_or_tx() 那 42 个调用点把读写汇到哪条连接上。
+fn m6_inst(iid : Int64) -> @model.ProcessInstance {
+  {
+    instance_id: iid,
+    parent_id: None,
+    define_id: 990001L,
+    state: 10,
+    parent_node_name: None,
+    business_no: None,
+    operator: "t1m6",
+    expire_time: None,
+    variables: @json.FlowData::new(),
+    tasks: [],
+    create_time: None,
+    create_user: Some("t1"),
+    update_time: None,
+    update_user: None,
+    define_info: None,
+  }
+}
+
+///|
+/// 持久态读数：另开一条连接，绕开事务可见性——读到的就是"已提交/已回滚"的终态
+async fn m6_row_count(base : @repo.MysqlRepository, iid : Int64) -> Int64 raise {
+  let conn = base.open_raw()
+  let rows = @repo.q(
+    conn,
+    "SELECT COUNT(*) AS c FROM wf_process_instance WHERE id = ?",
+    [@moondb.Int64(iid)],
+  )
+  conn.close()
+  @repo.row_i64(rows[0], "c")
+}
+
+///|
+/// A 支：事务里写一行 → 让出事件循环 → 抛错（模板 ROLLBACK）
+async fn m6_body_a(r : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+  r.save_instance(m6_inst(990030L))
+  // 真实系统里任何一次 DB 往返都是 await，这里用 sleep 制造同一个让出点
+  let _ = @async.sleep(60)
+  raise @error.Business("A-boom-in-tx")
+}
+
+///|
+/// B 支：在 A 的让出窗口里进模板，写完并成功返回
+async fn m6_body_b(r : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+  r.save_instance(m6_inst(990031L))
+}
+
+///|
+/// T1-M6 并发原子档（案文 §5 第一条）：X2 那格必须从 `has400=0` 翻成 1，
+/// 否则"跨请求共用同一条连接时事务边界不存在"这条结论仍然成立。
+async fn t1_m6_tx_scope_isolation() -> Unit raise {
+  println("T1-M6 两个并发请求各走一次模板（issues/144 X2 档）...")
+  let base = @repo.MysqlRepository::from_env()
+  clean_9x(base)
+  let ra = base.new_request()
+  let rb = base.new_request()
+  let a_out = Ref("unset")
+  let b_out = Ref("unset")
+  let _ = @async.all([
+    () => {
+      let out = try {
+        ra.execute_in_tx(m6_body_a)
+        "clean"
+      } catch {
+        _ => "raised"
+      }
+      a_out.val = out
+    },
+    () => {
+      // 晚 20ms 进模板：此刻 A 已 BEGIN 并让出——旧的全局槽形状下 B 会复用 A 的连接
+      let _ = @async.sleep(20)
+      let out = try {
+        rb.execute_in_tx(m6_body_b)
+        "committed"
+      } catch {
+        _ => "raised"
+      }
+      b_out.val = out
+    },
+  ])
+  check(a_out.val == "raised", "T1-M6 A 支回调抛错按预期外传（模板已 ROLLBACK）")
+  check(b_out.val == "committed", "T1-M6 B 支独立提交并成功返回（没搭 A 的事务）")
+  check(m6_row_count(base, 990030L) == 0L, "T1-M6 A 支自己的行被自己回滚撤掉")
+  check(m6_row_count(base, 990031L) == 1L, "T1-M6 B 支已确认的写入还在（X2 的 has400 翻成 1）")
+  clean_9x(base)
+}
+
+///|
+/// 内层：写一行后"成功返回"。若嵌套错误地另开事务，这里就会独立提交，
+/// 外层随后回滚就撤不掉它——所以"内层行也不在"同时证伪了两种坏形状。
+async fn m7_body_inner(r : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+  r.save_instance(m6_inst(990033L))
+}
+
+async fn m7_body_outer(r : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+  r.save_instance(m6_inst(990032L))
+  let inner = r.tx_template()
+  inner.execute_in_tx(m7_body_inner)
+  check(r.tx_active(), "T1-M7 嵌套调用返回后本实例仍在同一事务中（未另开连接）")
+  raise @error.Business("outer-boom")
+}
+
+///|
+/// T1-M7 正向对照（案文 §5 第二条）：同一实例内嵌套不重复 BEGIN、同属一个事务。
+/// 这条是本案要**保住**的既有语义，不是新能力。
+async fn t1_m7_nested_tx_reuse() -> Unit raise {
+  println("T1-M7 同一实例内嵌套不重复 BEGIN（正向对照）...")
+  let base = @repo.MysqlRepository::from_env()
+  clean_9x(base)
+  let r = base.new_request()
+  let raised = try {
+    r.execute_in_tx(m7_body_outer)
+    false
+  } catch {
+    _ => true
+  }
+  check(raised, "T1-M7 外层抛错按预期外传")
+  check(!r.tx_active(), "T1-M7 模板收尾清空本实例事务槽（不留悬空连接）")
+  check(m6_row_count(base, 990032L) == 0L, "T1-M7 外层写入随外层回滚撤掉")
+  check(m6_row_count(base, 990033L) == 0L, "T1-M7 嵌套内层写入与外层同事务、被一起撤掉")
+  clean_9x(base)
+}
+
+///|
+/// T1-M8 归属边界的两个方向：
+/// 拷贝共享槽（⇒ Ctx/Facade/Engine 各自持有的那份 R 自动落在同一事务里，这是 b 成立的前提）；
+/// 派生独立槽（⇒ 请求边界切开，这是 b 修复本案的前提）。
+async fn m8_body(r : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+  let as_copy = r
+  as_copy.save_instance(m6_inst(990034L))
+  let derived = r.new_request()
+  derived.save_instance(m6_inst(990035L))
+  check(derived.tx_active() == false, "T1-M8 派生实例看不到母体的事务（新槽）")
+  raise @error.Business("m8-boom")
+}
+
+async fn t1_m8_tx_ownership_boundary() -> Unit raise {
+  println("T1-M8 事务归属边界：拷贝共用槽 / 派生独立槽...")
+  let base = @repo.MysqlRepository::from_env()
+  clean_9x(base)
+  let r = base.new_request()
+  let raised = try {
+    r.execute_in_tx(m8_body)
+    false
+  } catch {
+    _ => true
+  }
+  check(raised, "T1-M8 抛错按预期外传")
+  check(m6_row_count(base, 990034L) == 0L, "T1-M8 经拷贝写入的行落在事务内（被回滚撤掉）")
+  check(m6_row_count(base, 990035L) == 1L, "T1-M8 经派生实例写入的行落在事务外（autocommit 留存）")
+  clean_9x(base)
+}
 ///|
 async fn t1_all() -> Unit raise {
   println("T1-M1 page five keys...")
@@ -794,6 +954,9 @@ async fn t1_all() -> Unit raise {
   t1_i116_surrogate_query()
   println("T1-I117 我已办状态集合 <>10 + 空 operator 空页...")
   t1_i117_done_state_set()
+  t1_m6_tx_scope_isolation()
+  t1_m7_nested_tx_reuse()
+  t1_m8_tx_ownership_boundary()
   println("T1 ALL PASS (wasm → 160)")
   println("门面级 withdraw/transfer 真机对拍另跑：moon run --target wasm demo/cmd/t1_mysql")
 }

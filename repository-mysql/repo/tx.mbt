@@ -1,60 +1,90 @@
-// ITransactionTemplate 真实现（spec/05 连接级 + 上下文绑定的 MoonBit 形态）
-// 单线程事件循环 ⇒ 环境连接（ambient conn）即上下文绑定（对齐 Python contextvars/Node ALS 谱系，方案 §2.3）。
-// 模板内：checkout 连接 → BEGIN → 回调 → COMMIT；回调抛错 → ROLLBACK → 异常外抛。
-// 事务中的仓储方法共用该连接（open() 优先复用环境连接，且不在事务中途 close）。
+// ITransactionTemplate 真实现（spec/05 连接级 + 事务作用域绑定的 MoonBit 形态）
+//
+// 句柄挂在**仓储实例**上，不是进程级全局槽（issues/144）：本栈是单线程事件循环，多个请求
+// 在 await 点互相交错，而全局 `Ref` 是进程级共享——A 的事务连接会被 B 看见并复用，
+// A 回滚时把 B 已经返回给调用方的确认写入一起抹掉（案文 §2 X2 档，160 真库实测）。
+// 旧注释拿 Python contextvars / Node AsyncLocalStorage 类比，那是错的：那两者按异步任务隔离
+// （task-scoped），本栈没有 task-local，能用的只有"句柄随实例走"或"句柄显式传"。
+// 本轮实测的语义前提（探针 P1–P5）：结构体拷贝共享同一个 `Ref` 槽 ⇒ 同一实例族的仓储调用
+// 自动同事务；`new_request()` 派生的实例各持新槽 ⇒ 请求之间互不可见。
+// 接线纪律：一个请求＝一个仓储实例（Web 层从启动期的 base 实例 `new_request()` 派生）。
+//
+// 模板内：取连接 → BEGIN → 回调 → COMMIT；回调抛错 → errdefer ROLLBACK → 异常外抛。
+// 事务中的仓储方法共用该连接（open_or_tx() 优先复用事务连接，且事务中途不 close）。
 
 ///|
-/// 环境事务连接（None = 非事务态，各方法独立连接）
-let tx_conn : Ref[(@client.MysqlConn?)] = Ref(None)
-
-///|
-/// 事务内取当前连接（测试/工具用；非事务态 None）
-pub fn current_tx_conn() -> @client.MysqlConn? {
-  tx_conn.val
+/// 请求级派生：同一份连接配置，独立的事务槽
+pub fn MysqlRepository::new_request(self : MysqlRepository) -> MysqlRepository {
+  // 块里只有一个 `{ … }` 时"代码块 vs 结构体字面量"有歧义（编译器直接点名）⇒ 限定写法
+  MysqlRepository::{ config: self.config, tx: Ref(None) }
 }
 
 ///|
-/// MysqlRepository.open() 在事务态复用环境连接
+/// 本实例是否处于事务中——判"这个仓储实例的事务槽"，不判"进程里有没有事务"
+pub fn MysqlRepository::tx_active(self : MysqlRepository) -> Bool {
+  self.tx.val is Some(_)
+}
+
+///|
+/// 事务内取当前连接（测试/工具用；非事务态 None）
+pub fn MysqlRepository::current_tx_conn(self : MysqlRepository) -> @client.MysqlConn? {
+  self.tx.val
+}
+
+///|
+/// MysqlRepository.open() 在事务态复用本实例的事务连接
 async fn MysqlRepository::open_or_tx(self : MysqlRepository) -> @client.MysqlConn raise @error.JeeflowError {
-  match tx_conn.val {
+  match self.tx.val {
     Some(conn) => conn
     None => self.open()
   }
 }
 
 ///|
-/// 事务态判断（close 跳过）
-fn in_tx() -> Bool {
-  tx_conn.val is Some(_)
+/// 事务感知 close：本实例的事务连接由模板收尾，这里不关
+fn MysqlRepository::close_conn(self : MysqlRepository, conn : @client.MysqlConn) -> Unit {
+  match self.tx.val {
+    Some(_) => ()
+    None => conn.close()
+  }
 }
 
 ///|
 pub(all) struct MysqlTxTemplate {
-  config : MysqlConfig
+  repo : MysqlRepository
 }
 
 ///|
-pub fn MysqlTxTemplate::make(config : MysqlConfig) -> MysqlTxTemplate {
-  MysqlTxTemplate::{ config }
+pub fn MysqlTxTemplate::make(repo : MysqlRepository) -> MysqlTxTemplate {
+  MysqlTxTemplate::{ repo }
 }
 ///|
 pub fn MysqlTxTemplate::from_env() -> MysqlTxTemplate raise {
-  { config: MysqlConfig::from_env() }
+  { repo: MysqlRepository::from_env() }
 }
 
 ///|
-/// spec/05 模板形态：op 内所有仓储调用共连接，异常整体回滚
-pub async fn MysqlTxTemplate::execute_in_tx(
-  self : MysqlTxTemplate,
-  op : async () -> Unit raise @error.JeeflowError
+/// 从仓储实例取模板：模板与调用方的仓储必然共用同一个事务槽
+pub fn MysqlRepository::tx_template(self : MysqlRepository) -> MysqlTxTemplate {
+  MysqlTxTemplate::{ repo: self }
+}
+
+///|
+/// spec/05 模板形态：op 内该实例族的所有仓储调用共连接，异常整体回滚。
+/// 回调收**绑定后的仓储实例**：调用方不需要（也不应该）再传第二次句柄，
+/// 但拿到句柄就没法"用错实例"而静默走 autocommit。
+/// 同一实例内嵌套仍不重复 BEGIN（`tx_active()` 命中即直接跑 op）——
+/// 本案否定的只是"跨请求命中同一条复用分支"，不是嵌套复用本身。
+pub async fn MysqlRepository::execute_in_tx(
+  self : MysqlRepository,
+  op : async (MysqlRepository) -> Unit raise @error.JeeflowError
 ) -> Unit raise @error.JeeflowError {
-  if in_tx() {
-    // 已在事务中：嵌套模板直接执行（连接复用，不重复 BEGIN）
-    op()
+  if self.tx_active() {
+    op(self)
     return
   }
   let conn = self.config.open_conn()
-  tx_conn.val = Some(conn)
+  self.tx.val = Some(conn)
   // 1) BEGIN 的错误**先**映射成 JeeflowError，再交给下面的统一回滚臂——
   //    否则 catch 臂绑到的错误类型会含 DbError，`raise e` 与函数签名的 raise JeeflowError 不匹配。
   // 2) BEGIN 或 op 失败 ⇒ ROLLBACK（回滚自身失败不掩盖原错误）→ 清事务态 → 关连接 → 外抛原错误。
@@ -67,7 +97,7 @@ pub async fn MysqlTxTemplate::execute_in_tx(
     } catch {
       _ => ()
     }
-    tx_conn.val = None
+    self.tx.val = None
     conn.close()
   }
   try {
@@ -75,7 +105,7 @@ pub async fn MysqlTxTemplate::execute_in_tx(
   } catch {
     e => raise @error.Internal("tx begin: \{e}")
   }
-  op()
+  op(self)
   // 3) COMMIT：照旧顺序 commit → 清态 → 关连接，**之后**才判错误
   //    （已提交不再回滚；但清态与关连接不能因为 commit 报错而被跳过——原实现正是这个顺序）。
   let commit_err = try {
@@ -84,7 +114,7 @@ pub async fn MysqlTxTemplate::execute_in_tx(
   } catch {
     e => Some(e)
   }
-  tx_conn.val = None
+  self.tx.val = None
   conn.close()
   match commit_err {
     Some(e) => raise @error.Internal("tx commit: \{e}")
@@ -92,4 +122,11 @@ pub async fn MysqlTxTemplate::execute_in_tx(
   }
 }
 
-
+///|
+/// 模板入口（spec/05 的 ITransactionTemplate 命名位）：委派给绑定的仓储实例
+pub async fn MysqlTxTemplate::execute_in_tx(
+  self : MysqlTxTemplate,
+  op : async (MysqlRepository) -> Unit raise @error.JeeflowError
+) -> Unit raise @error.JeeflowError {
+  self.repo.execute_in_tx(op)
+}

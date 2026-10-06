@@ -114,8 +114,10 @@ let facade = @facade.Facade::make(ctx_with(repo))
 - 建表 DDL：`repository-mysql/schema/schema-mysql.sql`（编辑源在 jeeflow-java，勿手改）。
 - ⚠️ 给 `JEFFLOW_DB_NAME` 指一个**专用新库**（先建库再导上面的 DDL）：指向旧库或与其他栈共享的库会
   静默混表——schema 版本不齐时表现为莫名的缺列/水化失败，库内残留数据还会干扰分页/统计类断言。
-- 真事务：`MysqlTxTemplate::from_env().execute_in_tx(op)`——op 内仓储调用共用环境连接，
-  回调抛错整体回滚。
+- 真事务：句柄挂在**仓储实例**上（issues/144）——一个请求＝一个仓储实例。
+  `let r = repo.new_request()` 派生请求级实例，`r.execute_in_tx(op)` 的 op 收绑定后的实例，
+  op 内该实例族的仓储调用共用同一条连接，回调抛错整体回滚。
+  ⚠ 同实例＝同事务：两个请求若共享同一个仓储实例，它们会互相看见对方的事务——这正是 144 修掉的那一格。
 - 首次连库的建库/导入步骤与 env 口径见仓根 `MAINTAINING.md` §2 T1（维护者向，不在本目录）。
 
 ## 本地开发（本仓源码）

@@ -91,7 +91,7 @@ async fn clean_991(repo : @repo.MysqlRepository) -> Unit raise {
     [],
   )
   let _ = @repo.q(conn, "DELETE FROM wf_process_define WHERE id >= 991000 AND id < 992000", [])
-  @repo.close_conn(conn)
+  conn.close()
 }
 
 ///|
@@ -107,7 +107,7 @@ async fn save_define(repo : @repo.MysqlRepository, id : Int64, content : String)
       @moondb.Text("2026-10-01 09:00:00"),
     ],
   )
-  @repo.close_conn(conn)
+  conn.close()
 }
 
 ///|
@@ -166,7 +166,7 @@ async fn sel_v(
 ) -> String raise {
   let conn = repo.open_raw()
   let rows = @repo.q(conn, sql, params)
-  @repo.close_conn(conn)
+  conn.close()
   if rows.is_empty() { "<无行>" } else { cell(rows[0], "v") }
 }
 

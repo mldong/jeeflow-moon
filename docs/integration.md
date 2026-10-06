@@ -43,8 +43,9 @@ let facade = @facade.Facade::make(ctx_with(repo))
 ```
 
 - 每操作独立连接、语句级 autocommit（联邦现状，对齐 rust/sqlx 线）。
-- 真事务：`MysqlTxTemplate::from_env().execute_in_tx(op)` —— op 内仓储调用经环境连接共用，
-  回调抛错整体回滚（spec/05 连接级 + 上下文绑定的单线程形态）。
+- 真事务：`let r = repo.new_request()` → `r.execute_in_tx(op)`（op 收绑定后的仓储实例）——
+  op 内该实例族的仓储调用共用同一条连接，回调抛错整体回滚（spec/05 连接级 + 事务作用域绑定）。
+  句柄随**仓储实例**走、不是进程级全局槽：一个请求＝一个仓储实例（issues/144）。
 - 建表 DDL：`repository-mysql/schema/schema-mysql.sql`（编辑源=jeeflow-java，勿手改）。
 
 ## 业务数据动态入库（persist）

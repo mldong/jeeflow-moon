@@ -646,7 +646,7 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
 - **所选项**：Ctx 不携带事务模板字段；`MysqlTxTemplate`（repository-mysql）作为独立类型提供
   `execute_in_tx(op)` 真事务（环境连接绑定=spec/05 连接级上下文的单线程形态），T1-M4 语义测试直接使用。
 - **理由**：spec/05 本就"事务由业务层持有"；rust demo 同样 transaction_template=None。
-- **状态**：已追认（2026-09-05）。
+- **状态**：已追认（2026-09-05）。⚠ 2026-10-06 issues/144：环境连接那半已更正为「句柄挂仓储实例」，见 §4 D-M6-3。
 
 ### D-M2-2 T1 走 moon run 可执行通道
 
@@ -816,6 +816,35 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
   把 `now_v()` 换成模拟 DB `+08:00` ⇒ `FAIL 实际=2026-09-26 01:59:18，注入串=2026-09-25 05:59:17`，
   证明判据真能分辨"库里用的是哪把钟"。
 
+### D-M6-3 事务句柄挂仓储实例，不挂进程级全局槽（issues/144 方案 b）
+
+- **问题**：`tx.mbt` 原形状是进程级 `let tx_conn : Ref[MysqlConn?]`，`in_tx()` 判的是"进程里有没有事务"。
+  本栈单线程事件循环 + 无 task-local ⇒ 并发请求在 await 点交错时互相看见对方的槽：B 进模板既不
+  BEGIN 也不 COMMIT，它的写并进 A 的事务；A 抛错回滚 ⇒ **B 已对自己的调用方返回成功的那笔写入被抹掉**
+  （案文 §2 X2，160 真库实测 `has400=0`）。旧注释拿 Python contextvars / Node ALS 类比是本案误导源——
+  那两者 task-scoped，全局 `Ref` 不是。
+- **所选项**（owner 2026-10-06 拍方案 b）：句柄改为随**仓储实例**走——`MysqlRepository` 加
+  `tx : Ref[(@client.MysqlConn?)]` 字段，`open_or_tx`/`tx_active`/`close_conn` 一律读 `self`；
+  `new_request()` 派生请求级实例（同 config、独立槽）；`execute_in_tx(op)` 上提到仓储实例，
+  op 收**绑定后的实例**（这样调用方没法用错实例而静默走 autocommit）；`MysqlTxTemplate` 保留为
+  spec/05 的命名位，委派给绑定的仓储。`close_conn` 从读全局槽的自由函数收成实例方法；
+  `open_raw()` 出来的连接改由调用方 `conn.close()`（顺带修掉"事务态下误关裸连接"的旧隐患）。
+  本轮实测的语义前提（探针 P1–P5）：结构体拷贝共享同一个 `Ref` 槽 ⇒ Ctx/Facade/Engine 各自持有的
+  那份 R 自动落在同一事务里；派生实例各持新槽 ⇒ 请求之间互不可见。
+- **为什么不选"每次仓储调用传句柄"（方案 a）**：那要动 `IProcessRepository`/`ProcessExtRepository`
+  共 42 个 SPI 方法签名，而 spec/05 把这两个 trait 立成八语言一致契约 ⇒ 单语言加参就是联邦分叉。
+  案文 §4 原写"Rust 同形、推荐 a"，现读不成立：`jeeflow-rust` 只有 `TransactionTemplate` 的 trait
+  声明 + `context.rs` 一个 `Option<Arc<dyn ...>>` 槽，**零实现零调用**，repository-sqlx 里没有任何
+  begin/commit——那条闭包也不收句柄。
+- **代价与残留**：本方案仓储方法签名零改动，代价是正确性挂在**装配纪律**上——一个请求＝一个仓储
+  实例；两个请求共享同一实例即共享同一事务，而运行期无从检测（MoonBit 无 task-local，"同请求嵌套"
+  与"跨请求命中复用分支"在进程内不可区分）。demo 现读零事务调用点，故维持启动期装配未改；
+  接事务的集成层必须按本纪律派生实例。
+- **验收**：T1 新增三档——M6 并发原子（案文 X2 必须从 `has400=0` 翻成 1）、M7 同实例嵌套不重复
+  BEGIN 且内层行随外层一起回滚（正向对照）、M8 归属边界两方向（拷贝共用槽 / 派生独立槽）。
+  阳性对照：在副本里把 `new_request()` 的槽退回进程级全局 ⇒ M6 当场报红（实测 FAIL 行即 X2 那一格）。
+- **状态**：已落地，**未发版**（`mldong/jeeflow-repository-mysql` 是已公开模块，走 bump＋mooncakes
+  发布＋下游升 pin 链；CHANGELOG 条目留到发版轮再挂）。
 ## 5. 契约对照（moon ↔ java ↔ 六语言）
 
 > 契约源：`scripts/action-manifest.json`（M0 与 java `JeeflowFacade` 实查双向无差集，精确计数以 manifest 为准）。

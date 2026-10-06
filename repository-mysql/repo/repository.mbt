@@ -4,16 +4,17 @@
 ///|
 pub(all) struct MysqlRepository {
   config : MysqlConfig
+  tx : Ref[(@client.MysqlConn?)]
 }
 
 ///|
 pub fn MysqlRepository::make(config : MysqlConfig) -> MysqlRepository {
   // 块里只有一个 `{ … }` 时"代码块 vs 结构体字面量"有歧义（编译器直接点名）⇒ 限定写法
-  MysqlRepository::{ config }
+  MysqlRepository::{ config, tx: Ref(None) }
 }
 ///|
 pub fn MysqlRepository::from_env() -> MysqlRepository raise {
-  { config: MysqlConfig::from_env() }
+  { config: MysqlConfig::from_env(), tx: Ref(None) }
 }
 
 ///|
@@ -29,7 +30,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_define_by_id(se
     "SELECT id, name, display_name, type, state, content, version, create_time, create_user, update_time, update_user FROM wf_process_define WHERE id = ?",
     [@moondb.Int64(define_id)],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   if rows.is_empty() {
     return None
   }
@@ -72,7 +73,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn save_define(self, de
       opt_v(define_info.create_user),
     ],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -90,7 +91,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn update_define(self, 
       @moondb.Int64(define_info.id),
     ],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -100,14 +101,14 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn update_define_state(
     "UPDATE wf_process_define SET state=? WHERE id=?",
     [@moondb.Int(state), @moondb.Int64(define_id)],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
 pub impl @spi.ProcessRepository for MysqlRepository with fn remove_define(self, define_id) {
   let conn = self.open_or_tx()
   let _ = x(conn, "DELETE FROM wf_process_define WHERE id=?", [@moondb.Int64(define_id)])
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -117,7 +118,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_instance_by_id(
     "SELECT id, parent_id, process_define_id, state, parent_node_name, business_no, operator, expire_time, variable, create_time, create_user, update_time, update_user FROM wf_process_instance WHERE id = ?",
     [@moondb.Int64(instance_id)],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   if rows.is_empty() {
     return None
   }
@@ -171,7 +172,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn save_instance(self, 
       opt_v(instance.create_user),
     ],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -191,7 +192,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn update_instance(self
       @moondb.Int64(instance.instance_id),
     ],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -235,7 +236,7 @@ async fn MysqlRepository::hydrate_tasks(self : MysqlRepository, rows : Array[@mo
     }
     out.push(map_mysql_task(r, actor_ids))
   }
-  close_conn(conn)
+  self.close_conn(conn)
   out
 }
 
@@ -246,7 +247,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_task_by_id(self
     "SELECT id, process_instance_id, task_name, display_name, task_type, perform_type, task_state, operator, finish_time, expire_time, form_key, task_parent_id, variable, create_time, create_user, update_time, update_user FROM wf_process_task WHERE id = ?",
     [@moondb.Int64(task_id)],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   if rows.is_empty() {
     return None
   }
@@ -293,7 +294,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn save_task(self, task
       opt_v(task.create_user),
     ],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -315,7 +316,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn update_task(self, ta
       @moondb.Int64(task.task_id),
     ],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -341,7 +342,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_doing_tasks(sel
     }
   }
   let rows = q(conn, sql, params)
-  close_conn(conn)
+  self.close_conn(conn)
   self.hydrate_tasks(rows)
 }
 
@@ -364,7 +365,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_done_tasks(self
     }
   }
   let rows = q(conn, sql, params)
-  close_conn(conn)
+  self.close_conn(conn)
   self.hydrate_tasks(rows)
 }
 
@@ -375,7 +376,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_history_tasks(s
     "SELECT " + task_columns + " FROM wf_process_task WHERE process_instance_id = ? ORDER BY id",
     [@moondb.Int64(instance_id)],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   self.hydrate_tasks(rows)
 }
 
@@ -386,7 +387,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn find_task_actors(sel
     "SELECT actor_id FROM wf_process_task_actor WHERE process_task_id = ?",
     [@moondb.Int64(task_id)],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   let out : Array[String] = []
   for r in rows {
     out.push(row_text(r, "actor_id", ""))
@@ -432,7 +433,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn add_task_actor(self,
       )
     }
   }
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -454,7 +455,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn remove_task_actor(se
       [@moondb.Int64(task_id), @moondb.Text(actor)],
     )
   }
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -493,7 +494,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn create_cc_instance(s
       ],
     )
   }
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -533,7 +534,7 @@ fn cc_actor_ids_of_rows(rows : Array[@moondb.Row]) -> Array[String] {
 pub impl @spi.ProcessRepository for MysqlRepository with fn find_cc_actors(self, instance_id) {
   let conn = self.open_or_tx()
   let rows = cc_actor_ids_query(conn, instance_id)
-  close_conn(conn)
+  self.close_conn(conn)
   cc_actor_ids_of_rows(rows)
 }
 
@@ -556,5 +557,5 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn update_cc_status(sel
     "UPDATE wf_process_cc_instance SET state=1 WHERE process_instance_id=? AND actor_id=?",
     [@moondb.Int64(instance_id), @moondb.Text(actor_id)],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }

@@ -108,7 +108,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_todo_tasks(self
     None => ()
   }
   let rows = q(conn, sql, params)
-  close_conn(conn)
+  self.close_conn(conn)
   let out : Array[@model.TaskRow] = []
   for r in rows {
     out.push(task_row_of_mysql(r))
@@ -154,7 +154,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_done_tasks(self
   }
   params.push(@moondb.Text(operator))
   let rows = q(conn, sql, params)
-  close_conn(conn)
+  self.close_conn(conn)
   let out : Array[@model.TaskRow] = []
   for r in rows {
     out.push(task_row_of_mysql(r))
@@ -195,7 +195,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_instances(self,
     None => ()
   }
   let rows = q(conn, sql, params)
-  close_conn(conn)
+  self.close_conn(conn)
   let out : Array[@model.InstanceRow] = []
   for r in rows {
     out.push(instance_row_of_mysql(r))
@@ -224,7 +224,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_cc_instances(se
   let sql = cc_page_data_sql(page_size, offset)
   let params : Array[@moondb.Value] = [@moondb.Text(operator)]
   let rows = q(conn, sql, params)
-  close_conn(conn)
+  self.close_conn(conn)
   let out : Array[@model.InstanceRow] = []
   for r in rows {
     out.push(instance_row_of_mysql(r))
@@ -264,7 +264,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_defines(self, q
   let total = if count_rows.is_empty() { 0L } else { row_i64(count_rows[0], "cnt") }
   let sql = "SELECT pd.id, pd.name, pd.display_name, pd.type, pd.state, pd.version, pd.create_time, pd.create_user, pd.update_time, pd.update_user FROM wf_process_define pd WHERE 1=1" + m_where + " ORDER BY pd.id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()
   let rows = q(conn, sql, m_params)
-  close_conn(conn)
+  self.close_conn(conn)
   let out : Array[@model.DefineRow] = []
   for r in rows {
     let row = @model.DefineRow::new_empty()
@@ -290,7 +290,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn count_todo_tasks(sel
     "SELECT COUNT(DISTINCT t.id) AS cnt FROM wf_process_task t JOIN wf_process_task_actor ta ON ta.process_task_id = t.id WHERE t.task_state = 10 AND ta.actor_id = ?",
     [@moondb.Text(user_id)],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   if rows.is_empty() {
     0L
   } else {
@@ -305,7 +305,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn get_all_instances(se
     "SELECT id, parent_id, process_define_id, state, parent_node_name, business_no, operator, expire_time, variable, create_time, create_user, update_time, update_user FROM wf_process_instance",
     [],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   let out : Array[@model.ProcessInstance] = []
   for r in rows {
     out.push({
@@ -336,7 +336,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn get_all_tasks(self) 
     "SELECT " + task_columns + " FROM wf_process_task",
     [],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   self.hydrate_tasks(rows)
 }
 

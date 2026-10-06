@@ -44,15 +44,6 @@ async fn MysqlRepository::open(self : MysqlRepository) -> @client.MysqlConn rais
   self.config.open_conn()
 }
 ///|
-/// 事务感知 close：事务连接归还模板管理
-pub fn close_conn(conn : @client.MysqlConn) -> Unit {
-  match tx_conn.val {
-    Some(_) => () // 事务连接由模板 close
-    None => conn.close()
-  }
-}
-
-///|
 /// query 归一助手
 pub async fn q(
   conn : @client.MysqlConn,

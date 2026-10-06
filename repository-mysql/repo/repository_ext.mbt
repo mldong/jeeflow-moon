@@ -7,7 +7,7 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn find_design_by_id
     "SELECT id, name, display_name, type, icon, is_deployed, remark, create_time, create_user, update_time, update_user FROM wf_process_design WHERE id = ?",
     [@moondb.Int64(design_id)],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   if rows.is_empty() {
     return None
   }
@@ -38,7 +38,7 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn save_design(self,
       opt_v(design.create_user),
     ],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -57,14 +57,14 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn update_design(sel
       @moondb.Int64(design.id),
     ],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
 pub impl @spi.ProcessExtRepository for MysqlRepository with fn remove_design(self, design_id) {
   let conn = self.open_or_tx()
   let _ = x(conn, "DELETE FROM wf_process_design WHERE id=?", [@moondb.Int64(design_id)])
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -77,7 +77,7 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn page_designs(self
     "SELECT id, name, display_name, type, icon, is_deployed, remark, create_time, create_user, update_time, update_user FROM wf_process_design ORDER BY id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string(),
     [],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   let out : Array[@model.ProcessDesign] = []
   for r in rows {
     out.push(map_design(r))
@@ -104,7 +104,7 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn save_design_his(s
       opt_v(his.create_user),
     ],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -114,7 +114,7 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn list_design_his(s
     "SELECT id, process_design_id, content, create_time, create_user FROM wf_process_design_his WHERE process_design_id = ? ORDER BY id DESC",
     [@moondb.Int64(design_id)],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   let out : Array[@model.ProcessDesignHis] = []
   for r in rows {
     out.push({
@@ -135,7 +135,7 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn find_surrogate_by
     "SELECT id, process_name, operator, surrogate, start_time, end_time, enabled, create_time, create_user, update_time, update_user FROM wf_process_surrogate WHERE id = ?",
     [@moondb.Int64(surrogate_id)],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   if rows.is_empty() {
     return None
   }
@@ -165,7 +165,7 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn save_surrogate(se
       opt_v(surrogate.create_user),
     ],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -185,14 +185,14 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn update_surrogate(
       @moondb.Int64(surrogate.id),
     ],
   )
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
 pub impl @spi.ProcessExtRepository for MysqlRepository with fn remove_surrogate(self, surrogate_id) {
   let conn = self.open_or_tx()
   let _ = x(conn, "DELETE FROM wf_process_surrogate WHERE id=?", [@moondb.Int64(surrogate_id)])
-  close_conn(conn)
+  self.close_conn(conn)
 }
 
 ///|
@@ -205,7 +205,7 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn page_surrogates(s
     "SELECT id, process_name, operator, surrogate, start_time, end_time, enabled, create_time, create_user, update_time, update_user FROM wf_process_surrogate ORDER BY id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string(),
     [],
   )
-  close_conn(conn)
+  self.close_conn(conn)
   let out : Array[@model.ProcessSurrogate] = []
   for r in rows {
     out.push(map_surrogate(r))
@@ -268,7 +268,7 @@ async fn MysqlRepository::newest_surrogate(
   }
   let conn = self.open_or_tx()
   let rows = q(conn, sql, params)
-  close_conn(conn)
+  self.close_conn(conn)
   if rows.is_empty() {
     None
   } else {
