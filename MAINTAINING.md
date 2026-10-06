@@ -838,13 +838,17 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
   begin/commit——那条闭包也不收句柄。
 - **代价与残留**：本方案仓储方法签名零改动，代价是正确性挂在**装配纪律**上——一个请求＝一个仓储
   实例；两个请求共享同一实例即共享同一事务，而运行期无从检测（MoonBit 无 task-local，"同请求嵌套"
-  与"跨请求命中复用分支"在进程内不可区分）。demo 现读零事务调用点，故维持启动期装配未改；
-  接事务的集成层必须按本纪律派生实例。
+  与"跨请求命中复用分支"在进程内不可区分）。~~demo 现读零事务调用点，故维持启动期装配未改~~
+  ⇒ **本步的这条判据随后被 D-M6-4 推翻**（"没有替换入口"是接事务的前置缺陷，不是可以不改的理由），
+  demo 的 mysql 分支已改成按请求派生；接事务的集成层同样必须按本纪律派生实例。
 - **验收**：T1 新增三档——M6 并发原子（案文 X2 必须从 `has400=0` 翻成 1）、M7 同实例嵌套不重复
   BEGIN 且内层行随外层一起回滚（正向对照）、M8 归属边界两方向（拷贝共用槽 / 派生独立槽）。
   阳性对照：在副本里把 `new_request()` 的槽退回进程级全局 ⇒ M6 当场报红（实测 FAIL 行即 X2 那一格）。
-- **状态**：已落地，**未发版**（`mldong/jeeflow-repository-mysql` 是已公开模块，走 bump＋mooncakes
-  发布＋下游升 pin 链；CHANGELOG 条目留到发版轮再挂）。
+- **状态**：**已发版＝tag `v0.1.27`（commit `c3a204b`）**——本条三笔 commit `631ac5c`/`fda5ef5`/`c3a204b`
+  逐个 `git merge-base --is-ancestor … v0.1.27` 为真；publish run 37429601910 四步（core/persist/repository-mysql/facade）
+  逐步 success、`moon update` 后注册表索引四件末行全 0.1.27、`pull_verify.sh 0.1.27` ⇒ `PULL-VERIFY OK`
+  （装到的依赖代次 `async 0.22.4 / moondb 0.2.0 / moonmysql 0.7.3`）、Demo Deploy run 37429601852 服务端 T2 ALL PASS、
+  sync-cn run 37429602025 success。CHANGELOG 0.1.27 条目已挂（含三处破坏性形状）。
 
 ### D-M6-4 请求级派生入口 `Ctx::for_request` ＋ 模板效应集放开（144 第二步）
 
@@ -875,7 +879,8 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
   （中途一度 +1 条 `deprecated_syntax`：回调缺显式 `raise` 注解，补注解后归零）。
   demo 以 `JEEFLOW_DEMO_STORE=mysql` 本机 wasm 真跑：`/health` 回 store=mysql、四次真实发起全 `code=0`
   且雪花 id 跨请求递增（⇒ 生成器确实共享、没被派生重置）。
-- **状态**：已落地，随 D-M6-3 一起等发版轮；引擎侧事务接线与 SPI 的 async 化仍是 145-6 的待办。
+- **状态**：**已发版＝tag `v0.1.27`**（凭据同 D-M6-3 那条：三笔 commit 都在 tag 祖先内、publish 四步逐步绿、
+  pull_verify 消费者视角 OK）。仍挂的待办只有一条：引擎侧事务接线与 SPI 的 async 化（hub `issues/145` 的 145-6）。
 ## 5. 契约对照（moon ↔ java ↔ 六语言）
 
 > 契约源：`scripts/action-manifest.json`（M0 与 java `JeeflowFacade` 实查双向无差集，精确计数以 manifest 为准）。

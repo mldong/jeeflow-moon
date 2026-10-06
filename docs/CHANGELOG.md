@@ -54,6 +54,15 @@
   ⚠ 数警告不许用 `moon check --all`：**本机工具链无此 flag**，命令直接 Usage 报错而 grep 数到 0，是假绿灯。
   demo 另做本机 wasm 真跑（`JEEFLOW_DEMO_STORE=mysql`，两个 F 的变量名会被忽略并打警告）：
   `/health` 回 `store=mysql`、四次真实发起全 `code=0`、实例 id 跨请求递增（证明确实共享 id 生成器）。
+- **发布链终局**（三条通道同打在 tag `v0.1.27`＝`c3a204b` 上）：publish run `37429601910` 四步
+  `Publish core / persist / repository-mysql / facade` 逐步 `success`（`Validate channel only` 按预期 skipped
+  ⇒ 判发布看 job steps 不看 workflow 总结论）；`moon update` 后注册表索引四件末行全 `"version":"0.1.27"`；
+  消费者视角 `bash scripts/pull_verify.sh 0.1.27` ⇒ `PULL-VERIFY OK`，装到的那三代依赖为
+  `async 0.22.4 / moondb 0.2.0 / moonmysql 0.7.3`；Demo Deploy run `37429601852`（check/test 双档各
+  `Total tests: 403, passed: 403, failed: 0` → 镜像构建/上传/装载重启 → 服务端 `T2 SMOKE ALL PASS`）；
+  sync-cn run `37429602025` success。三笔实现 commit `631ac5c`／`fda5ef5`／`c3a204b` 逐个
+  `git merge-base --is-ancestor … v0.1.27` 为真——"已落地"与"已发版"是两个状态，后者要 tag 祖先证明。
+
 - **未做**（hub `jeeflow-hub/issues/145` 的 145-6 保留）：引擎/门面自身**零接线**（`core/`＋`facade/` 内
   `execute_in_tx|for_request` 零命中，原子性目前依赖宿主外包并按 spec/12 检查出口 code）；
   SPI 的 `InterceptorFn.run`／`event_listeners`／`DynamicTableWriter` 全是**同步**形状，
