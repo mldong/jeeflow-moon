@@ -118,6 +118,10 @@ let facade = @facade.Facade::make(ctx_with(repo))
   `let r = repo.new_request()` 派生请求级实例，`r.execute_in_tx(op)` 的 op 收绑定后的实例，
   op 内该实例族的仓储调用共用同一条连接，回调抛错整体回滚。
   ⚠ 同实例＝同事务：两个请求若共享同一个仓储实例，它们会互相看见对方的事务——这正是 144 修掉的那一格。
+  注册表（`Ctx`）也要跟着派生：`ctx.for_request(r, ext)`（新建一份、容器逐个 copy；id 生成器等闭包字段
+  按引用沿用母体，别每请求新建，雪花同毫秒会撞 id）。
+  ⚠ 把 `facade.flow(...)` 包进事务时**必须检查出口的 `code`**：`flow` 把异常吞成 `{code,msg,data}` 信封、
+  不向上抛，回调正常返回 ⇒ 模板走 `COMMIT` ⇒ 动作内部失败的半完成实例照旧落库（本仓 `T1-F122` 就是这条的桩）。
 - 首次连库的建库/导入步骤与 env 口径见仓根 `MAINTAINING.md` §2 T1（维护者向，不在本目录）。
 
 ## 本地开发（本仓源码）

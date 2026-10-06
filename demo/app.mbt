@@ -7,7 +7,7 @@ pub(all) struct App {
   mut memory_repo : @memory.MemoryRepository
   mut mem_facade : @facade.Facade[@memory.MemoryRepository, @memory.MemoryRepository]
   mut mysql_repo : @repo.MysqlRepository?
-  mut my_facade : @facade.Facade[@repo.MysqlRepository, @spi.NoExtRepository]?
+  mut my_ctx : @spi.Ctx[@repo.MysqlRepository, @spi.NoExtRepository]?
   mut seeded_defines : Int64
 }
 
@@ -25,7 +25,7 @@ pub async fn App::memory_only() -> App raise {
     memory_repo: repo,
     mem_facade: f,
     mysql_repo: None,
-    my_facade: None,
+    my_ctx: None,
     seeded_defines: n,
   }
 }
@@ -61,7 +61,7 @@ pub fn App::mysql_mode() -> App raise {
     memory_repo: @memory.MemoryRepository::new(),
     mem_facade: @facade.Facade::make(make_mem_ctx(@memory.MemoryRepository::new())),
     mysql_repo: Some(repo),
-    my_facade: Some(@facade.Facade::make(ctx4)),
+    my_ctx: Some(ctx4),
     seeded_defines: 0L,
   }
 }
@@ -262,7 +262,7 @@ pub async fn App::handle(self : App, _meth : String, path : String, query_string
     let todo = match self.store {
       "mysql" =>
         match self.mysql_repo {
-          Some(r) => r.count_todo_tasks(operator)
+          Some(base) => base.new_request().count_todo_tasks(operator)
           None => 0L
         }
       _ => self.memory_repo.count_todo_tasks(operator)
@@ -272,7 +272,7 @@ pub async fn App::handle(self : App, _meth : String, path : String, query_string
     let instance_count = match self.store {
       "mysql" =>
         match self.mysql_repo {
-          Some(r) => r.page_instances(q).record_count()
+          Some(base) => base.new_request().page_instances(q).record_count()
           None => 0L
         }
       _ => self.memory_repo.page_instances(q).record_count()
@@ -316,8 +316,16 @@ pub async fn App::handle(self : App, _meth : String, path : String, query_string
     }
     let result = match self.store {
       "mysql" =>
-        match self.my_facade {
-          Some(f) => f.flow(action, args)
+        match self.my_ctx {
+          // 一个请求＝一个仓储实例：issues/144 方案 b 的装配纪律。
+          // ⚠ 必须走 for_request **新建派生体**——本栈结构体是引用语义，原地换 base 的字段
+          //   会让所有请求共用同一个仓储实例（＝共用一个事务槽），就是 144 换个载体重演。
+          //   id 生成器等闭包字段按引用沿用母体，不每请求重置（雪花同毫秒各自归零会撞 id）。
+          Some(ctx) => {
+            let r = ctx.repository().new_request()
+            let f = @facade.Facade::make(ctx.for_request(r, @spi.NoExtRepository::new()))
+            f.flow(action, args)
+          }
           None => err_local("store 未初始化")
         }
       _ => self.mem_facade.flow(action, args)

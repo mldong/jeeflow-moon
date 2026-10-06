@@ -46,6 +46,10 @@ let facade = @facade.Facade::make(ctx_with(repo))
 - 真事务：`let r = repo.new_request()` → `r.execute_in_tx(op)`（op 收绑定后的仓储实例）——
   op 内该实例族的仓储调用共用同一条连接，回调抛错整体回滚（spec/05 连接级 + 事务作用域绑定）。
   句柄随**仓储实例**走、不是进程级全局槽：一个请求＝一个仓储实例（issues/144）。
+  注册表跟着派生用 `ctx.for_request(请求实例, ext)`——它是**新建一份**（容器逐个 copy），
+  不是原地改字段；本栈结构体是引用语义，原地改会让所有请求共用同一个事务槽。
+  ⚠ 外包 `facade.flow(...)` 时必须检查出口 `code` 并按需抛出：`flow` 吞异常成信封 ⇒ 不抛就 `COMMIT`，
+  半完成实例照旧落库（判据桩在 `demo/cmd/t1_mysql` 的 T1-F122）。
 - 建表 DDL：`repository-mysql/schema/schema-mysql.sql`（编辑源=jeeflow-java，勿手改）。
 
 ## 业务数据动态入库（persist）

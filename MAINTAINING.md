@@ -845,6 +845,37 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
   阳性对照：在副本里把 `new_request()` 的槽退回进程级全局 ⇒ M6 当场报红（实测 FAIL 行即 X2 那一格）。
 - **状态**：已落地，**未发版**（`mldong/jeeflow-repository-mysql` 是已公开模块，走 bump＋mooncakes
   发布＋下游升 pin 链；CHANGELOG 条目留到发版轮再挂）。
+
+### D-M6-4 请求级派生入口 `Ctx::for_request` ＋ 模板效应集放开（144 第二步）
+
+- **问题**：D-M6-3 把句柄收到仓储实例上之后，"一个请求＝一个实例"这条纪律**在本仓无处落地**——
+  `Ctx.repository` 非 mut 且没有替换入口，而 `Ctx` 里那批 `with_*` 全是"原地改 `self` 再返回 `self`"。
+  本栈结构体是**引用语义**（本轮实测：`let b = a` 后写 `b` 的 mut 字段会改到 `a`；`Map`/`Array` 赋值同样共享底层，
+  只有 `.copy()` 才切开）⇒ 若照 `with_*` 的样式加个 `with_repository`，请求 A 换的仓储全进程可见，
+  **等于 144 换个载体重演**，而且编译期与真库门禁都看不出来。
+- **所选项**：加 `Ctx::for_request(repository, ext_repository)`——**新建一份注册表**，
+  六个容器字段（三张按名注册表 + 后置/前置拦截器数组 + 监听器数组）逐个 `copy()`；
+  **闭包字段按引用带过去是刻意的**：id 生成器必须跨请求共用同一个实例（雪花 `worker_id` 固定、
+  `sequence` 每毫秒归零 ⇒ 每请求新建会在同一毫秒撞出同一个 id ⇒ 主键冲突）。
+  配套纪律写进注释：**SPI 注册只允许启动期做**，运行期 `register_*` 只落进当前那一份、跨请求不可见。
+  `demo/app.mbt` 的 mysql 分支改成按请求派生（`ctx.repository().new_request()` + `for_request`），
+  原缓存的 `my_facade` 换成缓存 `my_ctx`。
+- **另一处必须改才可用**：`execute_in_tx` 的回调错误集从闭集 `raise @error.JeeflowError` 放开成开放 `raise`
+  （模板自身同）。本栈 `async fn` 不写 `raise` 注解就被推成**开放效应**，而 `Facade::flow` 正是这种形状 ⇒
+  闭集签名下宿主**压根没法把一次门面动作包进事务**（编译期 4014/4118 直接拒），
+  集成层只能到处套 try/catch 收窄效应——那是不可能遵守的纪律。模板对"抛什么错"本就不该挑：任何错都回滚。
+- **顺带钉出来的现状缺陷**：`Facade::flow` 把 raise 吞成 `{code,msg,data}` 信封 ⇒ **外包事务时动作内部失败
+  不会触发回滚**，半完成实例照旧提交。新腿 `T1-F122` 把这个形状钉成读数（是桩不是认可）；
+  契约侧已在 hub `jeeflow-doc/docs/spec/12-transaction.md` §12.2 写成宿主硬义务"非成功出口必须转成抛出"。
+- **验收**：T0 402→**403**（新增 `for_request` 三句判据），两枚变异对照各红一次——
+  去掉容器 `.copy()` ⇒ 红在"派生体不该看见母体后续注册"，把 `repository` 改 mut＋原地改 ⇒ 红在"母体仓储没被换走"；
+  第三枚 M3 在副本里把 `open_or_tx` 改成"无视事务槽、每句自取连接"（模拟 145-1 的 Java 空转形状）
+  ⇒ `T1-F120 原子档 wf_process_instance 零残留` 当场红，证明空转档抓得住这类缺陷。
+  同窗读数：T1 124 格、T1-F 130→**141** 格、i137a 真库腿 ALL PASS、两棵干净树警告 **21→21 零新增**
+  （中途一度 +1 条 `deprecated_syntax`：回调缺显式 `raise` 注解，补注解后归零）。
+  demo 以 `JEEFLOW_DEMO_STORE=mysql` 本机 wasm 真跑：`/health` 回 store=mysql、四次真实发起全 `code=0`
+  且雪花 id 跨请求递增（⇒ 生成器确实共享、没被派生重置）。
+- **状态**：已落地，随 D-M6-3 一起等发版轮；引擎侧事务接线与 SPI 的 async 化仍是 145-6 的待办。
 ## 5. 契约对照（moon ↔ java ↔ 六语言）
 
 > 契约源：`scripts/action-manifest.json`（M0 与 java `JeeflowFacade` 实查双向无差集，精确计数以 manifest 为准）。

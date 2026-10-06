@@ -187,7 +187,7 @@ async fn t1_m3_mparams() -> Unit raise {
 /// 事务体：两条 INSERT 后主动抛错。抽成具名 async fn 是因为内联 `fn() { … }` 闭包
 /// 在本工具链下两头堵——不标 async 吃 deprecated_syntax，标了 `async fn()` 又把效应推成
 /// 开放 Error、与 execute_in_tx 声明的闭集 raise JeeflowError 不匹配。
-async fn t1_m4_boom_tx(repo : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+async fn t1_m4_boom_tx(repo : @repo.MysqlRepository) -> Unit raise {
   let conn = repo.current_tx_conn().unwrap()
   let _ = @repo.x(
     conn,
@@ -814,7 +814,7 @@ async fn m6_row_count(base : @repo.MysqlRepository, iid : Int64) -> Int64 raise 
 
 ///|
 /// A 支：事务里写一行 → 让出事件循环 → 抛错（模板 ROLLBACK）
-async fn m6_body_a(r : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+async fn m6_body_a(r : @repo.MysqlRepository) -> Unit raise {
   r.save_instance(m6_inst(990030L))
   // 真实系统里任何一次 DB 往返都是 await，这里用 sleep 制造同一个让出点
   let _ = @async.sleep(60)
@@ -823,7 +823,7 @@ async fn m6_body_a(r : @repo.MysqlRepository) -> Unit raise @error.JeeflowError 
 
 ///|
 /// B 支：在 A 的让出窗口里进模板，写完并成功返回
-async fn m6_body_b(r : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+async fn m6_body_b(r : @repo.MysqlRepository) -> Unit raise {
   r.save_instance(m6_inst(990031L))
 }
 
@@ -870,11 +870,11 @@ async fn t1_m6_tx_scope_isolation() -> Unit raise {
 ///|
 /// 内层：写一行后"成功返回"。若嵌套错误地另开事务，这里就会独立提交，
 /// 外层随后回滚就撤不掉它——所以"内层行也不在"同时证伪了两种坏形状。
-async fn m7_body_inner(r : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+async fn m7_body_inner(r : @repo.MysqlRepository) -> Unit raise {
   r.save_instance(m6_inst(990033L))
 }
 
-async fn m7_body_outer(r : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+async fn m7_body_outer(r : @repo.MysqlRepository) -> Unit raise {
   r.save_instance(m6_inst(990032L))
   let inner = r.tx_template()
   inner.execute_in_tx(m7_body_inner)
@@ -907,7 +907,7 @@ async fn t1_m7_nested_tx_reuse() -> Unit raise {
 /// T1-M8 归属边界的两个方向：
 /// 拷贝共享槽（⇒ Ctx/Facade/Engine 各自持有的那份 R 自动落在同一事务里，这是 b 成立的前提）；
 /// 派生独立槽（⇒ 请求边界切开，这是 b 修复本案的前提）。
-async fn m8_body(r : @repo.MysqlRepository) -> Unit raise @error.JeeflowError {
+async fn m8_body(r : @repo.MysqlRepository) -> Unit raise {
   let as_copy = r
   as_copy.save_instance(m6_inst(990034L))
   let derived = r.new_request()

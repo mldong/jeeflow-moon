@@ -122,6 +122,43 @@ pub fn[R, E] Ctx::ext_repository(self : Ctx[R, E]) -> E {
 }
 
 ///|
+/// 请求级派生：**新建一份**注册表，只替换两个仓储端点。
+/// ⚠ 不能照下面那批 `with_*` 的样式加"换仓储"的方法——本栈结构体是**引用语义**（本轮实测：
+/// `let b = a` 之后写 `b.mut_field`／`b.arr.push` 都会改到 `a`；`Map` 赋值同样共享底层，
+/// 只有显式 `.copy()` 才切开），而下面那批 `with_*` 全是"原地改 `self` 再返回 `self`"。
+/// 若照那个样式加 `with_repository`，请求 A 换上去的仓储会对所有请求可见
+/// ⇒ issues/144 的"跨请求共用事务句柄"只是换个载体重演，而且更隐蔽（编译期与门禁都看不出来）。
+/// 容器逐个 `copy()` ⇒ 派生体后续的运行期注册不回写母体；
+/// **闭包字段按引用带过来**是刻意的：id 生成器必须共享同一个实例——雪花 `worker_id` 固定、
+/// `sequence` 每毫秒归零，两个请求各自 new 一个生成器会在同一毫秒撞出同一个 id ⇒ 主键冲突。
+/// ⚠ 纪律：SPI 注册只允许启动期做（见 struct 头注"启动期构建、运行期只读"）。
+/// 运行期再 `register_*` 只落进当前这一份，跨请求不可见——这是派生的语义，不是 bug。
+pub fn[R, E] Ctx::for_request(
+  self : Ctx[R, E],
+  repository : R,
+  ext_repository : E
+) -> Ctx[R, E] {
+  {
+    repository,
+    ext_repository,
+    user_provider: self.user_provider,
+    org_user_provider: self.org_user_provider,
+    user_search_provider: self.user_search_provider,
+    json_provider: self.json_provider,
+    expression_evaluator: self.expression_evaluator,
+    id_generator: self.id_generator,
+    action_permission_provider: self.action_permission_provider,
+    biz_data_reader: self.biz_data_reader,
+    assignment_handlers: self.assignment_handlers.copy(),
+    decision_handlers: self.decision_handlers.copy(),
+    custom_handlers: self.custom_handlers.copy(),
+    interceptors: self.interceptors.copy(),
+    pre_interceptors: self.pre_interceptors.copy(),
+    event_listeners: self.event_listeners.copy(),
+    surrogate_auto_apply: self.surrogate_auto_apply,
+  }
+}
+///|
 pub fn[R, E] Ctx::with_user_provider(
   self : Ctx[R, E],
   p : (String) -> @model.UserInfo? raise @error.JeeflowError

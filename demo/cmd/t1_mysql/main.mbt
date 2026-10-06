@@ -1100,6 +1100,244 @@ async fn t1_f119_actor_remove_trim() -> Unit raise {
   clean_9x(repo)
 }
 
+// ── T1-F120/121/122：spec/12 §12.4 三档判据的门面级真机腿（issues/145-6）──────────
+// 归属档已在 repository-mysql/smoke 的 M6/M7/M8（仓储级）落过；这三条把判据抬到**一次真实动作**上。
+// 三件事各自钉住：① 原子档——中途抛错 ⇒ 四张表零残留，并带一条"不包事务就有残留"的阳性对照；
+// ② 空转档——写确实落在事务那条连接上（同实例读得到）、且它真是未提交（他实例读不到）；
+// ③ 反题——`Facade::flow` 把 raise 吞成错误信封，所以宿主外包事务时**动作内部失败不会触发回滚**，
+//    半完成实例照旧提交；F122 把这个现状钉成读数（是桩，不是认可）。
+// ⚠ 回调体内不许用 check()：它走 abort 抛的是开放 Error，与 execute_in_tx 声明的闭集
+//   `raise @error.JeeflowError` 类型不符（编译期直接 4118）。正解是内部断言失败时抛**专属文案**，
+//   外层比对收到的错误文案——这样断言失败与"预期的那一次抛错"可分辨，红样还带上实际值。
+// id 段：定义 990901/990931 在事务外先提交；实例 990920（回滚）/990925（对照）/990930（空转）/990940（反题）。
+
+///|
+/// 夹具实例行（空转档用；只走真实仓储写路径，因为要测的就是 open_or_tx 汇到哪条连接）
+fn f121_inst() -> @model.ProcessInstance {
+  {
+    instance_id: 990930L,
+    parent_id: None,
+    define_id: 990001L,
+    state: 10,
+    parent_node_name: None,
+    business_no: None,
+    operator: "f121",
+    expire_time: None,
+    variables: @json.FlowData::new(),
+    tasks: [],
+    create_time: None,
+    create_user: Some("t1f"),
+    update_time: None,
+    update_user: None,
+    define_info: None,
+  }
+}
+
+///|
+/// 门面 + 一个**必然抛错**的记录类处理器（反题夹具用；clazz 键与 CUSTOM142_FLOW 定义一致）
+fn make_facade_boom(
+  repo : @repo.MysqlRepository,
+  start : Int64
+) -> @facade.Facade[@repo.MysqlRepository, @spi.NoExtRepository] {
+  let counter : Ref[Int64] = Ref(start)
+  let ctx = @spi.Ctx::new(repo, @spi.NoExtRepository::new())
+  let ctx2 = ctx.with_id_generator(fn() {
+    let v = counter.val
+    counter.val = v + 1L
+    v
+  })
+  ctx2.register_custom_handler(
+    "com.mldong.jeeflow.test.TestCustomHandler",
+    fn(_e) -> Json raise @error.JeeflowError { raise @error.Business("f122-handler-boom") },
+  )
+  @facade.Facade::make(ctx2)
+}
+
+///|
+/// 比对回调外传的错误文案：期望文案不符就是内部断言失败（红样带实际文案，不靠猜）。
+/// ⚠ 模板的 op 取开放效应后，catch 到的绑定类型是 `Error`（没有 `.message()`），
+///   只能插值取串；串的形状由 Show 决定 ⇒ 判据用 contains，并把实际串整条打出来。
+fn check_raised(actual : String, want : String, label : String) -> Unit {
+  if actual.contains(want) {
+    println("  PASS \{label}")
+  } else {
+    println("  FAIL \{label}")
+    println("       实际文案=<\{actual}> 期望=<\{want}>")
+    abort("T1-F assertion failed: \{label}")
+  }
+}
+
+///|
+async fn f120_body(rr : @repo.MysqlRepository) -> Unit raise {
+  let f = make_facade(rr, 990920L)
+  let started = f.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990901"), ("operator", "f120-applicant")]),
+  )
+  if env_code(started) != 0L {
+    raise @error.Business("inner-assert:发起 code 非 0（实际=\{env_code(started)}）")
+  }
+  if rr.find_instance_by_id(990920L) is None {
+    raise @error.Business("inner-assert:事务内同实例读不到刚写的行（＝空转）")
+  }
+  raise @error.Business("f120-post-action-boom")
+}
+
+///|
+/// 原子档：事务包住一次真实发起，动作成功后同事务内抛错 ⇒ 四张表全部零残留
+async fn t1_f120_facade_tx_atomic() -> Unit raise {
+  println("T1-F120 事务包住门面发起，中途抛错 ⇒ 四张表零残留（原子档）...")
+  let base = @repo.MysqlRepository::from_env()
+  clean_9x(base)
+  save_define_9x(base, 990901L, "t1-f120", WT_FLOW)
+  let r = base.new_request()
+  let outcome = try {
+    r.execute_in_tx(f120_body)
+    "clean"
+  } catch {
+    e => "\{e}"
+  }
+  check_raised(outcome, "f120-post-action-boom", "F120 动作后抛错按预期外传（模板已 ROLLBACK）")
+  // 逐张表反查，读的是库里的行
+  check(
+    select_i64(
+      base,
+      "SELECT COUNT(*) AS c FROM wf_process_instance WHERE id = ?",
+      [@moondb.Int64(990920L)],
+      "c",
+    ) == 0L,
+    "F120 原子档 wf_process_instance 零残留",
+  )
+  check(
+    select_i64(
+      base,
+      "SELECT COUNT(*) AS c FROM wf_process_task WHERE process_instance_id = ?",
+      [@moondb.Int64(990920L)],
+      "c",
+    ) == 0L,
+    "F120 原子档 wf_process_task 零残留",
+  )
+  check(
+    select_i64(
+      base,
+      "SELECT COUNT(*) AS c FROM wf_process_task_actor WHERE process_task_id IN (SELECT id FROM wf_process_task WHERE process_instance_id = ?)",
+      [@moondb.Int64(990920L)],
+      "c",
+    ) == 0L,
+    "F120 原子档 wf_process_task_actor 零残留",
+  )
+  check(
+    select_i64(
+      base,
+      "SELECT COUNT(*) AS c FROM wf_process_cc_instance WHERE process_instance_id = ?",
+      [@moondb.Int64(990920L)],
+      "c",
+    ) == 0L,
+    "F120 原子档 wf_process_cc_instance 零残留",
+  )
+  // 阳性对照：同样的动作**不包事务** ⇒ 行必须留下（否则上面四句是恒真判据）
+  let f2 = make_facade(base.new_request(), 990925L)
+  let ok = f2.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990901"), ("operator", "f120-control")]),
+  )
+  check(env_code(ok) == 0L, "F120 对照组（不包事务）发起 code=0")
+  check(
+    select_i64(
+      base,
+      "SELECT COUNT(*) AS c FROM wf_process_instance WHERE id = ?",
+      [@moondb.Int64(990925L)],
+      "c",
+    ) == 1L,
+    "F120 对照组实例行确实落库（阳性对照：上面四句非恒真）",
+  )
+  clean_9x(base)
+}
+
+///|
+async fn f121_body(rr : @repo.MysqlRepository) -> Unit raise {
+  rr.save_instance(f121_inst())
+  // ① 同实例读得到 ⇒ 写落在事务那条连接上（"名义开事务、每句自取连接"的空转形状在这句就会红）
+  if rr.find_instance_by_id(990930L) is None {
+    raise @error.Business("inner-assert:同实例读不到自己的写（事务空转）")
+  }
+  // ② 派生实例＝另一条连接 ⇒ 未提交对它不可见（证明这确实是事务，而不是 autocommit 的伪装）
+  let other = rr.new_request()
+  if other.find_instance_by_id(990930L) is Some(_) {
+    raise @error.Business("inner-assert:他实例读到了未提交行（不是事务，是 autocommit）")
+  }
+  raise @error.Business("f121-rollback")
+}
+
+///|
+/// 空转档（spec/12 §12.4 第 3 档）
+async fn t1_f121_facade_tx_not_ambient() -> Unit raise {
+  println("T1-F121 空转档：写落事务连接、未提交对他连接不可见、回滚无残留...")
+  let base = @repo.MysqlRepository::from_env()
+  clean_9x(base)
+  let r = base.new_request()
+  let outcome = try {
+    r.execute_in_tx(f121_body)
+    "clean"
+  } catch {
+    e => "\{e}"
+  }
+  check_raised(outcome, "f121-rollback", "F121 回调抛错按预期外传")
+  check(
+    select_i64(
+      base,
+      "SELECT COUNT(*) AS c FROM wf_process_instance WHERE id = ?",
+      [@moondb.Int64(990930L)],
+      "c",
+    ) == 0L,
+    "F121 回滚后独立连接也读不到（无残留）",
+  )
+  clean_9x(base)
+}
+
+///|
+async fn f122_body(rr : @repo.MysqlRepository) -> Unit raise {
+  let f = make_facade_boom(rr, 990940L)
+  let started = f.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990931"), ("operator", "f122-applicant")]),
+  )
+  if env_code(started) == 0L {
+    raise @error.Business("inner-assert:处理器抛错却回了 code=0（吞错路径没走到）")
+  }
+  if rr.find_instance_by_id(990940L) is None {
+    raise @error.Business("inner-assert:实例行不在（发起没走到写实例那一步）")
+  }
+  // 注意这里**不抛**：错误已被 flow 吞成信封，回调正常返回 ⇒ 模板走 COMMIT 分支
+}
+
+///|
+/// 反题读数（**钉现状，不是认可**）：flow 吞 raise ⇒ 外包事务时动作内部失败不触发回滚，
+/// 半完成实例照旧提交。集成层要原子性，必须把非 0 出口转成 raise（spec/12 §12.2 原子面据此加义务）。
+async fn t1_f122_flow_swallows_raise() -> Unit raise {
+  println("T1-F122 反题读数：flow 吞 raise ⇒ 外包事务不会自动回滚（现状钉桩）...")
+  let base = @repo.MysqlRepository::from_env()
+  clean_9x(base)
+  save_define_9x(base, 990931L, "t1-f122", CUSTOM142_FLOW)
+  let r = base.new_request()
+  let outcome = try {
+    r.execute_in_tx(f122_body)
+    "clean"
+  } catch {
+    e => "\{e}"
+  }
+  check_raised(outcome, "clean", "F122 现状：内部失败不上抛 ⇒ 模板走 COMMIT 分支（这正是要防的陷阱）")
+  check(
+    select_i64(
+      base,
+      "SELECT COUNT(*) AS c FROM wf_process_instance WHERE id = ?",
+      [@moondb.Int64(990940L)],
+      "c",
+    ) == 1L,
+    "F122 半完成实例确实被提交留下（宿主必须自己把非 0 出口转成 raise 才拿得到原子性）",
+  )
+  clean_9x(base)
+}
 ///|
 async fn run() -> Unit raise {
   if skip_mysql() {
@@ -1120,6 +1358,9 @@ async fn run() -> Unit raise {
   t1_f118_custom_history_row()
   println("T1-F119 facade 删除位 trim 命中 + 空档零删除真机对拍...")
   t1_f119_actor_remove_trim()
+  t1_f120_facade_tx_atomic()
+  t1_f121_facade_tx_not_ambient()
+  t1_f122_flow_swallows_raise()
   println("T1-F ALL PASS (wasm → 真机 MySQL)")
 }
 

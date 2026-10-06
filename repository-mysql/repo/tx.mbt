@@ -75,10 +75,13 @@ pub fn MysqlRepository::tx_template(self : MysqlRepository) -> MysqlTxTemplate {
 /// 但拿到句柄就没法"用错实例"而静默走 autocommit。
 /// 同一实例内嵌套仍不重复 BEGIN（`tx_active()` 命中即直接跑 op）——
 /// 本案否定的只是"跨请求命中同一条复用分支"，不是嵌套复用本身。
+/// ⚠ op 的错误集是**开放** `raise`（不是闭集 JeeflowError）：本栈里 `async fn` 不写 raise 注解
+///   会被推成开放 Error，而 `Facade::flow` 正是这种形状 ⇒ 若这里收闭集，宿主**压根没法把一次
+///   门面动作包进事务**（编译期就挡）。模板对"抛什么错"本就不该挑——任何错都回滚，原样外抛。
 pub async fn MysqlRepository::execute_in_tx(
   self : MysqlRepository,
-  op : async (MysqlRepository) -> Unit raise @error.JeeflowError
-) -> Unit raise @error.JeeflowError {
+  op : async (MysqlRepository) -> Unit raise
+) -> Unit raise {
   if self.tx_active() {
     op(self)
     return
@@ -123,10 +126,11 @@ pub async fn MysqlRepository::execute_in_tx(
 }
 
 ///|
-/// 模板入口（spec/05 的 ITransactionTemplate 命名位）：委派给绑定的仓储实例
+/// 模板入口（spec/05 的 ITransactionTemplate 命名位）：委派给绑定的仓储实例。
+/// op 的错误集同为开放 `raise`，理由见上面 `MysqlRepository::execute_in_tx` 的注。
 pub async fn MysqlTxTemplate::execute_in_tx(
   self : MysqlTxTemplate,
-  op : async (MysqlRepository) -> Unit raise @error.JeeflowError
-) -> Unit raise @error.JeeflowError {
+  op : async (MysqlRepository) -> Unit raise
+) -> Unit raise {
   self.repo.execute_in_tx(op)
 }
