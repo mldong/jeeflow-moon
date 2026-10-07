@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 0.1.28（本轮，待发版）
+## 0.1.28（2026-10-07）
 
 **issues/146：供数/回调族 SPI 全量 async 化 ＋ 动态表元数据端口 ＋ 事件监听器 async（站内信落点成立）。**
 四模块同号待发（core / persist / repository-mysql / facade）；**有破坏性 API 变化**（见"破坏面"）。

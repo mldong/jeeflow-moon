@@ -345,7 +345,10 @@ pub fn[R, E] Ctx::find_custom_handler(
 /// 同步实现的 async 桥（issues/146）：内存夹具/demo/宿主纯计算实现，复用同步闭包，
 /// 免得每个注册点写一条空转 async 闭包——本栈编译器会把"async 但体内无 await"判成
 /// unused_async 警告（实测：闭包字面量与 fn 声明都判，无抑制属性可摘），
-/// 集中到这一处 ⇒ 全仓警告增量恒等于 1 条，注册点零警告。
+/// 集中到这一处 ⇒ 注册点零警告，代价只有桥自身这 3 条被判决。
+/// ⚠ 别把这句话当成"警告零增长"：本轮实测全仓警告 22→37，其中 +7 unused_async（三条桥 + 少数
+///    "只传播不 raise"之外的空转 async 位）、+8 unused_error_type（7 支 `notify_*` 与 `@event.notify`
+///    必须带闭集 raise 标注，否则错误集塌成开放 Error 并外溢）。新基线与逐码归因见 MAINTAINING §发布闸门。
 /// 真查库的宿主实现直接写 `async fn(id) raise @error.JeeflowError { ... }`，不经本桥。
 pub fn[R, A] async_of_sync(
   f : (A) -> R raise @error.JeeflowError
