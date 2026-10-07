@@ -84,7 +84,7 @@ async fn main raise {
   let repo = @memory.MemoryRepository::new()
   let ctx = @spi.Ctx::new(repo, repo)
   let gen = @id_gen.DefaultIdGenerator::new(2L)
-  let ctx = ctx.with_id_generator(fn() { gen.next_id() }).with_user_provider(user_provider)
+  let ctx = ctx.with_id_generator(fn() { gen.next_id() }).with_user_provider_sync(user_provider)
   let f = @facade.Facade::make(ctx)
 
   let page = f.flow("processInstance/page", args_of("{\"pageNum\":1,\"pageSize\":5}"))

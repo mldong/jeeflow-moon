@@ -22,13 +22,18 @@ moon add mldong/jeeflow-repository-mysql      # 可选：MySQL 仓储（上游 m
 
 ```moonbit
 // 引擎为泛型 [R : ProcessRepository, E : ProcessExtRepository]；小 SPI 走闭包字段
+// 供数/回调族是 **async 闭包**（issues/146）：本栈查库只有异步一条路，同步形状等于逼集成方启动期快照。
+// 纯内存实现改走 *_sync 便捷口（内部经统一异步桥），注册完的注册表类型与异步通道一致。
 let repo = @memory.MemoryRepository::new()
 let ctx = @spi.Ctx::new(repo, repo)            // 无扩展仓储时第二个参数用 NoExtRepository::new()
 let ctx = ctx
-  .with_id_generator(fn() { gen.next_id() })   // IIdGenerator（未注入回退默认雪花）
-  .with_user_provider(my_user_provider)        // IUserProvider：(String) -> UserInfo? raise @error.JeeflowError
-  .with_org_user_provider(my_org_fns)          // IOrgUserProvider 三闭包组
-  .with_user_search_provider(my_search_fns)    // IUserSearchProvider
+  .with_id_generator(fn() { gen.next_id() })   // IIdGenerator（未注入回退默认雪花；纯计算档保持同步）
+  .with_user_provider(async fn(uid : String) raise @error.JeeflowError {
+    // 现场查库：每次解析参与人都读最新数据，运行期新增/调岗免重启可见
+    @sys.user_by_id(uid)
+  })
+  .with_org_user_provider(my_org_fns)          // IOrgUserProvider 三闭包组（同 async）
+  .with_user_search_provider(my_search_fns)    // IUserSearchProvider（同 async）
   .with_expression_evaluator(my_eval)          // 可选；缺省内置简单比较求值
 let facade = @facade.Facade::make(ctx)
 // 40+ action 单入口（async；args 是 Map[String, Json]）：

@@ -64,6 +64,8 @@ pkgtype(kind: "executable")
 
 ```moonbit
 // cmd/main/main.mbt —— 引擎为泛型 [R : ProcessRepository, E : ProcessExtRepository]；小 SPI 走闭包字段
+// 这里是**纯内存**供数 ⇒ 走 `with_user_provider_sync` 便捷口；真查库的宿主实现请写
+// `async fn(uid) raise @error.JeeflowError { ... }` 并用 `with_user_provider`（正式形状，见 spi-guide.md）
 let user_provider : (String) -> @model.UserInfo? raise @error.JeeflowError =
   (id) =>
     if id == "user1" {
@@ -77,7 +79,7 @@ async fn main raise {
   let gen = @id_gen.DefaultIdGenerator::new(2L)
   let ctx = @spi.Ctx::new(repo, repo)   // 无扩展仓储时第二参用 @spi.NoExtRepository::new()
     .with_id_generator(fn() { gen.next_id() })   // 缺省回退默认雪花
-    .with_user_provider(user_provider)
+    .with_user_provider_sync(user_provider)
   let facade = @facade.Facade::make(ctx)
   let args : Map[String, Json] = { "processDefineId": 1, "operator": "applicant" }
   println(@json.stringify(facade.flow("processDefine/startAndExecute", args)))  // {code, msg, data}
