@@ -63,7 +63,7 @@ fn make_compliance_engine() -> (@engine.Engine[@mem.MemoryRepository, @mem.Memor
   let repo = @mem.MemoryRepository::new()
   let ctx = @spi.Ctx::new(repo, repo)
   let gen = @id_gen.AtomicIdGenerator::new(1L)
-  let ctx2 = ctx.with_id_generator(fn() { gen.next_id() }).with_user_provider(compliance_user_provider)
+  let ctx2 = ctx.with_id_generator(fn() { gen.next_id() }).with_user_provider_sync(compliance_user_provider)
   (@engine.Engine::make(ctx2), repo)
 }
 
@@ -218,7 +218,7 @@ async test "events: TASK_START fires after persist with real id" {
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let fired : Array[Int64] = []
-  ctx2.register_event_listener(fn(ev) {
+  ctx2.register_event_listener_sync(fn(ev) {
     if ev.event_type() is @event.ProcessTaskStart {
       fired.push(ev.source_id())
     }
@@ -241,7 +241,7 @@ async test "events: CC_CREATE fired per actor with cc rows" {
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let fired : Array[(Int64, String?)] = []
-  ctx2.register_event_listener(fn(ev) {
+  ctx2.register_event_listener_sync(fn(ev) {
     if ev.event_type() is @event.CcCreate {
       fired.push((ev.source_id(), ev.cc_actor_id()))
     }
@@ -289,7 +289,7 @@ async test "events: reject path fires INSTANCE_END (issues/104)" {
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let fired : Array[Int64] = []
-  ctx2.register_event_listener(fn(ev) {
+  ctx2.register_event_listener_sync(fn(ev) {
     if ev.event_type() is @event.ProcessInstanceEnd {
       fired.push(ev.source_id())
     }
@@ -307,11 +307,13 @@ async test "events: reject path fires INSTANCE_END (issues/104)" {
 }
 
 ///|
-test "events: publisher per-listener isolation" {
+async test "events: publisher per-listener isolation" {
   let fired : Array[Int64] = []
-  let listeners : Array[((@event.ProcessEvent) -> Unit raise)] = [
-    fn(_ev) raise { raise @error.Business("boom") },
-    fn(ev) { if ev.event_type() is @event.ProcessInstanceStart { fired.push(ev.source_id()) } },
+  let listeners : Array[(async (@event.ProcessEvent) -> Unit raise @error.JeeflowError)] = [
+    async fn(_ev) raise @error.JeeflowError { raise @error.Business("boom") },
+    async fn(ev) raise @error.JeeflowError {
+      if ev.event_type() is @event.ProcessInstanceStart { fired.push(ev.source_id()) }
+    },
   ]
   @event.notify(@event.ProcessEvent::make(@event.ProcessInstanceStart, 42L), listeners)
   assert_eq(fired.length(), 1)

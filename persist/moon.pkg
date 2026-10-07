@@ -9,4 +9,5 @@ import {
 
 import {
   "mldong/jeeflow-persist" @persist,
+  "moonbitlang/async",
 } for "test"

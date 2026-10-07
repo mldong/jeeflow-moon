@@ -109,7 +109,10 @@ pub fn ProcessEvent::with_cc_actor_id(self : ProcessEvent, cc_actor_id : String)
 ///|
 /// 事件发布：逐监听器兜底（issues/104 P2）——单监听器异常只捕获不传播，
 /// 不影响引擎主流程、不中断后续监听器。监听器形态为闭包数组（Ctx 装配）。
-pub fn notify(event : ProcessEvent, listeners : Array[(ProcessEvent) -> Unit raise]) -> Unit {
+pub async fn notify(
+  event : ProcessEvent,
+  listeners : Array[(async (ProcessEvent) -> Unit raise @error.JeeflowError)]
+) -> Unit raise @error.JeeflowError {
   for listener in listeners {
     try {
       (listener)(event)

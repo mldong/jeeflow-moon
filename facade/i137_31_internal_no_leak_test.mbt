@@ -164,7 +164,7 @@ async fn i13731_biz_setup(
 ) -> (@facade.Facade[@mem.MemoryRepository, @mem.MemoryRepository], Int64) raise {
   let repo = @mem.MemoryRepository::new()
   let gen = @id_gen.AtomicIdGenerator::new(1L)
-  let ctx = @spi.Ctx::new(repo, repo).with_biz_data_reader(reader).with_id_generator(fn() { gen.next_id() })
+  let ctx = @spi.Ctx::new(repo, repo).with_biz_data_reader(@spi.async_of_sync2(reader)).with_id_generator(fn() { gen.next_id() })
   let facade = @facade.Facade::make(ctx)
   let define_info : @model.ProcessDefine = {
     id: 0L,

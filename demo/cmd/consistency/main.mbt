@@ -26,7 +26,7 @@ fn stats_make_ctx(
   repo : @memory.MemoryRepository
 ) -> @spi.Ctx[@memory.MemoryRepository, @memory.MemoryRepository] {
   let ctx = @spi.Ctx::new(repo, repo)
-  ctx.with_user_provider(stats_user_provider)
+  ctx.with_user_provider(@spi.async_of_sync(stats_user_provider))
 }
 
 ///|

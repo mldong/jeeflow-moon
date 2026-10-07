@@ -125,19 +125,19 @@ const NO_ACTOR_FLOW : String =
 ///|
 fn i142_engine(
   repo : @mem.MemoryRepository,
-  listeners : Array[((@event.ProcessEvent) -> Unit raise)],
+  listeners : Array[((@event.ProcessEvent) -> Unit raise @error.JeeflowError)],
   handlers : Array[(String, (@exec.Execution) -> Json raise @error.JeeflowError)]
 ) -> @engine.Engine[@mem.MemoryRepository, @mem.MemoryRepository] {
   let ctx = @spi.Ctx::new(repo, repo)
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 =
-    ctx.with_id_generator(fn() { gen.next_id() }).with_user_provider(compliance_user_provider)
+    ctx.with_id_generator(fn() { gen.next_id() }).with_user_provider_sync(compliance_user_provider)
   for l in listeners {
-    ctx2.register_event_listener(l)
+    ctx2.register_event_listener_sync(l)
   }
   for h in handlers {
     let (name, f) = h
-    ctx2.register_custom_handler(name, f)
+    ctx2.register_custom_handler_sync(name, f)
   }
   @engine.Engine::make(ctx2)
 }

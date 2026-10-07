@@ -5,7 +5,7 @@
 
 ///|
 pub(all) struct PersistPostInterceptor {
-  meta_provider : InMemoryMetaProvider
+  meta : DynamicMetaProviderFns
   table_writer : &DynamicTableWriter
 }
 
@@ -14,7 +14,16 @@ pub fn PersistPostInterceptor::make(
   meta_provider : InMemoryMetaProvider,
   table_writer : &DynamicTableWriter
 ) -> PersistPostInterceptor {
-  { meta_provider, table_writer }
+  { meta: meta_provider.as_provider(), table_writer }
+}
+
+///|
+/// 端口档装配（issues/146 缺口二）：集成方自备元数据来源（dev_schema/库内省）走这一支
+pub fn PersistPostInterceptor::make_from_provider(
+  meta : DynamicMetaProviderFns,
+  table_writer : &DynamicTableWriter
+) -> PersistPostInterceptor {
+  { meta, table_writer }
 }
 
 ///|
@@ -23,11 +32,11 @@ pub fn PersistPostInterceptor::as_interceptor(
   self : PersistPostInterceptor
 ) -> @spi.InterceptorFn {
   let it = self
-  { order: 100, run: (exec) => it.intercept(exec) }
+  { order: 100, run: async fn(exec) raise @error.JeeflowError { it.intercept(exec) } }
 }
 
 ///|
-pub fn PersistPostInterceptor::intercept(
+pub async fn PersistPostInterceptor::intercept(
   self : PersistPostInterceptor,
   exec : @exec.Execution
 ) -> Unit raise @error.JeeflowError {
@@ -56,7 +65,7 @@ pub fn PersistPostInterceptor::intercept(
 }
 
 ///|
-fn PersistPostInterceptor::intercept_archive(
+async fn PersistPostInterceptor::intercept_archive(
   self : PersistPostInterceptor,
   exec : @exec.Execution,
   table : String
@@ -81,7 +90,7 @@ fn PersistPostInterceptor::intercept_archive(
   }
   let data = self.extract_fields(exec.process_instance.variables, None, false, true)
   self.fill_context(data, exec)
-  let meta = self.meta(table)
+  let meta = self.load_meta(table)
   let filtered = self.filter_editable(meta, data)
   if filtered.is_empty() {
     return
@@ -91,7 +100,7 @@ fn PersistPostInterceptor::intercept_archive(
 }
 
 ///|
-fn PersistPostInterceptor::intercept_sync(
+async fn PersistPostInterceptor::intercept_sync(
   self : PersistPostInterceptor,
   exec : @exec.Execution,
   table : String
@@ -124,7 +133,7 @@ fn PersistPostInterceptor::intercept_sync(
     None => ()
   }
   self.fill_context(data, exec)
-  let meta = self.meta(table)
+  let meta = self.load_meta(table)
   let filtered = self.filter_editable(meta, data)
   if filtered.is_empty() {
     return
@@ -155,8 +164,11 @@ fn PersistPostInterceptor::resolve_table(self : PersistPostInterceptor, model : 
 }
 
 ///|
-fn PersistPostInterceptor::meta(self : PersistPostInterceptor, table : String) -> TableMeta raise @error.JeeflowError {
-  match (self.meta_provider).get_table_meta(table) {
+async fn PersistPostInterceptor::load_meta(
+  self : PersistPostInterceptor,
+  table : String
+) -> TableMeta raise @error.JeeflowError {
+  match (self.meta.load_table_meta)(table) {
     Some(m) => m
     None => raise @error.Business("表元数据不存在: \{table}")
   }

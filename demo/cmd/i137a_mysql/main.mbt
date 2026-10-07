@@ -135,7 +135,7 @@ fn make_engine(repo : @repo.MysqlRepository) -> @engine.Engine[@repo.MysqlReposi
     let v = counter.val
     counter.val = v + 1L
     v
-  }).with_user_provider(i137a_user_provider)
+  }).with_user_provider(@spi.async_of_sync(i137a_user_provider))
   @engine.Engine::make(ctx2)
 }
 

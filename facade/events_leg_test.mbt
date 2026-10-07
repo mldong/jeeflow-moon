@@ -13,7 +13,7 @@ async fn listening_setup(
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let events : Array[@event.ProcessEvent] = []
-  ctx2.register_event_listener(fn(ev) { events.push(ev) })
+  ctx2.register_event_listener_sync(fn(ev) { events.push(ev) })
   let facade = @facade.Facade::make(ctx2)
   let define_info : @model.ProcessDefine = {
     id: 0L,

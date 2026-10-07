@@ -34,7 +34,7 @@ async test "i141-G6: 办理 tf_ccActors 数组形态建 cc 行并逐人 fire 码
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let events : Array[@event.ProcessEvent] = []
-  ctx2.register_event_listener(fn(ev) { events.push(ev) })
+  ctx2.register_event_listener_sync(fn(ev) { events.push(ev) })
   let engine = @engine.Engine::make(ctx2)
   let did = save_flow_define(repo, "g6-task-array", simple_flow_json())
   // 发起不带 f_ccActors ⇒ 之后出现的码 4 只可能来自办理路径（与 events_leg_test 同法）
@@ -60,7 +60,7 @@ async test "i141-G6: 办理路径 逗号串与数组两形态等价（cc 行数 
   let gen_a = @id_gen.AtomicIdGenerator::new(1L)
   let ctx_a2 = ctx_a.with_id_generator(fn() { gen_a.next_id() })
   let events_a : Array[@event.ProcessEvent] = []
-  ctx_a2.register_event_listener(fn(ev) { events_a.push(ev) })
+  ctx_a2.register_event_listener_sync(fn(ev) { events_a.push(ev) })
   let engine_a = @engine.Engine::make(ctx_a2)
   let did_a = save_flow_define(repo_a, "g6-equiv-a", simple_flow_json())
   let inst_a = engine_a.start_async(did_a, "user1", new_args())
@@ -74,7 +74,7 @@ async test "i141-G6: 办理路径 逗号串与数组两形态等价（cc 行数 
   let gen_b = @id_gen.AtomicIdGenerator::new(1L)
   let ctx_b2 = ctx_b.with_id_generator(fn() { gen_b.next_id() })
   let events_b : Array[@event.ProcessEvent] = []
-  ctx_b2.register_event_listener(fn(ev) { events_b.push(ev) })
+  ctx_b2.register_event_listener_sync(fn(ev) { events_b.push(ev) })
   let engine_b = @engine.Engine::make(ctx_b2)
   let did_b = save_flow_define(repo_b, "g6-equiv-b", simple_flow_json())
   let inst_b = engine_b.start_async(did_b, "user1", new_args())
@@ -102,7 +102,7 @@ async test "i141-G6: 办理路径 单元素两形态等价（userB vs [userB]）
   let gen_a = @id_gen.AtomicIdGenerator::new(1L)
   let ctx_a2 = ctx_a.with_id_generator(fn() { gen_a.next_id() })
   let events_a : Array[@event.ProcessEvent] = []
-  ctx_a2.register_event_listener(fn(ev) { events_a.push(ev) })
+  ctx_a2.register_event_listener_sync(fn(ev) { events_a.push(ev) })
   let engine_a = @engine.Engine::make(ctx_a2)
   let did_a = save_flow_define(repo_a, "g6-one-a", simple_flow_json())
   let inst_a = engine_a.start_async(did_a, "user1", new_args())
@@ -115,7 +115,7 @@ async test "i141-G6: 办理路径 单元素两形态等价（userB vs [userB]）
   let gen_b = @id_gen.AtomicIdGenerator::new(1L)
   let ctx_b2 = ctx_b.with_id_generator(fn() { gen_b.next_id() })
   let events_b : Array[@event.ProcessEvent] = []
-  ctx_b2.register_event_listener(fn(ev) { events_b.push(ev) })
+  ctx_b2.register_event_listener_sync(fn(ev) { events_b.push(ev) })
   let engine_b = @engine.Engine::make(ctx_b2)
   let did_b = save_flow_define(repo_b, "g6-one-b", simple_flow_json())
   let inst_b = engine_b.start_async(did_b, "user1", new_args())
@@ -144,7 +144,7 @@ async test "i141-G6: 办理路径 空串与空数组两形态⇒零行零 fire�
   let gen_a = @id_gen.AtomicIdGenerator::new(1L)
   let ctx_a2 = ctx_a.with_id_generator(fn() { gen_a.next_id() })
   let events_a : Array[@event.ProcessEvent] = []
-  ctx_a2.register_event_listener(fn(ev) { events_a.push(ev) })
+  ctx_a2.register_event_listener_sync(fn(ev) { events_a.push(ev) })
   let engine_a = @engine.Engine::make(ctx_a2)
   let did_a = save_flow_define(repo_a, "g6-empty-a", simple_flow_json())
   let inst_a = engine_a.start_async(did_a, "user1", new_args())
@@ -157,7 +157,7 @@ async test "i141-G6: 办理路径 空串与空数组两形态⇒零行零 fire�
   let gen_b = @id_gen.AtomicIdGenerator::new(1L)
   let ctx_b2 = ctx_b.with_id_generator(fn() { gen_b.next_id() })
   let events_b : Array[@event.ProcessEvent] = []
-  ctx_b2.register_event_listener(fn(ev) { events_b.push(ev) })
+  ctx_b2.register_event_listener_sync(fn(ev) { events_b.push(ev) })
   let engine_b = @engine.Engine::make(ctx_b2)
   let did_b = save_flow_define(repo_b, "g6-empty-b", simple_flow_json())
   let inst_b = engine_b.start_async(did_b, "user1", new_args())
@@ -183,7 +183,7 @@ async test "i141-G6: 发起路径 f_ccActors 两形态等价（回归钉，与�
   let gen_a = @id_gen.AtomicIdGenerator::new(1L)
   let ctx_a2 = ctx_a.with_id_generator(fn() { gen_a.next_id() })
   let events_a : Array[@event.ProcessEvent] = []
-  ctx_a2.register_event_listener(fn(ev) { events_a.push(ev) })
+  ctx_a2.register_event_listener_sync(fn(ev) { events_a.push(ev) })
   let engine_a = @engine.Engine::make(ctx_a2)
   let did_a = save_flow_define(repo_a, "g6-start-a", simple_flow_json())
   let args_a = new_args()
@@ -195,7 +195,7 @@ async test "i141-G6: 发起路径 f_ccActors 两形态等价（回归钉，与�
   let gen_b = @id_gen.AtomicIdGenerator::new(1L)
   let ctx_b2 = ctx_b.with_id_generator(fn() { gen_b.next_id() })
   let events_b : Array[@event.ProcessEvent] = []
-  ctx_b2.register_event_listener(fn(ev) { events_b.push(ev) })
+  ctx_b2.register_event_listener_sync(fn(ev) { events_b.push(ev) })
   let engine_b = @engine.Engine::make(ctx_b2)
   let did_b = save_flow_define(repo_b, "g6-start-b", simple_flow_json())
   let args_b = new_args()

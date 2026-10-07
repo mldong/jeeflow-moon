@@ -1356,6 +1356,8 @@ async fn run() -> Unit raise {
   t1_f117_done_list()
   println("T1-F118 facade 记录类历史行真落库 + 零待办 + 已注册/未注册两档 clazz 续流真机对拍...")
   t1_f118_custom_history_row()
+  t1_f146_live_provider()
+  t1_f146_event_bus()
   println("T1-F119 facade 删除位 trim 命中 + 空档零删除真机对拍...")
   t1_f119_actor_remove_trim()
   t1_f120_facade_tx_atomic()
@@ -1368,3 +1370,171 @@ async fn run() -> Unit raise {
 fn main {
   @async.run_async_main(run)
 }
+
+
+///|
+/// issues/146 缺口一真库证据：供数 SPI 是 async ⇒ 宿主闭包**现场查库**。
+/// 三档：① 库里有行 → 注入 u_realName；② Facade 建好之后新插入的用户行 → 下一次发起即时解析
+/// （同步形状在这一档必须重启才看得见，那是本案的病灶）；③ 库里查无此人 → provider 返回 None，
+/// 发起照常 code=0 且不注入 u_* 键（不炸发起路径，沿用既有吞异常语义）。
+/// 夹具表 i146_live_user 本用例自建自删；值一律 ASCII，避开驱动侧编码混淆当判据。
+async fn t1_f146_live_provider() -> Unit raise {
+  let repo = @repo.MysqlRepository::from_env()
+  set_sql(repo, "DROP TABLE IF EXISTS i146_live_user", [])
+  set_sql(
+    repo,
+    "CREATE TABLE i146_live_user (user_id VARCHAR(64) NOT NULL, real_name VARCHAR(64) NOT NULL)",
+    [],
+  )
+  set_sql(
+    repo,
+    "INSERT INTO i146_live_user VALUES (?, ?)",
+    [@moondb.Text("f146-a"), @moondb.Text("zhangsan")],
+  )
+  clean_9x(repo)
+  save_define_9x(repo, 990701L, "t1-f146", WT_FLOW)
+  // provider = 现场查库的 async 闭包（同步形状的 SPI 写不出这一支）
+  let live : (async (String) -> @model.UserInfo? raise @error.JeeflowError) = async fn(
+    uid : String
+  ) raise @error.JeeflowError {
+    let conn = repo.open_raw()
+    let rows = @repo.q(
+      conn,
+      "SELECT real_name FROM i146_live_user WHERE user_id = ?",
+      [@moondb.Text(uid)],
+    )
+    let _ = conn.close()
+    if rows.is_empty() {
+      None
+    } else {
+      Some(@model.UserInfo::make(user_id=uid, real_name=cell(rows[0], "real_name")))
+    }
+  }
+  let counter : Ref[Int64] = Ref(990710L)
+  let ctx = @spi.Ctx::new(repo, @spi.NoExtRepository::new()).with_id_generator(fn() {
+    let v = counter.val
+    counter.val = v + 1L
+    v
+  }).with_user_provider(live)
+  let facade = @facade.Facade::make(ctx)
+  let s1 = facade.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990701"), ("operator", "f146-a")]),
+  )
+  check(env_code(s1) == 0L, "F146 ① 发起 code=0（供数走 async 现场查库）")
+  check(
+    inst_cell(repo, iid_of(s1), "variable").contains("zhangsan"),
+    "F146 ① 实例变量含 u_realName=zhangsan＝provider 读的是库而不是内存快照",
+  )
+  // ② 关键档：Facade 已装配完，再插新用户行 ⇒ 免重启即时可解析
+  set_sql(
+    repo,
+    "INSERT INTO i146_live_user VALUES (?, ?)",
+    [@moondb.Text("f146-b"), @moondb.Text("lisi-after-assembly")],
+  )
+  let s2 = facade.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990701"), ("operator", "f146-b")]),
+  )
+  check(env_code(s2) == 0L, "F146 ② 运行期新建用户发起 code=0（免重启）")
+  check(
+    inst_cell(repo, iid_of(s2), "variable").contains("lisi-after-assembly"),
+    "F146 ② 实例变量含新行的姓名＝运行期新数据即时解析（缺口一验收判据）",
+  )
+  // ③ 负向：库里没有这个人
+  let s3 = facade.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990701"), ("operator", "f146-none")]),
+  )
+  check(env_code(s3) == 0L, "F146 ③ 查无此人时发起仍 code=0（None 不炸发起路径）")
+  check(
+    !inst_cell(repo, iid_of(s3), "variable").contains("u_realName"),
+    "F146 ③ 查无此人 ⇒ 不注入 u_realName 键",
+  )
+  let _ = facade.flow("processInstance/withdraw", fa([("id", iid_of(s3).to_string()), ("operator", "f146-none")]))
+  set_sql(repo, "DROP TABLE i146_live_user", [])
+  clean_9x(repo)
+  println("PASS F146 供数 async 现场查库（免重启即时解析 + 无行不炸发起）")
+}
+
+
+
+///|
+/// issues/146 缺口三真库证据：事件监听器改 async 形状 ⇒ 监听器能写库（站内信落点成立）。
+/// 本栈没有"提交后再派发"的额外队列：引擎各支 notify_* 一律在**落库之后**才 fire，而门面级
+/// 没有事务模板包住整轮写（160 真库逐条 autocommit），所以"落库后"与"提交后"在此栈等价。
+/// ⚠ 一旦引擎侧引入事务模板（issues/145 各栈欠账），fire 必须挪到 COMMIT 之后，本判据同步换。
+async fn t1_f146_event_bus() -> Unit raise {
+  let repo = @repo.MysqlRepository::from_env()
+  set_sql(repo, "DROP TABLE IF EXISTS i146_event_log", [])
+  set_sql(
+    repo,
+    "CREATE TABLE i146_event_log (event_name VARCHAR(64) NOT NULL, source_id BIGINT NOT NULL)",
+    [],
+  )
+  clean_9x(repo)
+  save_define_9x(repo, 990702L, "t1-f146e", WT_FLOW)
+  // 监听器 = async 闭包，直接现场写库（同步形状写不出这一支：闭包里没法 await）
+  let sink : (async (@event.ProcessEvent) -> Unit raise @error.JeeflowError) = async fn(
+    ev : @event.ProcessEvent
+  ) raise @error.JeeflowError {
+    let conn = repo.open_raw()
+    let _ = @repo.x(
+      conn,
+      "INSERT INTO i146_event_log VALUES (?, ?)",
+      [@moondb.Text(ev.event_type().name()), @moondb.Int64(ev.source_id())],
+    )
+    let _ = conn.close()
+  }
+  let counter : Ref[Int64] = Ref(990720L)
+  let ctx = @spi.Ctx::new(repo, @spi.NoExtRepository::new()).with_id_generator(fn() {
+    let v = counter.val
+    counter.val = v + 1L
+    v
+  })
+  let _ = ctx.register_event_listener(sink)
+  let facade = @facade.Facade::make(ctx)
+  let s = facade.flow(
+    "processInstance/startAndExecute",
+    fa([("processDefineId", "990702"), ("operator", "f146e-applicant")]),
+  )
+  check(env_code(s) == 0L, "F146E 发起 code=0")
+  let iid = iid_of(s)
+  // 事件名从库里读回＝监听器真写进了 MySQL（不是内存数组里的自说自话）
+  let names = select_cell(
+    repo,
+    "SELECT GROUP_CONCAT(event_name ORDER BY event_name SEPARATOR ',') AS n FROM i146_event_log",
+    [],
+    "n",
+  )
+  check(names.contains("PROCESS_INSTANCE_START"), "F146E 码 1 PROCESS_INSTANCE_START 落库（监听器 async 写库成功）")
+  check(names.contains("PROCESS_TASK_START"), "F146E 码 3 PROCESS_TASK_START 落库")
+  // 推进到办结（task1 参与者＝夹具里的 leader），码 2 才有触发点
+  let exe = facade.flow(
+    "processTask/execute",
+    fa([
+      ("processTaskId", doing_task_id(repo, iid, "task1").to_string()),
+      ("operator", "leader"),
+      ("submitType", "1"),
+    ]),
+  )
+  check(env_code(exe) == 0L, "F146E leader 办结 task1 code=0")
+  let names2 = select_cell(
+    repo,
+    "SELECT GROUP_CONCAT(event_name ORDER BY event_name SEPARATOR ',') AS n FROM i146_event_log",
+    [],
+    "n",
+  )
+  check(
+    names2.contains("PROCESS_INSTANCE_END"),
+    "F146E 码 2 PROCESS_INSTANCE_END 落库＝办结通知可达（boot4 站内信监听器订阅的三支之一）",
+  )
+  check(
+    select_i64(repo, "SELECT COUNT(*) AS c FROM i146_event_log WHERE source_id > 0", [], "c") > 0L,
+    "F146E 事件行带真实 sourceId 落库",
+  )
+  set_sql(repo, "DROP TABLE i146_event_log", [])
+  clean_9x(repo)
+  println("PASS F146E 事件监听器 async 化＝站内信集成落点成立（三支码从真库读回）")
+}
+

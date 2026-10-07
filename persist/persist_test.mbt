@@ -47,7 +47,7 @@ fn make_persist_exec(model_json : String, variables : Map[String, Json], state~ 
 }
 
 ///|
-test "persist: table name safety" {
+async test "persist: table name safety" {
   assert_true(@persist.is_table_name_safe("expense_record"))
   assert_true(!@persist.is_table_name_safe("wf_process_define"))
   assert_true(!@persist.is_table_name_safe("sys_user"))
@@ -56,7 +56,7 @@ test "persist: table name safety" {
 }
 
 ///|
-test "persist: ARCHIVE writes once at end+agree, idempotent by instance (C16)" {
+async test "persist: ARCHIVE writes once at end+agree, idempotent by instance (C16)" {
   let (_provider, writer, itc) = make_persist_fixture()
   let flow =
     $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "ARCHIVE", "relTableName": "expense",
@@ -78,7 +78,7 @@ test "persist: ARCHIVE writes once at end+agree, idempotent by instance (C16)" {
 }
 
 ///|
-test "persist: SYNC field permission filters read-only (C19) + state field" {
+async test "persist: SYNC field permission filters read-only (C19) + state field" {
   let (_provider, writer, itc) = make_persist_fixture()
   // apply 节点 field.PERMISSION_note=1（只读）→ SYNC 任务节点不写 note
   let flow =
@@ -103,3 +103,91 @@ test "persist: SYNC field permission filters read-only (C19) + state field" {
   // 状态字段 apply_10
   assert_eq(@json.as_i64(r.get("apply_10").unwrap()).unwrap(), 10L)
 }
+
+
+///|
+/// issues/146 缺口二：元数据以 async 端口注入时被谁消费、消费得对不对。
+/// 判据三条：① 端口每轮都查（不是装配期快照）——运行期改元数据，下一轮立刻生效；
+/// ② 未注册的表按既有语义报 Business；③ 权限过滤读的是端口返回的那份 meta。
+fn cell_of(v : Json?) -> String {
+  match v {
+    Some(Json::String(s)) => s
+    _ => "<非字符串>"
+  }
+}
+
+async test "persist: 动态元数据端口 async 消费（改表结构免重启生效）" {
+  let tables : Ref[Map[String, @persist.TableMeta]] = Ref(Map([]))
+  let loads : Ref[Int] = Ref(0)
+  let mk_meta = fn(note_permission : Int, with_extra : Bool) -> @persist.TableMeta {
+    let m = @persist.TableMeta::make("expense", "报销")
+    m.add_field(@persist.FieldMeta::make("process_instance_id", "BIGINT", "流程实例ID"))
+    m.add_field(@persist.FieldMeta::make("amount", "DECIMAL", "金额"))
+    if with_extra {
+      let x = @persist.FieldMeta::make("extra", "VARCHAR(64)", "改后新增列")
+      m.add_field(x)
+    }
+    let note = @persist.FieldMeta::make("note", "VARCHAR(200)", "备注")
+    note.permission = note_permission
+    m.add_field(note)
+    m
+  }
+  tables.val["expense"] = mk_meta(2, false) // 首轮：note 可编辑
+  let port : @persist.DynamicMetaProviderFns = {
+    load_table_meta: async fn(name : String) raise @error.JeeflowError {
+      loads.val += 1
+      match tables.val.get(name) {
+        Some(m) => Some(m)
+        None => raise @error.Business("表元数据不存在: \{name}")
+      }
+    },
+  }
+  let writer = @persist.InMemoryTableWriter::new()
+  let itc = @persist.PersistPostInterceptor::make_from_provider(port, writer)
+  let flow =
+    $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "SYNC", "relTableName": "expense",
+    $|"nodes": [
+    $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"}},
+    $|  {"id": "end", "type": "snaker:end", "text": {"value": "E"}}
+    $|], "edges": []}
+  let vars : Map[String, Json] = Map([])
+  vars["f_note"] = @json.string_of("第一版可见")
+  vars["f_amount"] = @json.number_of(7L)
+  let e1 = make_persist_exec(flow, vars, state=10, node_id="apply")
+  itc.intercept(e1)
+  let r1 = writer.get_row_by_key("expense", "process_instance_id", e1.process_instance.instance_id).unwrap()
+  assert_true(r1.get("note") is Some(_)) // 元数据说可编辑 ⇒ 写穿
+  // 运行期改元数据：note 转只读 + 新增 extra 列。夹具里两轮共用同一个实例键（走 upsert），
+  // 所以判据是"新列写得进、被转只读的列不再被覆盖"——装配期快照的写法两样都做不到。
+  tables.val["expense"] = mk_meta(1, true)
+  let vars2 : Map[String, Json] = Map([])
+  vars2["f_note"] = @json.string_of("改后不该覆盖")
+  vars2["f_extra"] = @json.string_of("改后新增列可见")
+  vars2["f_amount"] = @json.number_of(9L)
+  let e2 = make_persist_exec(flow, vars2, state=10, node_id="apply")
+  itc.intercept(e2)
+  let r2 = writer.get_row_by_key("expense", "process_instance_id", e2.process_instance.instance_id).unwrap()
+  assert_eq(cell_of(r2.get("extra")), "改后新增列可见") // 端口每轮现查 ⇒ 运行期新增列立刻生效
+  assert_eq(cell_of(r2.get("note")), "第一版可见") // 转只读后不再被覆盖
+  assert_eq(@json.as_i64(r2.get("amount").unwrap()).unwrap(), 9L)
+  assert_true(loads.val >= 2) // 两轮各查一次，不是一次性预载
+  // 负向：端口里没有的表 ⇒ 走引擎既有语义（Business），不静默建半行
+  let ghost_flow =
+    $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "SYNC", "relTableName": "no_such_table",
+    $|"nodes": [
+    $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"}},
+    $|  {"id": "end", "type": "snaker:end", "text": {"value": "E"}}
+    $|], "edges": []}
+  let gv : Map[String, Json] = Map([])
+  gv["f_amount"] = @json.number_of(1L)
+  let e3 = make_persist_exec(ghost_flow, gv, state=10, node_id="apply")
+  let raised_business = try {
+    itc.intercept(e3)
+    false
+  } catch {
+    @error.Business(_) => true
+    _ => false
+  }
+  assert_true(raised_business)
+}
+

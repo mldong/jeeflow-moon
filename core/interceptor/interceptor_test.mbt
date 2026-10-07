@@ -1,7 +1,7 @@
 // interceptor 单测 —— 移植自 rust interceptor.rs tests
 
 ///|
-test "itl: operator assignment handler" {
+async test "itl: operator assignment handler" {
   let define_info : @model.ProcessDefine = {
     id: 1L,
     name: "test",
@@ -32,7 +32,7 @@ test "itl: operator assignment handler" {
 }
 
 ///|
-test "itl: form field assignee f_ prefix then bare name" {
+async test "itl: form field assignee f_ prefix then bare name" {
   let define_info : @model.ProcessDefine = {
     id: 1L,
     name: "test",

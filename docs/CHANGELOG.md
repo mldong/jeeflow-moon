@@ -1,5 +1,57 @@
 # CHANGELOG
 
+## 0.1.28（本轮，待发版）
+
+**issues/146：供数/回调族 SPI 全量 async 化 ＋ 动态表元数据端口 ＋ 事件监听器 async（站内信落点成立）。**
+四模块同号待发（core / persist / repository-mysql / facade）；**有破坏性 API 变化**（见"破坏面"）。
+
+- **缺口一（主线）**：`IUserProvider`、`IOrgUserProvider`（三法）、`IUserSearchProvider`（两法）、
+  `biz_data_reader` 由同步闭包改 **async 闭包** ⇒ 宿主在闭包里现场查库。立法判据不是"java 那边签名
+  同不同步"，而是"这一档 SPI 的真实现要不要做宿主 I/O"：moon 栈查库只有 async 一条路
+  （moonmysql/moondb 全 async），同步形状等于逼集成方启动期快照——mldong-moon 插件 v1 的
+  "41 用户预载进内存 Map、重启前新人看不见"就是这么被迫的（hub 报告 §10）。java 侧 provider 签名同步
+  是 JVM 线程模型的产物、注入的是 Spring bean 现场查库；规范钉"宿主供数"这个行为，不钉签名形状
+  （与 issues/145 同口径：各语言自定机制）。
+  同批 async 化（同一判据）：拦截器 pre/post、assignment/decision/custom handler、事件监听器。
+  **保持同步**（纯计算，异步化纯属折腾调用方）：`json_provider`、`expression_evaluator`、
+  `id_generator`、`action_permission_provider`。
+- **`*_sync` 便捷口**：`with_user_provider_sync` / `with_org_user_provider_sync` /
+  `with_user_search_provider_sync` / `with_biz_data_reader_sync` / `register_event_listener_sync` /
+  `register_interceptor_sync` / `register_assignment|decision|custom_handler_sync`，内部统一经
+  `@spi.async_of_sync` 桥。存在理由＝本栈编译器把"标 async 但体内无 await"判 `unused_async`、
+  把"只传播不 raise"的 raise 标注判 `unused_error_type`，且**没有可摘的抑制属性**（实测）：
+  逐点写空转 async 会淹没警告闸，集中到一处桥后注册点零警告。
+- **缺口二**：`persist` 增 `DynamicMetaProviderFns`（`load_table_meta : async (String) -> TableMeta?
+  raise JeeflowError`）＋ `InMemoryMetaProvider::as_provider()` ＋
+  `PersistPostInterceptor::make_from_provider(...)`，消费点 `load_meta` 每轮现查。
+  **端口放在 persist 不放 core Ctx**：java 的 `IDynamicMetaProvider` 就定义在
+  `jeeflow-persist/meta/`，消费点是 MetaTableWriter/Reader；core 里没有任何代码需要表元数据，
+  挂到 Ctx 就是零消费者的死端口（案文"core/spi 增端口"是位置猜测，此处按参照实现的真实归属更正）。
+- **缺口三**：监听器形状改 async、错误集从开放 `raise` 折成闭集 `raise @error.JeeflowError`
+  ⇒ 监听器可 await 写库＝站内信这类写型副作用第一次有了落点。
+  ⚠ **案文更正**：moon 引擎"无事件分发机制"不准确——9 支码、逐监听器兜底、列表广播、落库后 fire
+  早在 issues/132 那轮就在（`core/event/event.mbt` + `core/engine/notify_events.mbt`）；
+  真病灶是监听器同步 ⇒ 写不了库。时序口径：门面级没有事务模板包住整轮写（真库逐条 autocommit），
+  故"落库后"与 boot4 的 afterCommit 在本栈等价；一旦引擎侧引入事务模板（issues/145 各栈欠账），
+  fire 必须挪到 COMMIT 之后，T1-F 的 F146E 判据同步换。
+- **破坏面**：`Ctx::with_user_provider` / `with_org_user_provider` / `with_user_search_provider` /
+  `with_biz_data_reader` / `register_event_listener` / `register_interceptor(_pre)` /
+  三类 handler 注册与 `find_*` 返回形状全变；`InterceptorFn.run` 变 async；
+  `PersistPostInterceptor` 字段 `meta_provider` → `meta : DynamicMetaProviderFns`。
+  现读消费者只有 mldong-moon 的 jeeflow 插件与本仓 demo/夹具，均已随版改完。
+- **门禁读数（本轮现跑，wasm）**：`moon check --target wasm` **0 error**（87 tasks）；
+  `moon test --target wasm` **Total tests: 404, passed: 404, failed: 0**；
+  T1 `moon run --target wasm repository-mysql/smoke`（160 真库）**ALL PASS**；
+  T1-F `moon run --target wasm demo/cmd/t1_mysql`（160 真库）**155 PASS ALL PASS**，含本轮新增两支：
+  **F146** 供数 async——运行期新插入的用户行免重启即被解析（缺口一验收判据）+ 查无此人 None 不炸发起；
+  **F146E** async 监听器 INSERT 进真库，码 1/3/2 三支从库里 `GROUP_CONCAT` 读回（缺口三落点成立）；
+  T0 新增 **`persist: 动态元数据端口 async 消费`**（运行期改列权限/新增列 ⇒ 下一轮生效，缺口二）。
+- **警告归因**（本仓闸门的口径是"0 error ＋ 涨了要归因"）：22 → 37。
+  +8 `unused_error_type`＝只传播不 raise 的 async 支（7 支 `notify_*` + `@event.notify`）必须带闭集
+  raise 标注，否则错误集塌成开放 `Error` 并外溢到调用方（实测 E4118 全在这条上）；
+  +7 `unused_async`＝三条桥 + 内存实现的空转 async 闭包（MoonBit 无抑制属性）。
+  新增来源已写进 `docs/spi-guide.md`「纯内存实现的便捷口」，后续轮次以此为基线。
+
 ## 0.1.27（2026-10-06）
 
 **issues/144：事务句柄从进程级全局槽改挂仓储实例，并把"一个请求＝一个实例"做成有通道可走。**

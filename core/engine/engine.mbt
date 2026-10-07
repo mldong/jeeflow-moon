@@ -36,7 +36,11 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::next_id(se
 /// `ProcessRepository#create_cc_instance_if_absent` 拿到子集，子集为空整支不 fire——
 /// spec §11.2 原则 1「码=事实」，重复抄送没发生"创建"就不该发码 4，严禁照旧按原始请求全量 fire。
 /// 三条入口（发起 f_ccActors／办理 tf_ccActors／门面手动 createCCInstance）共用这一支（§11.7）。
-pub fn[R, E] Engine::notify_cc_create(self : Engine[R, E], instance_id : Int64, cc_actors : Array[String]) -> Unit {
+pub async fn[R, E] Engine::notify_cc_create(
+  self : Engine[R, E],
+  instance_id : Int64,
+  cc_actors : Array[String]
+) -> Unit raise @error.JeeflowError {
   for actor in cc_actors {
     let event = @event.ProcessEvent::make(CcCreate, instance_id).with_cc_actor_id(actor)
     @event.notify(event, self.ctx.event_listeners())
@@ -45,7 +49,11 @@ pub fn[R, E] Engine::notify_cc_create(self : Engine[R, E], instance_id : Int64, 
 
 ///|
 /// 注入用户信息变量（u_userId/u_realName/…；C25：仅 start 注入一次）
-fn[R, E] Engine::add_user_info(self : Engine[R, E], args : @json.FlowData, operator : String) -> Unit {
+async fn[R, E] Engine::add_user_info(
+  self : Engine[R, E],
+  args : @json.FlowData,
+  operator : String
+) -> Unit raise @error.JeeflowError {
   if operator == "flow.auto" || operator == "flow.admin" {
     return
   }
@@ -82,7 +90,11 @@ fn gen_auto_title(args : @json.FlowData, display_name : String) -> String {
 
 ///|
 /// 参与人解析（优先级：tf_nextNodeOperator → assignee 字面量/变量 → assignmentHandler → candidateUsers）
-fn[R, E] Engine::resolve_assignee(self : Engine[R, E], exec : @exec.Execution, node : @parser.NodeModel) -> Array[String] {
+async fn[R, E] Engine::resolve_assignee(
+  self : Engine[R, E],
+  exec : @exec.Execution,
+  node : @parser.NodeModel
+) -> Array[String] raise @error.JeeflowError {
   // 1. tf_nextNodeOperator（issues/142 B 批 · spec 06-facade §2.11「消费腿两形同判据」）
   //    改前这一腿走 `exec.args.get_str(...)` ⇒ 只认逗号串：发起人用**数组**指派下一节点参与者时
   //    整条失效（静默落回节点自己的 assignee），而逗号串"全空白"档（如 " , ,, "）非空 ⇒ 直接 return
@@ -682,7 +694,7 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::resolve_va
 /// `InterceptorFn` 只有一个 `run`（无 before/after 之分），复用后置数组会让
 /// persist 的 PersistPostInterceptor 双触发（归档/SYNC 写两遍），故另起 pre 通道。
 /// 委托自动生效不经本函数（时机对不上，见 `surrogate.mbt` 头部 ①②）。
-fn[R, E] Engine::fire_pre_interceptors(
+async fn[R, E] Engine::fire_pre_interceptors(
   self : Engine[R, E],
   exec : @exec.Execution
 ) -> Unit raise @error.JeeflowError {
@@ -692,7 +704,7 @@ fn[R, E] Engine::fire_pre_interceptors(
 }
 
 ///|
-fn[R, E] Engine::fire_post_interceptors(self : Engine[R, E], exec : @exec.Execution) -> Unit raise @error.JeeflowError {
+async fn[R, E] Engine::fire_post_interceptors(self : Engine[R, E], exec : @exec.Execution) -> Unit raise @error.JeeflowError {
   for interceptor in self.ctx.interceptors {
     (interceptor.run)(exec)
   }

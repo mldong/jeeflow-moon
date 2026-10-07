@@ -3,6 +3,7 @@ import {
   "mldong/jeeflow-core/model" @model,
   "mldong/jeeflow-core/spi" @spi,
   "mldong/jeeflow-core/error" @error,
+  "mldong/jeeflow-core/event" @event,
   "mldong/jeeflow-facade" @facade,
   "mldong/jeeflow-repository-mysql/repo" @repo,
   "moonbitlang/async" @async,

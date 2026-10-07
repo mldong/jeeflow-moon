@@ -35,7 +35,7 @@ fn make_mem_ctx(repo : @memory.MemoryRepository) -> @spi.Ctx[@memory.MemoryRepos
   let ctx = @spi.Ctx::new(repo, repo)
   let gen = @id_gen.DefaultIdGenerator::new(2L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
-  let ctx3 = ctx2.with_user_provider(demo_user_provider)
+  let ctx3 = ctx2.with_user_provider(@spi.async_of_sync(demo_user_provider))
   let ctx4 = ctx3.with_org_user_provider(demo_org_provider())
   let _ = ctx4.with_user_search_provider(demo_user_search_provider())
   ctx4
@@ -46,7 +46,7 @@ fn make_my_ctx(repo : @repo.MysqlRepository) -> @spi.Ctx[@repo.MysqlRepository, 
   let ctx = @spi.Ctx::new(repo, @spi.NoExtRepository::new())
   let gen = @id_gen.DefaultIdGenerator::new(2L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
-  let ctx3 = ctx2.with_user_provider(demo_user_provider)
+  let ctx3 = ctx2.with_user_provider(@spi.async_of_sync(demo_user_provider))
   let ctx4 = ctx3.with_org_user_provider(demo_org_provider())
   let _ = ctx4.with_user_search_provider(demo_user_search_provider())
   ctx4

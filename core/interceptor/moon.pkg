@@ -8,4 +8,5 @@ import {
 
 import {
   "mldong/jeeflow-core/parser" @parser,
+  "moonbitlang/async",
 } for "test"

@@ -6,16 +6,16 @@
 ///|
 /// IOrgUserProvider 闭包组（spec/05 v1.6.0）
 pub(all) struct OrgUserProviderFns {
-  find_dept_leaders : (String) -> Array[String] raise @error.JeeflowError
-  find_dept_main_leaders : (String) -> Array[String] raise @error.JeeflowError
-  find_by_role : (String) -> Array[String] raise @error.JeeflowError
+  find_dept_leaders : (async (String) -> Array[String] raise @error.JeeflowError)
+  find_dept_main_leaders : (async (String) -> Array[String] raise @error.JeeflowError)
+  find_by_role : (async (String) -> Array[String] raise @error.JeeflowError)
 }
 
 ///|
 /// IUserSearchProvider 闭包组（spec/06 §4.3/§6）
 pub(all) struct UserSearchProviderFns {
-  page : (@model.PageQuery) -> @model.PageResult[Map[String, Json]] raise @error.JeeflowError
-  find_by_id : (String) -> Map[String, Json]? raise @error.JeeflowError
+  page : (async (@model.PageQuery) -> @model.PageResult[Map[String, Json]] raise @error.JeeflowError)
+  find_by_id : (async (String) -> Map[String, Json]? raise @error.JeeflowError)
 }
 
 ///|
@@ -46,7 +46,7 @@ pub fn default_action_permission_provider(action : String) -> Array[String] {
 /// FlowInterceptor 闭包形态（带 order）
 pub(all) struct InterceptorFn {
   order : Int
-  run : (@exec.Execution) -> Unit raise @error.JeeflowError
+  run : (async (@exec.Execution) -> Unit raise @error.JeeflowError)
 }
 
 ///|
@@ -55,17 +55,17 @@ pub(all) struct Ctx[R, E] {
   repository : R
   ext_repository : E
   // ── 小 SPI（闭包字段）──
-  mut user_provider : ((String) -> @model.UserInfo? raise @error.JeeflowError)?
+  mut user_provider : ((async (String) -> @model.UserInfo? raise @error.JeeflowError))?
   mut org_user_provider : OrgUserProviderFns?
   mut user_search_provider : UserSearchProviderFns?
   mut json_provider : JsonProviderFns?
   mut expression_evaluator : ((String, Map[String, Json]) -> Json raise @error.JeeflowError)?
   mut id_generator : (() -> Int64 raise @error.JeeflowError)?
   mut action_permission_provider : ((String) -> Array[String])?
-  mut biz_data_reader : ((String, Int64) -> Map[String, Json]? raise @error.JeeflowError)?
+  mut biz_data_reader : ((async (String, Int64) -> Map[String, Json]? raise @error.JeeflowError))?
   // ── 按名注册表 ──
-  assignment_handlers : Map[String, (@exec.Execution) -> String raise @error.JeeflowError]
-  decision_handlers : Map[String, (@exec.Execution) -> String raise @error.JeeflowError]
+  assignment_handlers : Map[String, (async (@exec.Execution) -> String raise @error.JeeflowError)]
+  decision_handlers : Map[String, (async (@exec.Execution) -> String raise @error.JeeflowError)]
   /// 记录类（`snaker:custom`）节点处理器（issues/142 A 批 · spec/02 §6.1/§6.2）。
   /// 键＝流程定义 `properties.clazz` 的**原样字符串**：MoonBit 没有反射，java 那句
   /// `Class.forName(clazz)` 在本栈无从谈起 ⇒ 与 C#/Python 栈同策「按名注册、按名解析」，
@@ -73,7 +73,7 @@ pub(all) struct Ctx[R, E] {
   /// 里就是 `com.mldong.jeeflow.test.TestCustomHandler`）。
   /// 返回值取 `Json`：本栈流程变量的载体就是 Json（`@json.FlowData`），处理器无返回值时
   /// 返回 `@json.null_json()` ⇒ 引擎不写键（对齐 python「ret is not None 才写」）。
-  custom_handlers : Map[String, (@exec.Execution) -> Json raise @error.JeeflowError]
+  custom_handlers : Map[String, (async (@exec.Execution) -> Json raise @error.JeeflowError)]
   // ── 有序集合 ──
   interceptors : Array[InterceptorFn]
   /// 前置扩展位（issues/116 批次 D）：与 `interceptors` **分开注册、分开触发**。
@@ -82,7 +82,7 @@ pub(all) struct Ctx[R, E] {
   /// 双触发（归档/SYNC 写两遍）。故 pre 另起一条通道，pre 体系的整体 canonical 形态
   /// （含第三方自写拦截器的 pre 语义）仍归 issues/104 §P1。
   pre_interceptors : Array[InterceptorFn]
-  event_listeners : Array[((@event.ProcessEvent) -> Unit raise)]
+  event_listeners : Array[((async (@event.ProcessEvent) -> Unit raise @error.JeeflowError))]
   /// 委托自动生效开关（issues/116 批次 D / spec 06 §4.5 条款 3）：**默认开启**
   /// （`Ctx::new` 里给 true，全栈唯一构造入口，不存在"零值即关闭"的旁路）。
   mut surrogate_auto_apply : Bool
@@ -161,7 +161,7 @@ pub fn[R, E] Ctx::for_request(
 ///|
 pub fn[R, E] Ctx::with_user_provider(
   self : Ctx[R, E],
-  p : (String) -> @model.UserInfo? raise @error.JeeflowError
+  p : (async (String) -> @model.UserInfo? raise @error.JeeflowError)
 ) -> Ctx[R, E] {
   self.user_provider = Some(p)
   self
@@ -209,7 +209,7 @@ pub fn[R, E] Ctx::with_action_permission_provider(
 ///|
 pub fn[R, E] Ctx::with_biz_data_reader(
   self : Ctx[R, E],
-  f : (String, Int64) -> Map[String, Json]? raise @error.JeeflowError
+  f : (async (String, Int64) -> Map[String, Json]? raise @error.JeeflowError)
 ) -> Ctx[R, E] {
   self.biz_data_reader = Some(f)
   self
@@ -269,7 +269,7 @@ pub fn[R, E] Ctx::permission_codes(self : Ctx[R, E], action : String) -> Array[S
 pub fn[R, E] Ctx::register_assignment_handler(
   self : Ctx[R, E],
   name : String,
-  handler : (@exec.Execution) -> String raise @error.JeeflowError
+  handler : (async (@exec.Execution) -> String raise @error.JeeflowError)
 ) -> Unit {
   self.assignment_handlers[name] = handler
 }
@@ -278,7 +278,7 @@ pub fn[R, E] Ctx::register_assignment_handler(
 pub fn[R, E] Ctx::register_decision_handler(
   self : Ctx[R, E],
   name : String,
-  handler : (@exec.Execution) -> String raise @error.JeeflowError
+  handler : (async (@exec.Execution) -> String raise @error.JeeflowError)
 ) -> Unit {
   self.decision_handlers[name] = handler
 }
@@ -290,12 +290,12 @@ pub fn[R, E] Ctx::register_interceptor(self : Ctx[R, E], i : InterceptorFn) -> U
 }
 
 ///|
-pub fn[R, E] Ctx::register_event_listener(self : Ctx[R, E], l : (@event.ProcessEvent) -> Unit raise) -> Unit {
+pub fn[R, E] Ctx::register_event_listener(self : Ctx[R, E], l : (async (@event.ProcessEvent) -> Unit raise @error.JeeflowError)) -> Unit {
   self.event_listeners.push(l)
 }
 
 ///|
-pub fn[R, E] Ctx::event_listeners(self : Ctx[R, E]) -> Array[((@event.ProcessEvent) -> Unit raise)] {
+pub fn[R, E] Ctx::event_listeners(self : Ctx[R, E]) -> Array[((async (@event.ProcessEvent) -> Unit raise @error.JeeflowError))] {
   self.event_listeners
 }
 
@@ -303,7 +303,7 @@ pub fn[R, E] Ctx::event_listeners(self : Ctx[R, E]) -> Array[((@event.ProcessEve
 pub fn[R, E] Ctx::find_assignment_handler(
   self : Ctx[R, E],
   name : String
-) -> ((@exec.Execution) -> String raise @error.JeeflowError)? {
+) -> ((async (@exec.Execution) -> String raise @error.JeeflowError))? {
   self.assignment_handlers.get(name)
 }
 
@@ -311,7 +311,7 @@ pub fn[R, E] Ctx::find_assignment_handler(
 pub fn[R, E] Ctx::find_decision_handler(
   self : Ctx[R, E],
   name : String
-) -> ((@exec.Execution) -> String raise @error.JeeflowError)? {
+) -> ((async (@exec.Execution) -> String raise @error.JeeflowError))? {
   self.decision_handlers.get(name)
 }
 
@@ -321,7 +321,7 @@ pub fn[R, E] Ctx::find_decision_handler(
 pub fn[R, E] Ctx::register_custom_handler(
   self : Ctx[R, E],
   clazz : String,
-  handler : (@exec.Execution) -> Json raise @error.JeeflowError
+  handler : (async (@exec.Execution) -> Json raise @error.JeeflowError)
 ) -> Unit {
   self.custom_handlers[clazz] = handler
 }
@@ -332,10 +332,165 @@ pub fn[R, E] Ctx::register_custom_handler(
 pub fn[R, E] Ctx::find_custom_handler(
   self : Ctx[R, E],
   clazz : String
-) -> ((@exec.Execution) -> Json raise @error.JeeflowError)? {
+) -> ((async (@exec.Execution) -> Json raise @error.JeeflowError))? {
   if clazz.is_empty() {
     None
   } else {
     self.custom_handlers.get(clazz)
   }
 }
+
+
+///|
+/// 同步实现的 async 桥（issues/146）：内存夹具/demo/宿主纯计算实现，复用同步闭包，
+/// 免得每个注册点写一条空转 async 闭包——本栈编译器会把"async 但体内无 await"判成
+/// unused_async 警告（实测：闭包字面量与 fn 声明都判，无抑制属性可摘），
+/// 集中到这一处 ⇒ 全仓警告增量恒等于 1 条，注册点零警告。
+/// 真查库的宿主实现直接写 `async fn(id) raise @error.JeeflowError { ... }`，不经本桥。
+pub fn[R, A] async_of_sync(
+  f : (A) -> R raise @error.JeeflowError
+) -> (async (A) -> R raise @error.JeeflowError) {
+  async fn(a) raise @error.JeeflowError { f(a) }
+}
+
+///|
+/// 两参档（biz_data_reader 的 (table, id)）
+pub fn[R, A, B] async_of_sync2(
+  f : (A, B) -> R raise @error.JeeflowError
+) -> (async (A, B) -> R raise @error.JeeflowError) {
+  async fn(a, b) raise @error.JeeflowError { f(a, b) }
+}
+
+///|
+/// 事件监听器档：既有监听器错误集是开放 `raise`（单监听器异常由 @event.notify 兜底隔离），
+/// 故另开一支桥，错误集不折成 JeeflowError。
+pub fn sync_listener(
+  f : (@event.ProcessEvent) -> Unit raise @error.JeeflowError
+) -> (async (@event.ProcessEvent) -> Unit raise @error.JeeflowError) {
+  async fn(e) raise @error.JeeflowError { f(e) }
+}
+
+
+
+///|
+/// ── 同步形状便捷口（issues/146）──
+/// 供数/回调族 SPI 的正式形状是 async（宿主现场查库）；纯内存实现（demo、仓内夹具、
+/// 以及只做字符串运算的 handler）走下面这组 `*_sync` 便捷口，内部统一经 async_of_sync 桥。
+/// 两条通道注册完的 Ctx 字段类型完全相同，引擎只认 async 那一种。
+pub(all) struct OrgUserProviderFnsSync {
+  find_dept_leaders : (String) -> Array[String] raise @error.JeeflowError
+  find_dept_main_leaders : (String) -> Array[String] raise @error.JeeflowError
+  find_by_role : (String) -> Array[String] raise @error.JeeflowError
+}
+
+///|
+pub fn OrgUserProviderFnsSync::to_async(self : OrgUserProviderFnsSync) -> OrgUserProviderFns {
+  {
+    find_dept_leaders: async_of_sync(self.find_dept_leaders),
+    find_dept_main_leaders: async_of_sync(self.find_dept_main_leaders),
+    find_by_role: async_of_sync(self.find_by_role),
+  }
+}
+
+///|
+pub(all) struct UserSearchProviderFnsSync {
+  page : (@model.PageQuery) -> @model.PageResult[Map[String, Json]] raise @error.JeeflowError
+  find_by_id : (String) -> Map[String, Json]? raise @error.JeeflowError
+}
+
+///|
+pub fn UserSearchProviderFnsSync::to_async(
+  self : UserSearchProviderFnsSync
+) -> UserSearchProviderFns {
+  {
+    page: async_of_sync(self.page),
+    find_by_id: async_of_sync(self.find_by_id),
+  }
+}
+
+///|
+pub fn[R, E] Ctx::with_user_provider_sync(
+  self : Ctx[R, E],
+  p : (String) -> @model.UserInfo? raise @error.JeeflowError
+) -> Ctx[R, E] {
+  self.with_user_provider(async_of_sync(p))
+}
+
+///|
+pub fn[R, E] Ctx::with_org_user_provider_sync(
+  self : Ctx[R, E],
+  p : OrgUserProviderFnsSync
+) -> Ctx[R, E] {
+  self.with_org_user_provider(p.to_async())
+}
+
+///|
+pub fn[R, E] Ctx::with_user_search_provider_sync(
+  self : Ctx[R, E],
+  p : UserSearchProviderFnsSync
+) -> Ctx[R, E] {
+  self.with_user_search_provider(p.to_async())
+}
+
+///|
+pub fn[R, E] Ctx::with_biz_data_reader_sync(
+  self : Ctx[R, E],
+  f : (String, Int64) -> Map[String, Json]? raise @error.JeeflowError
+) -> Ctx[R, E] {
+  self.with_biz_data_reader(async_of_sync2(f))
+}
+
+///|
+pub fn[R, E] Ctx::register_event_listener_sync(
+  self : Ctx[R, E],
+  l : (@event.ProcessEvent) -> Unit raise @error.JeeflowError
+) -> Unit {
+  self.register_event_listener(sync_listener(l))
+}
+
+///|
+pub fn[R, E] Ctx::register_assignment_handler_sync(
+  self : Ctx[R, E],
+  name : String,
+  handler : (@exec.Execution) -> String raise @error.JeeflowError
+) -> Unit {
+  self.register_assignment_handler(name, async_of_sync(handler))
+}
+
+///|
+pub fn[R, E] Ctx::register_decision_handler_sync(
+  self : Ctx[R, E],
+  name : String,
+  handler : (@exec.Execution) -> String raise @error.JeeflowError
+) -> Unit {
+  self.register_decision_handler(name, async_of_sync(handler))
+}
+
+///|
+pub fn[R, E] Ctx::register_custom_handler_sync(
+  self : Ctx[R, E],
+  clazz : String,
+  handler : (@exec.Execution) -> Json raise @error.JeeflowError
+) -> Unit {
+  self.register_custom_handler(clazz, async_of_sync(handler))
+}
+
+///|
+/// 拦截器的同步档：只补 `run` 的形状，order 与排序语义不变。
+pub fn[R, E] Ctx::register_interceptor_sync(
+  self : Ctx[R, E],
+  order : Int,
+  run : (@exec.Execution) -> Unit raise @error.JeeflowError
+) -> Unit {
+  self.register_interceptor({ order, run: async_of_sync(run) })
+}
+
+///|
+pub fn[R, E] Ctx::register_pre_interceptor_sync(
+  self : Ctx[R, E],
+  order : Int,
+  run : (@exec.Execution) -> Unit raise @error.JeeflowError
+) -> Unit {
+  self.register_pre_interceptor({ order, run: async_of_sync(run) })
+}
+

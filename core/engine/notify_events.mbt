@@ -10,9 +10,9 @@
 /// sourceId=instanceId，载荷 instanceId。
 /// 调用方义务：实例行 insert（save_instance）之后、建单/抄送两支之前 fire，
 /// 使单条流从发起到办结的可见序为 [1,3,5,2]（§11.8 L2-30）。
-pub fn[R, E] Engine::notify_instance_start(
+pub async fn[R, E] Engine::notify_instance_start(
   self : Engine[R, E], instance_id : Int64
-) -> Unit {
+) -> Unit raise @error.JeeflowError {
   let data = @json.FlowData::new()
   data.insert_i64("instanceId", instance_id)
   let event = @event.ProcessEvent::make(@event.ProcessInstanceStart, instance_id).with_data(data)
@@ -25,9 +25,9 @@ pub fn[R, E] Engine::notify_instance_start(
 /// 调用方义务：实例 `state` 写 20/45 落库（update_instance）之后 fire。
 /// ⚠️ 30(撤回)/40(终止) 不由本支表达——各有专属码 8/9；一场撤回同时发 8＋2
 ///    会让下游收到"流程已办结"的错通知（§11.3 code 2 行）。
-pub fn[R, E] Engine::notify_instance_end(
+pub async fn[R, E] Engine::notify_instance_end(
   self : Engine[R, E], instance_id : Int64, state : Int
-) -> Unit {
+) -> Unit raise @error.JeeflowError {
   let data = @json.FlowData::new()
   data.insert_i64("instanceId", instance_id)
   data.insert_i64("state", state.to_int64())
@@ -43,9 +43,9 @@ pub fn[R, E] Engine::notify_instance_end(
 ///    集成层 L2-30 的事件流水 sink 只能靠载荷里的 instanceId 把一条流的流水归到
 ///    `jeeflow:gate:events:<instanceId>` 一个键下；缺它 ⇒ 一条流被拆成多个 taskId 键、顺序读不全。
 /// 调用方义务：**每个**任务行落库（save_task 分到 taskId）之后逐任务 fire。
-pub fn[R, E] Engine::notify_task_start(
+pub async fn[R, E] Engine::notify_task_start(
   self : Engine[R, E], instance_id : Int64, task_id : Int64, actors : Array[String]
-) -> Unit {
+) -> Unit raise @error.JeeflowError {
   let data = @json.FlowData::new()
   data.insert_i64("instanceId", instance_id)
   data.insert_i64("taskId", task_id)
@@ -59,14 +59,14 @@ pub fn[R, E] Engine::notify_task_start(
 /// sourceId=taskId，载荷 instanceId/taskId/operator/submitType。
 /// 调用方义务：任务行 state 落库之后 fire（load_exec_for_task 的 update_task_by_id 之后）。
 /// 5/6 互斥：由调用方按 submitType 选 event_type——退回动作只 fire 6，不再 fire 5。
-pub fn[R, E] Engine::notify_task_result(
+pub async fn[R, E] Engine::notify_task_result(
   self : Engine[R, E],
   event_type : @event.ProcessEventType,
   instance_id : Int64,
   task_id : Int64,
   operator : String,
   submit_type : Int64?
-) -> Unit {
+) -> Unit raise @error.JeeflowError {
   let data = @json.FlowData::new()
   data.insert_i64("instanceId", instance_id)
   data.insert_i64("taskId", task_id)
@@ -83,14 +83,14 @@ pub fn[R, E] Engine::notify_task_result(
 /// 转办事件（spec §11.3 code 7 TASK_TRANSFER）。
 /// sourceId=taskId，载荷 instanceId/taskId/fromActor/toActor/operator。
 /// 调用方在参与者被替换并落库（update_task）之后 fire。
-pub fn[R, E] Engine::notify_task_transfer(
+pub async fn[R, E] Engine::notify_task_transfer(
   self : Engine[R, E],
   instance_id : Int64,
   task_id : Int64,
   from_actor : String,
   to_actor : String,
   operator : String
-) -> Unit {
+) -> Unit raise @error.JeeflowError {
   let data = @json.FlowData::new()
   data.insert_i64("instanceId", instance_id)
   data.insert_i64("taskId", task_id)
@@ -105,9 +105,9 @@ pub fn[R, E] Engine::notify_task_transfer(
 /// 撤回事件（spec §11.3 code 8 TASK_WITHDRAW）。
 /// sourceId=instanceId，载荷 instanceId/operator。每轮撤回只 fire 一次（不逐任务）；
 /// 调用方在实例 state→30 落库（update_instance）之后 fire。
-pub fn[R, E] Engine::notify_instance_withdraw(
+pub async fn[R, E] Engine::notify_instance_withdraw(
   self : Engine[R, E], instance_id : Int64, operator : String
-) -> Unit {
+) -> Unit raise @error.JeeflowError {
   let data = @json.FlowData::new()
   data.insert_i64("instanceId", instance_id)
   data.insert_str("operator", operator)
@@ -120,9 +120,9 @@ pub fn[R, E] Engine::notify_instance_withdraw(
 /// sourceId=instanceId，载荷 instanceId/operator/reason。调用方在实例 state→40 落库之后 fire。
 /// ⚠️ 本栈门面/引擎暂无"终止"action（ProcessInstance::interrupt 只在测试里被调、从不落库），
 ///    故 code 9 有号无触发点：本轮仅占号，补齐终止 action 时在落库处调本函数即接通。
-pub fn[R, E] Engine::notify_instance_terminated(
+pub async fn[R, E] Engine::notify_instance_terminated(
   self : Engine[R, E], instance_id : Int64, operator : String, reason : String
-) -> Unit {
+) -> Unit raise @error.JeeflowError {
   let data = @json.FlowData::new()
   data.insert_i64("instanceId", instance_id)
   data.insert_str("operator", operator)

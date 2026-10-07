@@ -9,9 +9,11 @@
 |-----|------|------|
 | `ProcessRepository`（trait，29 方法） | 必需 | 定义/实例/任务/参与人/抄送/委托/设计 等全部持久化 |
 | `ProcessExtRepository`（trait，13 方法） | 必需（可空实现） | 设计与委托扩展仓储；无则用 `@spi.NoExtRepository::new()` |
-| `IUserProvider` | 闭包 `(String) -> UserInfo? raise @error.JeeflowError` | `getUser` 单方法，applicant/审批人信息；⚠️ 签名里 `raise @error.JeeflowError` 要逐字写，裸 `raise` 或不写都会 `Expr Type Mismatch`（形状见 `demo/demo.mbt:30`，可编译示例见 getting-started） |
-| `IOrgUserProvider` | 三闭包组 | 部门主管（含主职）/角色取人 |
-| `IUserSearchProvider` | 闭包组 | 审批人搜索（候选人双源） |
+| `IUserProvider` | **async** 闭包 `(async (String) -> UserInfo? raise @error.JeeflowError)` | `getUser` 单方法，applicant/审批人信息。issues/146：本栈查库只有 async 一条路 ⇒ 同步形状等于逼宿主启动期快照（之后新人/调岗引擎看不见）。⚠️ 签名里 `raise @error.JeeflowError` 要逐字写，裸 `raise` 或不写都会 `Expr Type Mismatch`（不写时错误集塌成开放 `Error` 并外溢到调用方） |
+| `IDynamicMetaProvider` | **async** 闭包组，定义在 `persist` 不在 core | 业务表元数据（列/类型/权限）。java 同位 `jeeflow-persist/meta/IDynamicMetaProvider` 的消费点是写侧/读侧元数据 ⇒ core 里没有需要表元数据的代码，端口挂 Ctx 就是死端口。见 `persist.md` |
+| `IOrgUserProvider` | **async** 三闭包组 | 部门主管（含主职）/角色取人 |
+| `IUserSearchProvider` | **async** 闭包组 | 审批人搜索（候选人双源） |
+| 拦截器 / 事件监听器 / 取人与决策 handler | **async** 闭包 | issues/146 同批改形：这些回调的真实现要写库（persist 归档、站内信、业务节点），同步形状就是同一处病灶 |
 | `IIdGenerator` | 闭包 `() -> Int64` | 缺省回退默认雪花（EPOCH 对齐联邦 1288834974657） |
 | `IExpressionEvaluator` | 可选 | 缺省内置简单比较求值；决策路由用 |
 | `IClock` | 闭包 `() -> String` | **MoonBit 特有**：core 无墙钟，时间全注入（测试注固定钟 = 快照字节级确定） |
@@ -19,18 +21,44 @@
 ## 注册方式（Ctx）
 
 ```moonbit
+// 真查库的宿主实现：直接写 async 闭包（issues/146 的正式形状）
+let user : (async (String) -> @model.UserInfo? raise @error.JeeflowError) =
+  async fn(uid : String) raise @error.JeeflowError {
+    let conn = repo.open_raw()
+    let rows = @repo.q(conn, "SELECT real_name FROM sys_user WHERE id = ?", [@moondb.Text(uid)])
+    let _ = conn.close()
+    if rows.is_empty() { None } else { Some(@model.UserInfo::make(user_id=uid, real_name=...)) }
+  }
+
 let ctx = @spi.Ctx::new(repo, ext_repo)          // 泛型 [R, E]，仓储是类型参数
 let ctx = ctx
-  .with_id_generator(fn() { gen.next_id() })
-  .with_user_provider(my_user_provider)          // (String) -> UserInfo? raise JeeflowError
+  .with_id_generator(fn() { gen.next_id() })     // 纯计算 SPI 保持同步（json/expression/permission 同）
+  .with_user_provider(user)
   .with_org_user_provider(my_org_fns)
   .with_user_search_provider(my_search_fns)
   .with_expression_evaluator(my_eval)
-// 拦截器 / 事件监听器 / 决策与取人 handler 也走 Ctx：
+// 拦截器 / 事件监听器 / 决策与取人 handler 也走 Ctx（入参一律 async 闭包）：
 ctx.register_interceptor(interceptor.as_interceptor())   // persist 等，order=100 后置
-ctx.register_event_listener(my_listener)
+ctx.register_event_listener(my_listener)                 // 监听器 async ⇒ 站内信这类写型副作用可达
 ctx.register_assignment_handler("com.mldong.wf.handler.XxxHandler", my_handler)  // Java FQCN 注册
 ```
+
+## 纯内存实现的便捷口（`*_sync`）
+
+```moonbit
+let ctx = ctx
+  .with_user_provider_sync(my_sync_provider)      // 形状＝旧签名，内部经 @spi.async_of_sync 桥
+  .with_org_user_provider_sync(@spi.OrgUserProviderFnsSync { ... })
+  .with_user_search_provider_sync(@spi.UserSearchProviderFnsSync { ... })
+  .with_biz_data_reader_sync(my_reader)
+ctx.register_event_listener_sync(my_listener)     // 拦截器/handler 同规律：register_*_sync
+```
+
+注册完的 `Ctx` 字段类型与 async 通道完全一致，引擎只认 async 那一种。之所以要有这组便捷口：
+本栈编译器把"标了 async 但体内没有 await"判成 `unused_async` 警告（实测闭包字面量和 `fn` 声明**都判**、
+且没有可摘的抑制属性），而"只传播不 raise"的 `raise @error.JeeflowError` 标注又会被判 `unused_error_type`；
+若让每个内存实现点各写一条空转 async 闭包，警告闸的信号就被淹掉——集中到一处桥，注册点零警告
+（`core/spi/context.mbt` 的 `async_of_sync` / `async_of_sync2` / `sync_listener`，全仓恒 3 条来源）。
 
 ## 委托代理自动生效（引擎内置，默认开启）
 

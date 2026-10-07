@@ -171,3 +171,24 @@ pub fn fill_system_fields(
 // 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
 pub extend PersistMode with Eq::{equal, not_equal}
 pub extend PersistMode with Debug::{to_repr}
+
+
+///|
+/// IDynamicMetaProvider 的 MoonBit 同位（issues/146 缺口二）。
+/// java 侧这个端口就定义在 jeeflow-persist/meta（不在 core），消费点是 MetaTableWriter/Reader
+/// ⇒ 本栈同位同样落在 persist：归档/SYNC 的写侧与回显读侧共用一份元数据（storageType 语义两侧一致）。
+/// load_table_meta 是 async：集成方的元数据来源是库（mldong dev_schema / information_schema），
+/// 同步形状就会重演缺口一——启动期快照、改表结构引擎看不见。
+/// 未注入 ⇒ 引擎行为与既往一致（InMemory 档照常，缺省不启用外部元数据）。
+pub(all) struct DynamicMetaProviderFns {
+  load_table_meta : (async (String) -> TableMeta? raise @error.JeeflowError)
+}
+
+///|
+/// 内存档 → 端口（纯内存读 ⇒ 经 @spi.async_of_sync 桥，注册点零警告）
+pub fn InMemoryMetaProvider::as_provider(self : InMemoryMetaProvider) -> DynamicMetaProviderFns {
+  let it = self
+  let f : (String) -> TableMeta? raise @error.JeeflowError = name => it.get_table_meta(name)
+  { load_table_meta: @spi.async_of_sync(f) }
+}
+

@@ -10,7 +10,7 @@ async test "i132-events: 发起→同意→办结 可见序 [1,3,5,2]（spec §1
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let events : Array[@event.ProcessEvent] = []
-  ctx2.register_event_listener(fn(ev) { events.push(ev) })
+  ctx2.register_event_listener_sync(fn(ev) { events.push(ev) })
   let engine = @engine.Engine::make(ctx2)
   let did = save_flow_define(repo, "leg-happy", simple_flow_json()) // start→apply(applicant)→end
   let instance = engine.start_async(did, "user1", new_args())
@@ -39,7 +39,7 @@ async test "i132-events: 拒绝到结束 fire TASK_REJECT(6) 且与 TASK_COMPLET
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let events : Array[@event.ProcessEvent] = []
-  ctx2.register_event_listener(fn(ev) { events.push(ev) })
+  ctx2.register_event_listener_sync(fn(ev) { events.push(ev) })
   let engine = @engine.Engine::make(ctx2)
   let did = save_flow_define(repo, "leg-rej", simple_flow_json())
   let instance = engine.start_async(did, "user1", new_args())
@@ -64,7 +64,7 @@ async test "i132-events: 会签软拒绝(submitType=20) fire TASK_REJECT 非 COM
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let events : Array[@event.ProcessEvent] = []
-  ctx2.register_event_listener(fn(ev) { events.push(ev) })
+  ctx2.register_event_listener_sync(fn(ev) { events.push(ev) })
   let engine = @engine.Engine::make(ctx2)
   let did = save_flow_define(repo, "leg-soft-rej", simple_flow_json())
   let instance = engine.start_async(did, "user1", new_args())
@@ -77,13 +77,14 @@ async test "i132-events: 会签软拒绝(submitType=20) fire TASK_REJECT 非 COM
 }
 
 ///|
-test "i132-events: notify 向全部监听器广播 + 逐监听器异常隔离（spec §11.5 订阅形状/异常隔离）" {
+async test "i132-events: notify 向全部监听器广播 + 逐监听器异常隔离（spec §11.5 订阅形状/异常隔离）" {
   let a : Array[String] = []
   let b : Array[String] = []
-  let listeners : Array[((@event.ProcessEvent) -> Unit raise)] = [
-    fn(ev) { a.push(ev.event_type().name()) },
-    fn(_ev) raise { raise @error.Business("boom") }, // 中间监听器抛异常
-    fn(ev) { b.push(ev.event_type().name()) }, // 后续监听器仍须收到（不回滚主流程、不中断）
+  let listeners : Array[(async (@event.ProcessEvent) -> Unit raise @error.JeeflowError)] = [
+    async fn(ev) raise @error.JeeflowError { a.push(ev.event_type().name()) },
+    async fn(_ev) raise @error.JeeflowError { raise @error.Business("boom") }, // 中间监听器抛异常
+    // 后续监听器仍须收到（不回滚主流程、不中断）
+    async fn(ev) raise @error.JeeflowError { b.push(ev.event_type().name()) },
   ]
   @event.notify(@event.ProcessEvent::make(@event.TaskTransfer, 7L), listeners)
   // 列表广播：两个正常监听器都拿到（后注册不覆盖前注册）
@@ -102,7 +103,7 @@ async test "i132-events: 码 1/2/3 直传载荷键齐备且值对（spec §11.3�
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let events : Array[@event.ProcessEvent] = []
-  ctx2.register_event_listener(fn(ev) { events.push(ev) })
+  ctx2.register_event_listener_sync(fn(ev) { events.push(ev) })
   let engine = @engine.Engine::make(ctx2)
   let did = save_flow_define(repo, "key-1234", simple_flow_json()) // start→apply(applicant)→end
   let instance = engine.start_async(did, "user1", new_args())
@@ -146,7 +147,7 @@ async test "i132-events: 码 2 驳回支载荷 instanceId + state=45（spec §11
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let events : Array[@event.ProcessEvent] = []
-  ctx2.register_event_listener(fn(ev) { events.push(ev) })
+  ctx2.register_event_listener_sync(fn(ev) { events.push(ev) })
   let engine = @engine.Engine::make(ctx2)
   let did = save_flow_define(repo, "key-2-rej", simple_flow_json())
   let instance = engine.start_async(did, "user1", new_args())
@@ -174,7 +175,7 @@ async test "i132-events: 码 1 子流程发起支同样带 instanceId（§11.3 c
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let events : Array[@event.ProcessEvent] = []
-  ctx2.register_event_listener(fn(ev) { events.push(ev) })
+  ctx2.register_event_listener_sync(fn(ev) { events.push(ev) })
   let engine = @engine.Engine::make(ctx2)
   let did = save_flow_define(repo, "key-1-parent", simple_flow_json())
   let child = engine.start_with_parent_async(did, "user1", new_args(), 777L, "sub")

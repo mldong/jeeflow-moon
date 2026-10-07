@@ -20,7 +20,7 @@ fn g2e_setup() -> (
   let gen = @id_gen.AtomicIdGenerator::new(1L)
   let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
   let events : Array[@event.ProcessEvent] = []
-  ctx2.register_event_listener(fn(ev) { events.push(ev) })
+  ctx2.register_event_listener_sync(fn(ev) { events.push(ev) })
   (@engine.Engine::make(ctx2), repo, events)
 }
 

@@ -5,20 +5,24 @@
 
 ///|
 /// 组织维度公共依赖（对齐 Go orgBase / Java OrgUserAssignmentHandlers）
+/// issues/146：`user` 与 org 三方法是宿主查库入口 ⇒ async 形状。
 pub(all) struct OrgAssignBase {
-  user : ((String) -> @model.UserInfo? raise @error.JeeflowError)?
+  user : ((async (String) -> @model.UserInfo? raise @error.JeeflowError))?
   org : @spi.OrgUserProviderFns?
 }
 
 ///|
-fn OrgAssignBase::dept_id_of(self : OrgAssignBase, user_id : String) -> String {
+async fn OrgAssignBase::dept_id_of(
+  self : OrgAssignBase,
+  user_id : String
+) -> String raise @error.JeeflowError {
   if user_id.is_empty() {
     return ""
   }
   match self.user {
     Some(get_user) =>
-      // SPI 是 `-> UserInfo? raise JeeflowError`：值即 UserInfo?；取人失败**吞成空串**
-      // （参与人解析不许炸掉流程），故落 catch 臂而不是往外抛
+      // SPI 是 `async (String) -> UserInfo? raise JeeflowError`：值即 UserInfo?；
+      // 取人失败**吞成空串**（参与人解析不许炸掉流程），故落 catch 臂而不是往外抛
       try {
         match (get_user)(user_id) {
           Some(info) => info.dept_id()
@@ -32,7 +36,11 @@ fn OrgAssignBase::dept_id_of(self : OrgAssignBase, user_id : String) -> String {
 }
 
 ///|
-fn OrgAssignBase::by_dept(self : OrgAssignBase, dept_id : String, main : Bool) -> String {
+async fn OrgAssignBase::by_dept(
+  self : OrgAssignBase,
+  dept_id : String,
+  main : Bool
+) -> String raise @error.JeeflowError {
   if dept_id.is_empty() {
     return ""
   }
@@ -55,9 +63,10 @@ fn OrgAssignBase::by_dept(self : OrgAssignBase, dept_id : String, main : Bool) -
 }
 
 ///|
-/// 1. OperatorAssignmentHandler —— 发起人
-pub fn operator_assignment_handler() -> (@exec.Execution) -> String raise @error.JeeflowError {
-  exec => exec.process_instance.operator
+/// 1. OperatorAssignmentHandler —— 发起人（纯同步取值 ⇒ 走 @spi.async_of_sync 桥，零警告）
+pub fn operator_assignment_handler()
+  -> (async (@exec.Execution) -> String raise @error.JeeflowError) {
+  @spi.async_of_sync((exec) => exec.process_instance.operator)
 }
 
 ///|
@@ -65,11 +74,12 @@ pub fn operator_assignment_handler() -> (@exec.Execution) -> String raise @error
 pub fn applicant_dept_leader_handler(
   base : OrgAssignBase,
   main~ : Bool = false
-) -> (@exec.Execution) -> String raise @error.JeeflowError {
-  exec => {
+) -> (async (@exec.Execution) -> String raise @error.JeeflowError) {
+  let need_main = main
+  (async fn(exec) raise @error.JeeflowError {
     let dept_id = base.dept_id_of(exec.process_instance.operator)
-    base.by_dept(dept_id, main)
-  }
+    base.by_dept(dept_id, need_main)
+  })
 }
 
 ///|
@@ -77,41 +87,39 @@ pub fn applicant_dept_leader_handler(
 pub fn dept_leader_handler(
   base : OrgAssignBase,
   main~ : Bool = false
-) -> (@exec.Execution) -> String raise @error.JeeflowError {
-  exec => {
+) -> (async (@exec.Execution) -> String raise @error.JeeflowError) {
+  let need_main = main
+  (async fn(exec) raise @error.JeeflowError {
     let dept_id = base.dept_id_of(exec.operator)
-    base.by_dept(dept_id, main)
-  }
+    base.by_dept(dept_id, need_main)
+  })
 }
 
 ///|
 /// 6. FormFieldAssigneeHandler —— 表单字段值分配（f_ 前缀优先、裸名兜底，issues/71）
-pub fn form_field_assignee_handler() -> (@exec.Execution) -> String raise @error.JeeflowError {
-  exec => {
-    match exec.current_node {
-      Some(node) => {
-        let f_key = "f_\{node.id}"
-        match exec.args.get_str(f_key) {
-          Some(v) => return v
-          None => ()
-        }
-        match exec.args.get_str(node.id) {
-          Some(v) => return v
-          None => ()
-        }
-        ""
+/// 纯同步取值 ⇒ 走 @spi.async_of_sync 桥（零警告）；语义与旧闭包里的两处 return 等价。
+pub fn form_field_assignee_handler()
+  -> (async (@exec.Execution) -> String raise @error.JeeflowError) {
+  @spi.async_of_sync(exec => match exec.current_node {
+    Some(node) =>
+      match exec.args.get_str("f_\{node.id}") {
+        Some(v) => v
+        None =>
+          match exec.args.get_str(node.id) {
+            Some(v) => v
+            None => ""
+          }
       }
-      None => ""
-    }
-  }
+    None => ""
+  })
 }
 
 ///|
 /// 7. TaskRoleAssigneeHandler —— 节点 id 作角色码取人
 pub fn task_role_assignee_handler(
   org : @spi.OrgUserProviderFns?
-) -> (@exec.Execution) -> String raise @error.JeeflowError {
-  exec => {
+) -> (async (@exec.Execution) -> String raise @error.JeeflowError) {
+  (async fn(exec) raise @error.JeeflowError {
     match exec.current_node {
       None => ""
       Some(node) =>
@@ -126,7 +134,7 @@ pub fn task_role_assignee_handler(
             }
         }
     }
-  }
+  })
 }
 
 ///|

@@ -521,7 +521,11 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
   同行 `None => abort(..) Some(_) => ..` 会 E3002。
 ### 发版前 checklist（缺一不包）
 
-1. `moon check` 全工程 **0 error**（警告数与上一版对齐，涨了就要归因；残留 11 条见 §1.3）
+1. `moon check` 全工程 **0 error**（警告数与上一版对齐，涨了就要归因；残留 11 条见 §1.3。
+    **10-07 issues/146 换代后基线 = 37 条**：22 → 37 的差额全部来自 async 化（+8 unused_error_type = 只传播不 raise 的
+    `notify_*`/`notify` 必须带闭集 raise 标注；+7 unused_async = 三条 `async_of_sync*`/`sync_listener` 桥与内存实现的
+    空转 async 闭包，MoonBit 无抑制属性）。逐条归因与替代方案见 `docs/CHANGELOG.md` 0.1.28 一节与
+    `docs/spi-guide.md`「纯内存实现的便捷口」——**后续轮次以 37 为零新增基线，不是 22**）
 2. `moon test --target wasm` 全绿（本地，T0）
 3. T1 `moon run --target wasm repository-mysql/smoke` ALL PASS（连真库；`SKIP_MYSQL=1`
    仅限无网开发机，发版机 fail）
@@ -928,3 +932,36 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
 - **String::compare/Array::sort wasm 怪异**：排序一律用 `@model.sort_strings/sort_i64/sort_int`（§4 D-M3-2）。
 - **async 无 await 关键字**：async 调用自动挂起；`moon test` 的 wasm 运行器 Windows 下 socket/fs 挂死 → IO 测试走 `moon run` 可执行（§4 D-M2-2）。
 - **records 引用语义**：mut 字段原地共享，克隆点显式 `clone()`（rust Clone 语义的显式化）。
+
+
+
+### D-M6-5（2026-10-07，issues/146）供数/回调族 SPI 的 async 边界怎么划
+
+**结论**：按"这一档回调的真实现要不要做宿主 I/O"切，不按"java 签名同不同步"切。
+async 化＝user/org/search 三族 provider、`biz_data_reader`、拦截器 pre/post、三类 handler、事件监听器、
+`persist` 的元数据端口；保持同步＝`json_provider` / `expression_evaluator` / `id_generator` /
+`action_permission_provider`（纯计算，异步化只折腾调用方）。
+
+**为什么不能留同步形状**：本栈查库只有 async 一条路（moonmysql/moondb 全 async）。同步闭包里没法 await
+⇒ 集成方唯一可行解是启动期把 sys_user/sys_dept 全量拉进内存 Map，此后新人、调岗、换领导引擎一概看不见，
+还带规模上限。这不是集成方偷懒——hub 报告 `2026-10-06-moon-jeeflow-plugin-integration-l2.md` §10 就是这么被迫的。
+
+**三条实测出来的语言层约束**（都无解，只能绕，绕法已固化进代码注释）：
+1. `async fn` 不写 `raise` 标注时错误集**塌成开放 `Error`**，从闭集 `raise @error.JeeflowError` 的调用方打过来
+   就是 E4118；所以整条链必须逐支标注闭集 raise（代价＝+8 条 unused_error_type）。
+2. "标了 async 但体内没有 await"判 `unused_async`，**闭包字面量和 fn 声明都判**，且没有可摘的抑制属性
+   （`%unused(async)` / `#suppress[...]` 全部 parse error）⇒ 空转 async 只能集中到 `@spi.async_of_sync*`
+   三条桥（代价＝+7 条，全仓恒定，注册点零警告）。
+3. 返回值写在 `{ ... }` 块最后一行的 **async 闭包字面量必须加括号** `(async fn(x) raise E { ... })`，
+   否则被当声明、块类型塌成 Unit（E4014）；多行书写的返回类型那一行末尾必须直接跟 `{`（`-> (async (A) -> R raise E)
+{` 会 E3002 "missing `{`"）。
+
+**元数据端口为什么不在 core Ctx**：java 的 `IDynamicMetaProvider` 就定义在 `jeeflow-persist/meta/`，
+消费点是 MetaTableWriter/Reader；core 没有任何代码需要表元数据 ⇒ 挂 Ctx 就是零消费者的死端口。
+本栈同位＝`persist.DynamicMetaProviderFns`，`PersistPostInterceptor::make_from_provider` 装配，
+`load_meta` 每轮现查（T0 用例钉着"运行期改列权限/新增列 ⇒ 下一轮生效"）。
+
+**事件时序**：门面级没有事务模板包住整轮写，真库逐条 autocommit ⇒ "落库后 fire"与 boot4 的
+afterCommit 等价。一旦引擎侧引入事务模板（issues/145 各栈欠账），fire 必须挪到 COMMIT 之后，
+T1-F 的 F146E 判据同步换——这条写在 `demo/cmd/t1_mysql/main.mbt` 的 F146E 头注里，别只记在这儿。
+

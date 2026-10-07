@@ -10,8 +10,18 @@ let provider = @persist.InMemoryMetaProvider::new()
 provider.register(my_table_meta)               // TableMeta：表 / 列 / 字段权限
 let interceptor = @persist.PersistPostInterceptor::make(provider, my_writer)
 ctx.register_interceptor(interceptor.as_interceptor())   // order=100 后置拦截器
+
+// 元数据来自库（mldong dev_schema / information_schema）⇒ 走 async 端口（issues/146 缺口二）
+let port : @persist.DynamicMetaProviderFns = {
+  load_table_meta: async fn(table : String) raise @error.JeeflowError {
+    // 现场查库返回 TableMeta?；查不到给 None（引擎按既有语义报 Business）
+    @dev_schema.load_wf_meta(table)
+  },
+}
+let interceptor = @persist.PersistPostInterceptor::make_from_provider(port, my_writer)
 ```
 
+- 元数据供给是**每轮现查**的端口而非装配期快照（T0 用例 `persist: 动态元数据端口 async 消费`钉着：运行期改列权限/新增列，下一轮拦截器就按新元数据写）。缺省不启用外部元数据时行为与既往一致。
 - `DynamicTableWriter` 为 trait（写侧 SPI）：`InMemoryMetaProvider` 配内存实现即可跑 T0；
   生产由宿主注入真库 writer（MySQL 仓储线）。
 - 流程 JSON 顶层 `"persistMode": "ARCHIVE" | "SYNC"` + `"relTableName": "业务表"` 触发。

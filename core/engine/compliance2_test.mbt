@@ -178,9 +178,12 @@ async test "c31: form field assignee on resume (L3 S11-B)" {
   let repo = @mem.MemoryRepository::new()
   let ctx = @spi.Ctx::new(repo, repo)
   let gen = @id_gen.AtomicIdGenerator::new(1L)
-  let ctx2 = ctx.with_id_generator(fn() { gen.next_id() }).with_user_provider(compliance_user_provider)
+  let ctx2 = ctx.with_id_generator(fn() { gen.next_id() }).with_user_provider_sync(compliance_user_provider)
   // 注册 7 内置 handler（rust register_builtin_assignment_handlers 同款）
-  let _base : @itl.OrgAssignBase = { user: Some(compliance_user_provider), org: None }
+  let _base : @itl.OrgAssignBase = {
+    user: Some(@spi.async_of_sync(compliance_user_provider)),
+    org: None,
+  }
   ctx2.register_assignment_handler(
     "com.mldong.jeeflow.interceptor.impl.OperatorAssignmentHandler",
     @itl.operator_assignment_handler(),

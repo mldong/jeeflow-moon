@@ -22,9 +22,9 @@ test "for_request：派生体独立、容器切开、闭包共享" {
   assert_eq(base.ext_repository(), 101)
 
   // ② 注册容器互不串（快照语义，两侧都要验）
-  base.register_interceptor(@spi.InterceptorFn::{ order: 1, run: fn(_e) {} })
+  base.register_interceptor_sync(1, fn(_e) {})
   assert_eq(derived.interceptors.length(), 0)
-  derived.register_interceptor(@spi.InterceptorFn::{ order: 2, run: fn(_e) {} })
+  derived.register_interceptor_sync(2, fn(_e) {})
   assert_eq(base.interceptors.length(), 1)
 
   // ③ 闭包字段共享同一个被捕获的状态（派生体调用推进的就是母体那个计数器）
