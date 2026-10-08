@@ -193,3 +193,42 @@ async test "x10 边界: 无元数据回落基础 writer／更新档不动子表�
   assert_eq(writer.get_table_rows("biz_item").length(), 2)   // 子表一条没加、没删
   assert_true(pk != 0L)
 }
+
+///|
+/// 真库形状档：主表行的 `id` 以**数字串**回来（宿主普遍把 bigint 字符串化防雪花掉精度，
+/// mldong 框架 `generic_row_to_json` 正是这一档）。判据＝子表真按解析出来的 Int64 外键去查了
+/// （`seen` 收到 70001L）且 `items` 键出现。
+/// ⚠ 这条**不是**修出来的判据：`@json.as_i64`（`core/json/json.mbt:61-81`）本就 Number/Str 双收，
+/// v0.1.33 的实现已经对；本轮 10-08 装配到框架侧时我误把它当成"只认数字档"的缺口，动手加了
+/// `row_int64`，变异对照（把取数改成 Number-only）才证伪——多余的那版已回退。
+/// 缺的是**夹具形状**：原有 x10 读侧测试的 id 是数字档，串档这条腿没人钉，故补这一支；变异对照实测：把取数改成 Number-only 后这条红（`0 != 1`），改回即绿——
+/// 判据是承重的，实现本来就是对的。补这一支（测试-only，
+/// 不改任何发布件的行为；代次仍 0.1.33，随下一次发版一起进包）。
+async test "x10 读侧: 主表 id 是数字串时子表仍按外键组装（真库 bigint 串档）" {
+  let (provider, _w, _mw) = x10_fixture()
+  let seen : Array[Int64] = []
+  let main_row : Map[String, Json] = Map([])
+  main_row["id"] = @json.string_of("70001")
+  main_row["merchant_name"] = @json.string_of("串 id 商户")
+  let one : (@persist.TableKeyQuery) -> Map[String, Json]? raise @error.JeeflowError = fn(q) {
+    if q.table == "orders" { Some(main_row) } else { None }
+  }
+  let many : (@persist.TableKeyQuery) -> Array[Map[String, Json]] raise @error.JeeflowError = fn(
+    q,
+  ) {
+    if q.table == "biz_item" { seen.push(q.value) }
+    []
+  }
+  let reader = @persist.MetaTableReader::make(
+    provider.as_provider(),
+    { row_by_key: @spi.async_of_sync(one), rows_by_key: @spi.async_of_sync(many) },
+  )
+  let got = reader.read_by_process_instance("orders", 5099L)
+  assert_true(got is Some(_))
+  let row = got.unwrap()
+  // 主键从串 "70001" 解出来，且原样交给外键查询（不是 0、不是没查）
+  assert_eq(seen.length(), 1)
+  assert_eq(seen[0], 70001L)
+  assert_true(row.get("items") is Some(_))
+  assert_true(row.get("top") is None)   // biz_top 档本次行源没给 ⇒ 不硬造空对象
+}
