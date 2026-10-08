@@ -145,9 +145,15 @@ async test "批次D 负向: 停用 / 窗外 / 自委托 / 脏 enabled 四类代�
     repo3.find_task_actors(doing_task_for(repo3, i3, "leader").task_id) == ["leader"],
     "自己委托给自己不追加、也不重复",
   )
-  // 脏 enabled：本栈门面直接判错（绝不允许"脏值当启用"）
+  // 脏 enabled：spec 06 §4.5 条款 4 **写侧**＝落 0 且**不得抛错**（条款点名的反例正是"toInt 直接抛"
+  // 那种形状，即 Node 首版）。本行旧断言写的是"门面必须拒绝建单"，把"不得静默启用"实现成了
+  // "不许建" —— 与条款相反，且与 Java `JeeflowFacade.java:1560` 的参考实现、门禁 L2-18 都冲突（issues/148）。
+  // 防护意图原样保留在下一行：脏值那一行一律不得产生待办。
   let dirty = sg_save_ledger(f3, "leader", "li_dirty", "wt-linear", enabled=Some("abc"))
-  sg_ok(code_of(dirty) != 0L, "enabled=abc 必须被门面拒绝（不得静默启用）")
+  sg_ok(
+    code_of(dirty) == 0L,
+    "enabled=abc 应建单成功并落 0，不得抛（实际 msg=\{msg_of(dirty)}）",
+  )
   sg_ok(!page_has_instance(todo_page(f3, "li_dirty"), i3), "脏值委托不产生任何待办")
 }
 
