@@ -393,7 +393,13 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   let page_num = arg_i64_or(args, "pageNum", 1L)
   let page_size = arg_i64_or(args, "pageSize", 20L)
   let filters = facade_parse_m_filters(args)
-  let page = (self.ext()).page_surrogates(@model.PageQuery::new(page_num, page_size))
+  // issues/152 ②（spec 06 §4.5「processSurrogate/page 归属不变式」）：t.operator 是归属列，
+  // 与 instance_page 逐字同形注入 §2.5 归一后的 operator（缺键/空串/全空白 ⇒ 缺省 user1）——
+  // 「我的委托只看自己授出的行」由引擎自己保证，不再靠集成壳注入 operator 才成立；换宿主/
+  // 直调 SPI 也不再退化成全库台账。第二层兜底（绕过门面直调仓储）见两仓储 page_surrogates。
+  let query = @model.PageQuery::new(page_num, page_size)
+  query.set_operator(Some(operator_arg(args)))
+  let page = (self.ext()).page_surrogates(query)
   finalize_page(page, surrogate_to_json, filters, page_num, page_size)
 }
 
@@ -496,9 +502,13 @@ fn[R, E] Facade::apply_surrogate_fields(self : Facade[R, E], s : @model.ProcessS
     Some(v) => s.process_name = v
     None => ()
   }
-  // 授权人仅显式传入时覆盖（issues/77 不清空原授权人）
+  // 授权人仅显式传入且**非空白**时覆盖（issues/77 不清空原授权人 + issues/152 ③：空串/全空白
+  // 不得写进 operator——那种行是「死行」，get_surrogate 的 WHERE operator = ? 永不命中，
+  // 台账看得见、待办永不并人；spec 06 §2.5 空串＝缺键同档）。空白档 ⇒ save 新建路径由
+  // operator_arg 归一缺省兜底（不落空串），update 路径保留原授权人。与 java
+  // JeeflowFacade.applySurrogateFields 的「只认非空显式值」收紧同形。
   match arg_str(args, "operator") {
-    Some(v) => s.operator = v
+    Some(v) => if v.trim(chars=" \t\r\n").is_empty() { () } else { s.operator = v }
     None => ()
   }
   match arg_str(args, "surrogate") {

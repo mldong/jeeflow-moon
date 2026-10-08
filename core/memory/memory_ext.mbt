@@ -85,9 +85,20 @@ pub impl @spi.ProcessExtRepository for MemoryRepository with fn remove_surrogate
 
 ///|
 pub impl @spi.ProcessExtRepository for MemoryRepository with fn page_surrogates(self, query) {
+  // issues/152 ②（spec 06 §4.5 归属不变式，判据单点 @model.surrogate_ownership_operator）：
+  // 归属列 operator（取值通道＝PageQuery.operator，与 ccList 的 issues/141 G1 同一条尺子）
+  // **缺键/空串/全空白 ⇒ 空页**，绝不"这条不加"退化成全库台账；有效档按**原值**比对 s.operator。
+  // 与 SQL 仓 repository-mysql/repo/repository_ext.mbt 同判据 ⇒ 双仓同答案（条款 6）。
+  let operator = match @model.surrogate_ownership_operator(query) {
+    Some(op) => op
+    None => return @model.PageResult::new(query.page_num(), query.page_size(), 0L, [])
+  }
   let rows : Array[@model.ProcessSurrogate] = []
   for sid in sorted_ids(self.surrogates) {
-    rows.push(self.surrogates[sid].clone())
+    let sg = self.surrogates[sid]
+    if sg.operator == operator {
+      rows.push(sg.clone())
+    }
   }
   let total = rows.length().to_int64()
   @model.PageResult::new(query.page_num(), query.page_size(), total, page_slice(rows, query.page_num(), query.page_size()))

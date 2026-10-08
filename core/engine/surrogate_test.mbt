@@ -663,3 +663,34 @@ async test "批次D 回归: 无委托配置时零额外查询、参与者与耗�
   let done = repo.find_history_tasks(inst.instance_id)
   sg_check(done.length() == 2, "任务行数不因委托逻辑而增减")
 }
+
+// ══════════════════ issues/152 档1 · 作用域优先级（引擎侧不反向迁就内置版） ══════════════════
+
+///|
+/// 档1（spec 06 §4.5「与内置版（mldong-wf）的三条方向差异」第 1 行，owner 2026-10-08 拍：
+/// 八栈保持现状）：同授权人并存「全流程」＋「精确」两条且都窗内 ⇒ **精确接管**。
+/// 内置 boot2 版是「全流程优先、命中即 return」，精确那段代码整个被盖掉——引擎不得复活那个方向
+/// （同一条待办代给不同的人，是迁移观感反转的病灶）。
+/// 另一腿（精确判否 ⇒ 兜底全流程）已由上方 "批次123 兜底: 精确作用域判否后仍回落全流程作用域
+/// 的最新一条" 钉住——两腿合起来才是「精确优先但不截断兜底」的完整形状；档2（最新一条
+/// enabled=0 ⇒ 不并人）＝"批次123 最新一条 enabled=0"，档3（最新一条自委托 ⇒ 不出人）＝
+/// "批次123 最新一条自委托"，阳性对照＝"批次123 正向"，本文件不重复造。
+async test "批次152 档1: 全流程+精确同窗内并存 ⇒ 精确接管，内置版全流程优先方向不得复活" {
+  @model.set_clock(Some(fn() { "2026-09-21 10:00:00" }))
+  defer { @model.set_clock(None) }
+  let repo = @mem.MemoryRepository::new()
+  let engine = sg_engine(repo)
+  let did = sg_define(repo, "sg-152-scope", sg_flow("sg-152-scope", ["zhang"]))
+  // 全流程那条先插（id 较小）、窗内有效；精确那条后插（id 较大）、同样窗内有效
+  let g_id = sg_put(repo, "zhang", "li_global", "")
+  let e_id = sg_put(repo, "zhang", "li_exact", "sg-152-scope")
+  sg_check(e_id > g_id, "用例前提：精确那条 id 更大（并存叠加形状照 java exactScopeBeatsGlobalScopeWhenBothInWindow）")
+  match repo.get_surrogate("zhang", "sg-152-scope", "2026-09-21 10:00:00") {
+    Some(s) => sg_check(s.surrogate == "li_exact", "都窗内时精确作用域必须接管（实得代理人=\{s.surrogate}）")
+    None => abort("两条窗内有效委托并存，查询不得为空")
+  }
+  let inst = engine.start_async(did, "applicant", @json.FlowData::new())
+  let actors = repo.find_task_actors(sg_task(repo, inst.instance_id, "n1").task_id)
+  sg_has(actors, "li_exact", "精确作用域接管")
+  sg_absent(actors, "li_global", "内置版「全流程优先」盖住精确的方向不得复活（同一条待办不得代给两个人）")
+}

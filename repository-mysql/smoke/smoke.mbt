@@ -954,11 +954,59 @@ async fn t1_all() -> Unit raise {
   t1_i116_surrogate_query()
   println("T1-I117 我已办状态集合 <>10 + 空 operator 空页...")
   t1_i117_done_state_set()
+  println("T1-I152 委托台账分页归属不变式（空归属=空页，双仓同答案）...")
+  t1_i152_surrogate_page_ownership()
   t1_m6_tx_scope_isolation()
   t1_m7_nested_tx_reuse()
   t1_m8_tx_ownership_boundary()
   println("T1 ALL PASS (wasm → 160)")
   println("门面级 withdraw/transfer 真机对拍另跑：moon run --target wasm demo/cmd/t1_mysql")
+}
+
+///|
+/// T1-I152（issues/152 ② · spec 06 §4.5 processSurrogate/page 归属不变式，SQL 腿）：
+/// 归属列 operator 的条件缺键/空串/全空白 ⇒ **空页**（recordCount=0 且 rows=[]），
+/// 绝不"这条不加"退化成全库台账；与内存仓同一判据（@model.surrogate_ownership_operator）
+/// ⇒ 同一份夹具两仓逐档并排对拍，条数或集合不一致即红（条款 6）。
+/// 阳性对照：有效归属条件照常出行——防"一律空页"那种假修。
+async fn t1_i152_surrogate_page_ownership() -> Unit raise {
+  let repo = @repo.MysqlRepository::from_env()
+  clean_9x(repo)
+  let mem = @mem.MemoryRepository::new()
+  let seed = [
+    sg_row(991521L, "i152-own", "i152-ag-a", "i152-flow", None, None, 1),
+    sg_row(991522L, "i152-own", "i152-ag-b", "", None, None, 1),
+    sg_row(991523L, "i152-other", "i152-ag-c", "i152-flow", None, None, 1),
+  ]
+  for r in seed {
+    repo.save_surrogate(r)
+    mem.save_surrogate(r)
+  }
+  // 阳性对照：有效归属档出行（own=2 / other=1），且双仓条数一致
+  let q_own = @model.PageQuery::new(1L, 20L)
+  q_own.set_operator(Some("i152-own"))
+  let sql_own = repo.page_surrogates(q_own)
+  let mem_own = mem.page_surrogates(q_own)
+  check(sql_own.record_count() == 2L, "I152 SQL 仓有效归属=2 行（实际=\{sql_own.record_count()}）")
+  check(mem_own.record_count() == sql_own.record_count(), "I152 条款6 双仓条数一致（有效档）")
+  for r in sql_own.rows() {
+    check(r.operator == "i152-own", "I152 SQL 仓读回行归属列逐字为 own（实际=\{r.operator}）")
+  }
+  let q_other = @model.PageQuery::new(1L, 20L)
+  q_other.set_operator(Some("i152-other"))
+  check(repo.page_surrogates(q_other).record_count() == 1L, "I152 SQL 仓他人档=1 行")
+  // 负向：缺键 / 空串 / 全空白 ⇒ 空页（不是全库 3 行），双仓同答案
+  let q_none = @model.PageQuery::new(1L, 20L)
+  check(repo.page_surrogates(q_none).record_count() == 0L, "I152 SQL 仓缺归属键 ⇒ 空页（不得全库 3 行）")
+  check(repo.page_surrogates(q_none).rows().is_empty(), "I152 SQL 仓缺键档 rows 也为空")
+  check(mem.page_surrogates(q_none).record_count() == 0L, "I152 内存仓缺归属键 ⇒ 空页（同答案）")
+  for blank in ["", "   ", " \t\r\n "] {
+    let qb = @model.PageQuery::new(1L, 20L)
+    qb.set_operator(Some(blank))
+    check(repo.page_surrogates(qb).record_count() == 0L, "I152 SQL 仓空白归属档(\{blank}) ⇒ 空页")
+    check(mem.page_surrogates(qb).record_count() == 0L, "I152 内存仓空白归属档(\{blank}) ⇒ 空页（条款6）")
+  }
+  clean_9x(repo)
 }
 
 ///|

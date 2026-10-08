@@ -113,7 +113,9 @@ async test "批次D 用户视角: 配好委托后代理人真的拿到待办（i
   sg_ok(page_has_instance(todo_page(facade, "li"), iid), "代理人 todoList 出现该单")
   sg_ok(page_has_instance(todo_page(facade, "leader"), iid), "授权人 todoList 仍在（任一可办）")
   // ③ 台账可查（关闭运行期应用≠关闭 CRUD，这里证台账本身没被动过）
-  let page = facade.flow("processSurrogate/page", targs([("pageNum", "1"), ("pageSize", "10")]))
+  // issues/152 ② 归属不变式生效后 page 只看自己授出的行：这条夹具行 operator=leader，
+  // 必须带 operator=leader 才命中（不带 ⇒ 归一到缺省 user1 ⇒ 0 行，旧断言的"1 条"意图不变更正）
+  let page = facade.flow("processSurrogate/page", targs([("operator", "leader"), ("pageNum", "1"), ("pageSize", "10")]))
   sg_ok(record_count_of(data_of(page)) == 1L, "台账 page 仍读到 1 条")
 }
 
@@ -269,4 +271,110 @@ async test "批次121: detail 出口的 ext.isFirstTaskNode 以落库值为准�
     }
   }
   sg_ok(saw_apply, "detail 应回历史行 apply（实得 \{rows.length()} 行）")
+}
+
+// ══════════════════ issues/152 档4 / 档5 ══════════════════
+
+///|
+/// 档4（问题③在 moon 的落点——写侧 operator 三档归一，spec 06 §2.5/§4.5）：
+/// save **缺键／空串／全空白** 三档 ⇒ 行一律落归一缺省 user1，绝不允许写出 operator='' 的死行
+/// （get_surrogate 的 WHERE operator = ? 永不命中——台账看得见、待办永不并人，比报错更难查）。
+/// 正面判据（同 java facadeSaveWithoutOperatorKeyLandsOnNormalizedOperator 的"能被本人待办命中"）：
+/// 以归一后的授权人 user1 建单 ⇒ 委托代理人真进参与者表 + 代理人 todoList 出现该单。
+/// 坏形状（把空白档原样落库）判红由 detail 读回的 operator 逐字核对保证。
+async test "批次152 档4: save 缺键/空串/全空白 三档 operator 一律落 user1 且能被本人待办命中" {
+  @model.set_clock(Some(fn() { "2026-09-21 10:00:00" }))
+  defer { @model.set_clock(None) }
+  let repo = @mem.MemoryRepository::new()
+  let facade = sg_facade(repo)
+  // 夹具流程：task1 办理人改成 user1，让「归一后的授权人」真有单子可被代理人并进
+  let did = sg_define_id(
+    repo,
+    linear_flow_json().replace(old="\"assignee\": \"leader\"", new="\"assignee\": \"user1\""),
+  )
+  let base : Array[(String, String)] = [
+    ("surrogate", "li152"),
+    ("processName", "wt-linear"),
+    ("startTime", "2000-01-01 00:00:00"),
+    ("endTime", "2099-12-31 23:59:59"),
+  ]
+  for op in [None, Some(""), Some("   ")] {
+    let entries : Array[(String, String)] = match op {
+      None => base
+      Some(v) => {
+        let e : Array[(String, String)] = [("operator", v)]
+        for b in base {
+          e.push(b)
+        }
+        e
+      }
+    }
+    let env = facade.flow("processSurrogate/save", targs(entries))
+    sg_ok(code_of(env) == 0L, "save 应成功（msg=\{msg_of(env)}）")
+    let sg_id = parse_iid(@json.get_str(data_of(env), "id").unwrap_or("0"))
+    let detail = facade.flow("processSurrogate/detail", targs([("id", sg_id.to_string())]))
+    let got_op = @json.get_str(data_of(detail), "operator").unwrap_or("<missing>")
+    sg_ok(
+      @json.get_str(data_of(detail), "operator") == Some("user1"),
+      "operator 三档（缺键/空串/全空白）必须都落归一缺省 user1，不得落空串（实得=\{got_op}）",
+    )
+
+  }
+  // 正面判据：以归一后的授权人（user1）建单 ⇒ 代理人进参与者表、进其待办
+  let iid = sg_started(facade, did)
+  let actors = repo.find_task_actors(doing_task_for(repo, iid, "user1").task_id)
+  sg_ok(actors.contains("user1"), "授权人保留（委托不是转办；实际=\{actors.join("|")}）")
+  sg_ok(actors.contains("li152"), "该行必须能被本人后续待办命中：代理人进参与者表（实际=\{actors.join("|")}）")
+  sg_ok(page_has_instance(todo_page(facade, "li152"), iid), "代理人 todoList 出现该单")
+}
+
+///|
+/// 档5（问题②A 案·processSurrogate/page 归属不变式，内存通道两层）：
+/// · 门面层：带 operator ⇒ 只见自己授出的行；不带／全空白 ⇒ 归一到缺省 user1，**不得全库**；
+/// · 仓储层第二道：绕过门面直调 page_surrogates，归属列缺键/空串/全空白 ⇒ **空页**。
+/// 夹具刻意非对称（user1=1 / op-mine=1 / op-others=2 ⇒ 全库 4）：空仓上 0==0 自等假绿照不出来。
+/// SQL 仓同判据真机对拍在 repository-mysql/smoke T1-I152（条款 6 双仓同答案）。
+async test "批次152 档5: processSurrogate/page 归属不变式（门面注入 + 仓储空归属=空页）" {
+  let repo = @mem.MemoryRepository::new()
+  let facade = sg_facade(repo)
+  let _ = sg_save_ledger(facade, "user1", "ag152a", "f152")
+  let _ = sg_save_ledger(facade, "op-mine", "ag152b", "f152")
+  let _ = sg_save_ledger(facade, "op-others", "ag152c", "f152")
+  let _ = sg_save_ledger(facade, "op-others", "ag152d", "f152")
+  // ① 带 operator：只见自己（阳性对照：真实归属值必须出行，见③的 q_ok）
+  let mine = facade.flow("processSurrogate/page", targs([("operator", "op-mine"), ("pageNum", "1"), ("pageSize", "10")]))
+  sg_ok(code_of(mine) == 0L, "page 应成功（msg=\{msg_of(mine)}）")
+  sg_ok(
+    record_count_of(data_of(mine)) == 1L,
+    "带 operator 只见自己授出的行（实得 recordCount=\{record_count_of(data_of(mine))}）",
+  )
+  let mine_rows = rows_of(data_of(mine))
+  sg_ok(
+    mine_rows.length() == 1 && @json.get_str(mine_rows[0], "operator") == Some("op-mine"),
+    "读回行的归属列逐字核对（不是恰好条数对）",
+  )
+  // ② 不带 operator：归一缺省 ⇒ 只出 user1 的行，绝不退化成全库 4 条
+  let none_env = facade.flow("processSurrogate/page", targs([("pageNum", "1"), ("pageSize", "10")]))
+  sg_ok(
+    record_count_of(data_of(none_env)) == 1L,
+    "缺 operator 不是全库，是归一到缺省 user1（实得=\{record_count_of(data_of(none_env))}）",
+  )
+  let none_rows = rows_of(data_of(none_env))
+  sg_ok(none_rows.length() == 1 && @json.get_str(none_rows[0], "operator") == Some("user1"), "缺省档读回的全是 user1 的行")
+  // ②b 全空白档与缺键同档（与 operator_blank_test 四出口同一把尺子）
+  let blank_env = facade.flow("processSurrogate/page", targs([("operator", "   "), ("pageNum", "1"), ("pageSize", "10")]))
+  sg_ok(record_count_of(data_of(blank_env)) == 1L, "全空白 operator ⇒ 归一只出 user1")
+  // ③ 仓储第二道：绕过门面直调——缺键/空串/全空白 ⇒ 空页；有效档照常出行（阳性对照，防"一律空页"假修）
+  let q_ok = @model.PageQuery::new(1L, 10L)
+  q_ok.set_operator(Some("op-others"))
+  sg_ok(repo.page_surrogates(q_ok).record_count() == 2L, "阳性对照：有效归属条件必须照常出行（实得=\{repo.page_surrogates(q_ok).record_count()}）")
+  let q_none = @model.PageQuery::new(1L, 10L)
+  sg_ok(repo.page_surrogates(q_none).record_count() == 0L, "直调仓储缺归属键 ⇒ 空页（不得全库 4 条）")
+  sg_ok(repo.page_surrogates(q_none).rows().length() == 0, "空页档 rows 也必须为空")
+  let q_blank = @model.PageQuery::new(1L, 10L)
+  q_blank.set_operator(Some(""))
+  sg_ok(repo.page_surrogates(q_blank).record_count() == 0L, "直调仓储空串归属 ⇒ 空页")
+  let q_ws = @model.PageQuery::new(1L, 10L)
+  q_ws.set_operator(Some("  \t\r\n "))
+  sg_ok(repo.page_surrogates(q_ws).record_count() == 0L, "直调仓储全空白归属 ⇒ 空页")
 }

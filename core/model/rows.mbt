@@ -664,3 +664,25 @@ pub extend TaskRow with Eq::{equal, not_equal}
 pub extend InstanceRow with Eq::{equal, not_equal}
 pub extend DefineRow with Eq::{equal, not_equal}
 pub extend UserInfo with Eq::{equal, not_equal}
+
+///|
+/// issues/152 ②（spec 06-facade §4.5「processSurrogate/page 归属不变式」）：委托台账分页归属列
+/// `t.operator` 的**有效条件**判定——取值通道与 ccList（issues/141 G1）同形＝`PageQuery.operator`
+/// （门面 page 恒挂这条；SQL 仓拿它拼 `AND operator = ?`，内存仓拿它比对 `s.operator`）：
+/// · 缺键（None）／空串／去空白后为空 ⇒ **无效**，两仓储的 page_surrogates 一律返回**空页**，
+///   严禁退化成"这条不加"= 读全库台账（空串行不是死行报错，是把「我是谁」整个丢了）；
+/// · 其余 ⇒ 有效，返回**原值**（不空白化，比对语义与逐字匹配一致）。
+/// 判据只有这一份：core/memory/memory_ext.mbt 与 repository-mysql/repo/repository_ext.mbt 的
+/// page_surrogates 都调它 ⇒ 内存仓与 SQL 仓同答案由构造堵死（spec 06 §4.5 条款 6）。
+/// 非归属列（m_ 可选过滤）的"空值当没填"通用放行不在本函数管辖内，维持既有行为不变。
+pub fn surrogate_ownership_operator(query : PageQuery) -> String? {
+  match query.operator() {
+    Some(op) =>
+      if op.trim(chars=" \t\r\n").is_empty() {
+        None
+      } else {
+        Some(op)
+      }
+    None => None
+  }
+}

@@ -198,12 +198,21 @@ pub impl @spi.ProcessExtRepository for MysqlRepository with fn remove_surrogate(
 ///|
 pub impl @spi.ProcessExtRepository for MysqlRepository with fn page_surrogates(self, query) {
   let (page_num, page_size, offset) = page_bounds(query)
+  // issues/152 ②（spec 06 §4.5 归属不变式 / §2.5 双层尺子的第二层，防绕过门面直调本仓）：
+  // 归属列 operator 的条件**缺键/空串/全空白 ⇒ 空页**（语义等价 SQL 侧 `AND 1=0`，这里直接
+  // 短路不发 SQL），绝不允许"这条不加"退化成全库台账。判据单点 @model.surrogate_ownership_operator
+  // 与内存仓 core/memory/memory_ext.mbt 共用 ⇒ 双仓同答案（条款 6）。只收归属列，
+  // m_ 可选过滤的"空值当没填"通用放行不在收口范围（那在本栈落在门面 finalize_page 的后过滤）。
+  let operator = match @model.surrogate_ownership_operator(query) {
+    Some(op) => op
+    None => return @model.PageResult::new(page_num, page_size, 0L, [])
+  }
   let conn = self.open_or_tx()
-  let count_rows = q(conn, "SELECT COUNT(*) AS cnt FROM wf_process_surrogate", [])
+  let count_rows = q(conn, "SELECT COUNT(*) AS cnt FROM wf_process_surrogate WHERE operator = ?", [@moondb.Text(operator)])
   let total = if count_rows.is_empty() { 0L } else { row_i64(count_rows[0], "cnt") }
   let rows = q(conn, 
-    "SELECT id, process_name, operator, surrogate, start_time, end_time, enabled, create_time, create_user, update_time, update_user FROM wf_process_surrogate ORDER BY id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string(),
-    [],
+    "SELECT id, process_name, operator, surrogate, start_time, end_time, enabled, create_time, create_user, update_time, update_user FROM wf_process_surrogate WHERE operator = ? ORDER BY id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string(),
+    [@moondb.Text(operator)],
   )
   self.close_conn(conn)
   let out : Array[@model.ProcessSurrogate] = []
