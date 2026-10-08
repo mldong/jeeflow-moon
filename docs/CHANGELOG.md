@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## 0.1.30（2026-10-08）
+
+**issues/149：`DynamicTableWriter` 六法 async 化 ＋ `MysqlTableWriter` 真库实现 ⇒ persist 业务表写在本栈有落点，且能与 `wf_*` 同事务。**
+四模块同号（core / persist / repository-mysql / facade）；**依赖面有一处新增**（见"依赖与发布"）。
+
+- 病灶：`persist/persist.mbt` 六法是**同步** trait 方法，而本栈写真库只有 moonmysql 的 async 连接一条路
+  （同步函数里发查询判 `Error: [4149]`），全仓又只有 `persist/writer_mem.mbt` 一支内存实现
+  ⇒ `spec/12` §12.2「集成层若启用了 persist，那张业务表的写也在同一事务内」这一条在本栈**连可执行形状都没有**。
+- 承重前提本轮先实测再动形（案 §4 原记"未实测"）：`async` 只需写在 **trait 声明**上；
+  `pub impl Trait for T with fn …` 处**不重复写 async**（写了反而判 parse error），
+  所以 `InMemoryTableWriter` 六支 impl 一字未改仍编译，`persist/interceptor.mbt` 六处
+  `&DynamicTableWriter` 调用点也不需要 `?` 或 `await`——**`&Trait` 动态分派 async 方法成立**。
+  唯一跟着改的是全仓唯一一个"在同步函数里调 writer"的位点 `put_state_field` → `async fn`。
+  参照系＝同仓生产件 `core/spi/repository.mbt` 的 `ProcessRepository`（async trait ＋ repository-mysql 真库实现），
+  所以这不是新发明的形状；案 §4 担心的"破坏性契约改动"实测不成立。
+- 列探测归属裁决：**`columns()` 留在 writer**，只加 async，不并入 146 的 `DynamicMetaProviderFns`——
+  参考实现 java `jeeflow-persist/.../DynamicTableWriter.java:20` 的 `filterColumns` 本就挂在 writer 上，
+  `IDynamicMetaProvider` 管字段权限/显示元数据，两者在 java 并存 ⇒ 本栈现状即对齐，不留第二套元数据端口。
+- 新实现 `repository-mysql/repo/persist_writer.mbt`：`MysqlTableWriter` **握调用方的 `MysqlRepository` 实例**，
+  走它现成的 `open_or_tx()/close_conn()` ⇒ `execute_in_tx` 回调里业务表写与四张 `wf_*` 同连接同事务
+  （直接复用 issues/144 定下的"句柄随实例走"，不自建第二套事务机制）；
+  `MysqlTableWriter::detached()` 另起空事务槽＝每句自取连接 autocommit，**只作阳性对照夹具**，不是装配口。
+  标识符只围 `information_schema` 取回的真列名、表名过 `is_table_name_safe`，值一律占位符；
+  I_S 查询钉小写别名 `cname`（MySQL 8 列标签返大写那条已知坑）。
+- 案 §5 四档真机读数（160 MySQL，`moon run --target wasm demo/cmd/t1_mysql`）：
+  F149A ARCHIVE 一次（办结前零行→办结后恰一行、note/amount/apply_user_id 逐列反查、
+  元数据里有而表里没有的 `ghost_col` 被真列探测剔除）；
+  F149B SYNC 一次（发起 INSERT、办结仍是同一行⇒走 `update_by_key` 而非重复插入、`update_user` 变经办人、
+  状态列 `task1_10` 经列探测落库）；
+  F149C 覆盖面档（事务内**沿事务连接**读得到刚写的业务行＝非空转，中途抛错后 `wf_*` 与业务表双双零残留）；
+  F149D 阳性对照（只把 writer 换成 `detached`、动作与判据一字不改 ⇒ 业务行活过回滚，
+  证明 F149C 的判据在坏形状下真会报红）。
+- 一处语义读数值得记下：归档行的 `create_user` 是**办结人**而不是发起人——ARCHIVE 的触发点就是办结那一次动作，
+  引擎把当次 `exec.operator` 交给 `fill_system_fields`；java 侧 `fillSystemFields(data, insert)` 不带 user 形参、
+  取环境当前用户，同一档。发起人由上下文列 `apply_user_id` 承载（C17 回落）。
+- 内存实现三支（persist T0）**不回退**：`moon test --target wasm` 406/406 与改前同数。
+- 依赖与发布：`repository-mysql` 与 `demo` 各新增一枚 `mldong/jeeflow-persist` 依赖 ⇒ 接力 import pin
+  由 **7 枚变 9 枚**（persist 1 / repository-mysql 2 / facade 2 / demo 4），`bump-version.sh` 改不到它们；
+  拓扑序不变（core → persist → repository-mysql → facade），新边落在序内。
+- 栈内门禁：`moon check` 0 errors / 37 warnings（**零新增**，基线未漂）；
+  T0 406/406；T1 `repository-mysql/smoke` ALL PASS；T1-F `demo/cmd/t1_mysql` ALL PASS。
+
 ## 0.1.29（2026-10-08）
 
 **issues/148：委托 `enabled` 写侧归一——脏值落 0 建单，不再抛成 `99999999 非法id: abc`。四模块同号（core / persist / repository-mysql / facade）；无破坏性 API 变化（消费方零改动）。**
