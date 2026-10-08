@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## 0.1.34（2026-10-09）
+
+**issues/152 委托三件收口的 moon 腿**：`processSurrogate/page` 的归属不变式落到引擎自己身上，
+写侧授权人三档归一（空串不再落成死行）。四模块同号 0.1.34，接力 pin 九枚同步（demo 不发）。
+
+- **新增**：门面 `surrogate_page` 注入 `query.set_operator(Some(operator_arg(args)))`，与 `instance_page` 同形
+  ——「我的委托只看自己授出的行」由引擎保证，不再靠集成壳注入 `operator` 才成立（spec 06 §2.5 口径表本轮
+  新增 `processSurrogate/page` 一行 ＋ §4.5「归属不变式」）。
+- **新增**：归属列判据单点 `@model.surrogate_ownership_operator`（`core/model/rows.mbt` 尾追加），
+  `core/memory/memory_ext.mbt` 与 `repository-mysql/repo/repository_ext.mbt` 的 `page_surrogates` 共用
+  ⇒ 内存仓与 SQL 仓同答案由构造堵死（§4.5 条款 6）。**缺失档与空值档同判 ⇒ 空页**
+  （SQL 侧 `WHERE operator = ?`，空归属短路不发 SQL；`m_` 可选过滤的"空值当没填"通用放行不收）。
+- **修复**：`apply_surrogate_fields` 的 operator 臂改「只认非空白显式值」——空串／全空白落进 `operator`
+  就是死行（`get_surrogate` 的 `WHERE operator = ?` 永不命中，台账看得见、待办永不并人）；
+  save 缺省档由 `operator_arg` 兜底，update 缺省档保留原授权人。
+- **改正一条既有断言**（与上面 A 案直接冲突，逐字交代）：`facade/surrogate_autoapply_test.mbt`
+  「关闭运行期应用后台账仍可查」那格——改前 `page(targs([("pageNum","1"),("pageSize","10")]))`
+  期望 `recordCount == 1`（靠的是"门面不注入归属 ⇒ 返回全库"那个旧答案，夹具行 operator=leader）；
+  改后实参补 `("operator","leader")`，**期望值 1 一字未动**（用例意图是"关运行期应用 ≠ 关台账 CRUD"）。
+- **测试**：新增档 1（精确接管 + 兜底腿复用批次123）、档 4（三档 operator + 本人待办命中）、
+  档 5（门面注入 + 直调仓储空归属=空页）三支；`moon test --target wasm` 428/428，
+  `moon check --target wasm` 告警与基线逐码一致；阳性对照＝摘掉内存仓兜底 ⇒ 档 5 报
+  「带 operator 只见自己授出的行（实得 recordCount=4）」，按 md5 字节级还原后复绿。
+- **未跑到**：`repository-mysql/smoke/smoke.mbt` 的 `t1_i152_surrogate_page_ownership` 需真库（160
+  `jeeflow_moon_t1`），T1 轮补跑；native 档本机不可用（MSVC 依赖），不追。
+
 ## 0.1.33（2026-10-08）
 
 **普查最后两条实打实的分叉收口：X10 `storageType` 五档（写侧 `MetaTableWriter` ＋ 读侧
