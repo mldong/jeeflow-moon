@@ -1,5 +1,54 @@
 # CHANGELOG
 
+## 0.1.31（2026-10-08）
+
+**issues/150 的①②：办理入口的字段权限过滤接线 ＋ `persistMode` 缺省/未知值回落 ARCHIVE（并补"定义级声明才挂载"的 opt-in 守卫）。**
+四模块同号（core / persist / repository-mysql / facade）；无新增模块间依赖 ⇒ 接力 pin 仍是 9 枚，只随 version 抬号。
+
+- ①**入口过滤写了不接**（spec/09 §4.2「1.8.2 起引擎办理入口过滤」）：`core/interceptor/interceptor.mbt`
+  里 `filter_fields_by_permission` 一直存在，但全仓**零调用**（只有它自己的单元测试在用），
+  而 `core/engine/engine_ops.mbt` 的变量合并是「实例变量为底 ← 任务既有变量 ← 本次提交参数」，
+  提交参数没过权限 ⇒ 只读/隐藏字段的值**留在实例变量里**，下一个"没声明该字段权限"的节点办理时
+  就被写进业务表（写侧 `filter_editable` 只挡当次提交，挡不住跨节点）。
+  本轮按 java `JeeflowEngineImpl.java:264 args = FlowUtil.filterFieldByPerm(args, model, task.getTaskName())`
+  同位接线：新增 `filter_args_by_node_permission(args, model, task_name)` ＋ `node_field_permissions(node)`，
+  调用点排在 `full_args.merge(...)` 之前。三处放行也与 java 一致——节点找不到 /
+  不是任务节点（java `instanceof TaskModel`，记录类 custom 不算）/ 无权限声明 ⇒ 原样返回 args。
+- ②**缺省档反向**（spec/09 §4.0「非 SYNC 值一律回落 ARCHIVE，未知值不报错」）：
+  `persist/interceptor.mbt` 原为 `None => return`／`Some(未知) => return` ⇒ 只写 `relTableName`
+  不写 `persistMode` 的流程一行都不落且零信号。改为 java 那个 if/else 的形状
+  （`SYNC` 大小写均进同步臂，其余一律 ARCHIVE）。
+- **配套补的 opt-in 守卫（＝普查里的 X11，owner 同日拍"②按 A 案：缺省回落 + 定义级声明才挂载"）**：
+  java 的挂载是声明驱动（`NodeModel.execPostInterceptors` 先取节点级 `postInterceptors`、空则回落流程级，
+  没声明根本不实例化本拦截器），本栈是宿主全局注册（`Ctx::register_interceptor`）。
+  不补这条守卫，②会把**每一条**"办结+同意"的流程都拖去写一张与流程同名的表——
+  共享的 16 份流程 JSON 里 `persistMode`/`relTableName` 现读 `grep -l` **全 0 份**，
+  表不存在又是硬失败（java `JdbcDynamicTableWriter.exists()` 对缺表抛 SQLException，且 spec/12 §12.2
+  明定拦截器不隔离）。故 `intercept()` 首行按声明判定：`postInterceptors` 逗号分段、逐段 trim、
+  与 `com.mldong.jeeflow.persist.interceptor.PersistPostInterceptor` 逐字相等才算挂载
+  （等价 java 的 `Class.forName`）。节点级声明同样生效（新增判据钉住这条回落顺序）。
+- `core/parser/parser.mbt`：`ProcessModel` 增 `post_interceptors : String?` 并解析顶层
+  `postInterceptors`（此前全仓不解析该键）。这是**加字段**，不是改形状 ⇒ 两处既有测试的
+  `ProcessModel` 字面量各补一行 `post_interceptors: None`（`core/interceptor/interceptor_test.mbt`），
+  断言一字未动。
+- ⚠ **改了哪些既有夹具，逐字交代**（148 轮的口径；本轮**没有**修改任何一条断言/期望值）：
+  `persist/persist_test.mbt` 四条流程 JSON 与 `demo/cmd/t1_mysql/persist149.mbt` 的 `persist_flow()`
+  模板各加 `"postInterceptors": "com.mldong.jeeflow.persist.interceptor.PersistPostInterceptor"` 一个键——
+  守卫上线后"没声明＝不挂载"，这些夹具的意图本来就是"这条流程开 persist"，所以补声明而不是放宽守卫。
+- 新判据 8 支（T0 406 → 414）：`persist/i150_mode_leg_test.mbt` 五支（缺省档 / 未知值档 /
+  `sync` 小写档 / 未声明不写＝阳性对照 / 节点级声明生效），
+  `core/engine/i150_entry_perm_leg_test.mbt` 三支（只读档在入口被剔出变量并跟到下一节点 /
+  不声明则值确实入变量＝阳性对照 / 隐藏档同样剔除）。
+- **变异对照三档都跑过**（每次变异前备份、跑完立即还原并核 md5 一致，件不留树里）：
+  摘掉入口过滤 ⇒ ①的两支红；把守卫改成恒不通过 ⇒ "未声明不写"红；
+  恢复"没写 persistMode 就不动作" ⇒ 缺省档与节点级声明档红。⇒ 这四支判据真的咬人。
+- 门禁读数：`moon check` 37 warnings / 0 errors（与 146 换代后的基线同数，零新增）；
+  `moon test --target wasm` **414/414**；T1 `repository-mysql/smoke` **ALL PASS**；
+  T1-F `demo/cmd/t1_mysql` **ALL PASS**（含 F149A/B/C/D 四档真机与 detached 阳性对照）。
+- 消费方跟进：`mldong-moon` 的 jeeflow 插件把 pin 0.1.30→0.1.31，跨栈门禁
+  `runner.py --stack moon` 复跑不得低于 **43 PASS / 0 FAIL / 3 SKIP**
+  （门禁夹具的两条 persist 流程定义本来就带 `postInterceptors`，声明判定不影响它们）。
+
 ## 0.1.30（2026-10-08）
 
 **issues/149：`DynamicTableWriter` 六法 async 化 ＋ `MysqlTableWriter` 真库实现 ⇒ persist 业务表写在本栈有落点，且能与 `wf_*` 同事务。**

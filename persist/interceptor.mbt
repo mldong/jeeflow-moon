@@ -36,31 +36,74 @@ pub fn PersistPostInterceptor::as_interceptor(
 }
 
 ///|
+///|
+/// 本拦截器在流程定义里的声明名（与 java 类全名逐字一致——门禁夹具与 mldong 后台写的都是这个串）
+let persist_class_name : String = "com.mldong.jeeflow.persist.interceptor.PersistPostInterceptor"
+
+///|
+/// 定义级 opt-in（java 的挂载方式＝"声明即挂载"：`NodeModel.execPostInterceptors` 先取节点级
+/// `postInterceptors`、空则回落流程级，没声明就根本不实例化本拦截器）。moon 的通道是宿主全局注册
+/// （`Ctx::register_interceptor`），所以把"声明"降级成挂载条件——不这么补，②那条缺省 ARCHIVE
+/// 会把每一条"办结+同意"的流程都拖去写一张与流程同名的表，表不存在即硬失败
+/// （`JdbcDynamicTableWriter.exists()` 抛 SQLException，且拦截器按 spec/12 §12.2 不隔离）。
+/// 比对规则与 java 的 `Class.forName` 等价：逗号分段、逐段 trim、与类全名逐字相等。
+fn persist_interceptor_declared(exec : @exec.Execution) -> Bool {
+  let name = persist_class_name
+  let node_decl = match exec.current_node {
+    Some(n) =>
+      match n.properties.get("postInterceptors") {
+        Some(Json::String(s)) => s.trim(chars=" \t\r\n").to_owned()
+        _ => ""
+      }
+    None => ""
+  }
+  let decl = if node_decl.is_empty() {
+    exec.process_model.post_interceptors.unwrap_or("")
+  } else {
+    node_decl
+  }
+  if decl.is_empty() {
+    return false
+  }
+  let mut hit = false
+  for piece in decl.split(",") {
+    if piece.trim(chars=" \t\r\n").to_owned() == name {
+      hit = true
+    }
+  }
+  hit
+}
+
+///|
 pub async fn PersistPostInterceptor::intercept(
   self : PersistPostInterceptor,
   exec : @exec.Execution
 ) -> Unit raise @error.JeeflowError {
-  let persist_mode = exec.process_model.persist_mode
-  match persist_mode {
-    None => return // 未配置持久化
+  // 未声明＝本流程不启用 persist（与 java 的挂载条件同语义，与 persistMode 是否配置无关）
+  if !persist_interceptor_declared(exec) {
+    return
+  }
+  // spec/09 §4.0：`SYNC` 才走同步档，**其余一律回落 ARCHIVE**（缺省、大小写变体、未知值都不报错）；
+  // java `PersistPostInterceptor.java:92-96` 就是这个 if/else——issues/150 的②补的正是这条缺省语义。
+  let mode = match exec.process_model.persist_mode {
     Some(pm) =>
       match PersistMode::from_str(pm) {
-        None => return // 未知模式：静默跳过
-        Some(mode) => {
-          let table = match self.resolve_table(exec.process_model) {
-            Some(t) => t
-            None => return
-          }
-          if !is_table_name_safe(table) {
-            // 配置错误显性暴露（对齐 Java/Go，issues/60 原则）
-            raise @error.Business("非法业务表名: \{table}")
-          }
-          match mode {
-            Archive => self.intercept_archive(exec, table)
-            Sync => self.intercept_sync(exec, table)
-          }
-        }
+        Some(Sync) => Sync
+        _ => Archive
       }
+    None => Archive
+  }
+  let table = match self.resolve_table(exec.process_model) {
+    Some(t) => t
+    None => return // 未配置表名（relTableName 与流程 name 皆空）⇒ 静默跳过（spec/09 §4.6）
+  }
+  if !is_table_name_safe(table) {
+    // 配置错误显性暴露（对齐 Java/Go，issues/60 原则）
+    raise @error.Business("非法业务表名: \{table}")
+  }
+  match mode {
+    Archive => self.intercept_archive(exec, table)
+    Sync => self.intercept_sync(exec, table)
   }
 }
 

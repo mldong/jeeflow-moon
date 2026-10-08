@@ -4,9 +4,9 @@ import {
   "mldong/jeeflow-core/spi" @spi,
   "mldong/jeeflow-core/json" @json,
   "mldong/jeeflow-core/error" @error,
+  "mldong/jeeflow-core/parser" @parser,
 }
 
 import {
-  "mldong/jeeflow-core/parser" @parser,
   "moonbitlang/async",
 } for "test"

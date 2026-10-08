@@ -110,7 +110,11 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
   // 而任务既有变量也不会反噬本次提交（Go 上轮正是把它放在了 args 之上）。
   let full_args = @json.FlowData::from_map(clone_map(instance.variables.inner()))
   full_args.merge(task.variables)
-  full_args.merge(args)
+  // issues/150 病灶一（spec/09 §4.2 1.8.2）：本次提交的参数先过**入口**字段权限过滤再入变量，
+  // 与 java `JeeflowEngineImpl.java:264 args = FlowUtil.filterFieldByPerm(args, model, taskName)` 同位。
+  // 少了这一层，只读/隐藏字段的值会留在实例变量里，被下一个"没声明该字段权限"的节点写进业务表；
+  // 写侧 filter_editable 只挡当次提交，挡不住跨节点。
+  full_args.merge(@itl.filter_args_by_node_permission(args, model, task.task_name))
   self.add_user_info(full_args, operator)
   // 权限守卫
   if !task.is_allowed(operator) {

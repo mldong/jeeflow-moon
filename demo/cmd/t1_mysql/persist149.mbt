@@ -38,7 +38,7 @@ fn biz_meta(table : String, state_col : String) -> @persist.TableMeta {
 fn persist_flow(name : String, mode : String, table : String) -> String {
   // 多行串先绑定再用（裸用在表达式位会判 deprecated_syntax，本仓零新增告警基线）
   let raw =
-    $|{"name": "NAME", "displayName": "T149", "type": "approval", "persistMode": "MODE", "relTableName": "TABLE",
+    $|{"name": "NAME", "displayName": "T149", "type": "approval", "persistMode": "MODE", "relTableName": "TABLE", "postInterceptors": "com.mldong.jeeflow.persist.interceptor.PersistPostInterceptor",
   $|"nodes": [
   $|  {"id": "start", "type": "snaker:start", "text": {"value": "S"}},
   $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"},

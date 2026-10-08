@@ -170,3 +170,56 @@ pub fn filter_fields_by_permission(
   }
   filtered
 }
+
+///|
+/// 节点声明的字段权限表（`properties.field` 里的 `PERMISSION_*`）。
+/// 与 persist 拦截器读同一处；java 侧 `TaskModel.ext` 也是从 `properties.field` 灌的
+/// （`parser/impl/TaskParser.java:53-56`），所以两边的权限来源是同一个 JSON 位置，不是两套。
+/// 值语义按 java `FlowUtil.toInt`：数字/数字串取整，解析不出来＝-1（＝"其他"，放行）。
+pub fn node_field_permissions(node : @parser.NodeModel) -> Map[String, Int] {
+  let perms : Map[String, Int] = Map([])
+  match node.properties.get("field") {
+    Some(f) =>
+      match f {
+        Json::Object(obj) =>
+          for k, v in obj {
+            if k.has_prefix("PERMISSION_") {
+              let n = match @json.as_i64(v) {
+                Some(i) => i.to_int()
+                None => -1
+              }
+              perms[k] = n
+            }
+          }
+        _ => ()
+      }
+    None => ()
+  }
+  perms
+}
+
+///|
+/// 办理**入口**的字段权限过滤（spec/09 §4.2 1.8.2；java `FlowUtil.filterFieldByPerm(args, model, taskName)`
+/// 同位，调用点在 `JeeflowEngineImpl.java:264`——入变量之前）。
+/// issues/150 病灶一：这层在 moon 里"函数写了但零调用"，只读/隐藏字段的提交值于是**进了实例变量**，
+/// 下一个没声明该字段权限的节点办理时就被写进业务表（跨节点绕过）；写侧 `filter_editable` 只挡当次。
+/// 与 java 同形的三处放行：节点找不到 / 不是任务节点（记录类 custom 不算，java `instanceof TaskModel`）/
+/// 无权限声明 ⇒ 原样返回 args。
+pub fn filter_args_by_node_permission(
+  args : @json.FlowData,
+  model : @parser.ProcessModel,
+  task_name : String
+) -> @json.FlowData {
+  let node = match model.get_node(task_name) {
+    Some(n) => n
+    None => return args
+  }
+  if !(node.node_type is @parser.Task) {
+    return args
+  }
+  let perms = node_field_permissions(node)
+  if perms.is_empty() {
+    return args
+  }
+  filter_fields_by_permission(args, perms)
+}

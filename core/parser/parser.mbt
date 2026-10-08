@@ -8,6 +8,7 @@ pub(all) struct ProcessModel {
   model_type : String
   expire_time : String?
   persist_mode : String? // ARCHIVE / SYNC
+  post_interceptors : String? // 定义级后置拦截器声明（逗号分隔类全名；java NodeModel.execPostInterceptors 同位）
   rel_table_name : String?
   nodes : Array[NodeModel]
   edges : Array[EdgeModel]
@@ -369,6 +370,8 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
   let model_type = @json.get_str(root, "type").unwrap_or("approval")
   let expire_time = @json.get_str(root, "expireTime")
   let persist_mode = @json.get_str(root, "persistMode")
+  // 定义级后置拦截器声明（issues/150 的②要它才安全：java 是"声明即挂载"，节点级缺省回落流程级）
+  let post_interceptors = @json.get_str(root, "postInterceptors")
   let rel_table_name = match @json.get_str(root, "relTableName") {
     Some(s) => Some(s)
     None => @json.get_str(root, "name")
@@ -448,7 +451,7 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
       }
     None => ()
   }
-  { name, display_name, model_type, expire_time, persist_mode, rel_table_name, nodes, edges }
+  { name, display_name, model_type, expire_time, persist_mode, post_interceptors, rel_table_name, nodes, edges }
 }
 
 

@@ -59,7 +59,7 @@ async test "persist: table name safety" {
 async test "persist: ARCHIVE writes once at end+agree, idempotent by instance (C16)" {
   let (_provider, writer, itc) = make_persist_fixture()
   let flow =
-    $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "ARCHIVE", "relTableName": "expense",
+    $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "ARCHIVE", "relTableName": "expense", "postInterceptors": "com.mldong.jeeflow.persist.interceptor.PersistPostInterceptor",
     $|"nodes": [
     $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"}},
     $|  {"id": "end", "type": "snaker:end", "text": {"value": "E"}}
@@ -82,7 +82,7 @@ async test "persist: SYNC field permission filters read-only (C19) + state field
   let (_provider, writer, itc) = make_persist_fixture()
   // apply 节点 field.PERMISSION_note=1（只读）→ SYNC 任务节点不写 note
   let flow =
-    $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "SYNC", "relTableName": "expense",
+    $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "SYNC", "relTableName": "expense", "postInterceptors": "com.mldong.jeeflow.persist.interceptor.PersistPostInterceptor",
     $|"nodes": [
     $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"},
     $|   "properties": {"field": {"PERMISSION_f_note": 1}}},
@@ -145,7 +145,7 @@ async test "persist: 动态元数据端口 async 消费（改表结构免重启�
   let writer = @persist.InMemoryTableWriter::new()
   let itc = @persist.PersistPostInterceptor::make_from_provider(port, writer)
   let flow =
-    $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "SYNC", "relTableName": "expense",
+    $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "SYNC", "relTableName": "expense", "postInterceptors": "com.mldong.jeeflow.persist.interceptor.PersistPostInterceptor",
     $|"nodes": [
     $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"}},
     $|  {"id": "end", "type": "snaker:end", "text": {"value": "E"}}
@@ -173,7 +173,7 @@ async test "persist: 动态元数据端口 async 消费（改表结构免重启�
   assert_true(loads.val >= 2) // 两轮各查一次，不是一次性预载
   // 负向：端口里没有的表 ⇒ 走引擎既有语义（Business），不静默建半行
   let ghost_flow =
-    $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "SYNC", "relTableName": "no_such_table",
+    $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "SYNC", "relTableName": "no_such_table", "postInterceptors": "com.mldong.jeeflow.persist.interceptor.PersistPostInterceptor",
     $|"nodes": [
     $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"}},
     $|  {"id": "end", "type": "snaker:end", "text": {"value": "E"}}
