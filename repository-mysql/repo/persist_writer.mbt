@@ -15,19 +15,34 @@
 ///|
 pub(all) struct MysqlTableWriter {
   repo : MysqlRepository
+  /// 列匹配档（issues/151 X3，java `setStrictColumnMatch` 同位）：`false`＝缺省宽松
+  /// （驼峰↔下划线归一），`true`＝忽略大小写的逐字相等。
+  strict : Bool
 }
 
 ///|
 /// 同事务装配口：一个请求＝一个仓储实例，writer 从它派生即共享该实例的事务槽
 pub fn MysqlTableWriter::from_repo(repo : MysqlRepository) -> MysqlTableWriter {
-  MysqlTableWriter::{ repo }
+  MysqlTableWriter::{ repo, strict: false }
+}
+
+///|
+/// 严格列匹配档（java `setStrictColumnMatch(true)` 的同位）：集成方要"列名必须逐字对上才写"
+/// 时用它，宽松档下撞名的表（同一张表里 `a_b` 与 `ab` 并存）才需要。
+pub fn MysqlTableWriter::with_strict(
+  self : MysqlTableWriter,
+  strict : Bool
+) -> MysqlTableWriter {
+  MysqlTableWriter::{ repo: self.repo, strict }
 }
 
 ///|
 /// 独立连接档（autocommit）：只给阳性对照夹具用。
 /// ⚠ 集成方拿它装配 persist 就等于放弃"业务表写与 wf_* 同事务"，别当默认口用。
 pub fn MysqlTableWriter::detached(repo : MysqlRepository) -> MysqlTableWriter {
-  MysqlTableWriter::{ repo: MysqlRepository::{ config: repo.config, tx: Ref(None) } }
+  MysqlTableWriter::{
+    repo: MysqlRepository::{ config: repo.config, tx: Ref(None) }, strict: false
+  }
 }
 
 ///|
@@ -134,6 +149,41 @@ fn marks(n : Int) -> String {
 }
 
 ///|
+/// 「data ∩ 表列」成对取列（issues/151 X3 的落点）。
+/// **遍历表列**而不是遍历 data（java `JdbcDynamicTableWriter.insert:109-116` 就是这个方向），
+/// 于是：① 落进 SQL 反引号位的永远是真列名 ⇒ 宽松档下驼峰 data 键能写进下划线列；
+/// ② 列序＝表结构序，与 java 同；③ 两个 data 键归一到同一列时，`find_data_key` 命中即停
+/// ＝ data 插入序里的第一个键胜出（确定性规则，见 `persist.column_names_equal` 注释）。
+/// `skip`＝条件列（java `update:169` 用忽略大小写的逐字相等排除，不参与 SET）。
+fn MysqlTableWriter::collect(
+  self : MysqlTableWriter,
+  real : Array[String],
+  data : Map[String, Json],
+  skip~ : String?
+) -> (Array[String], Array[@moondb.Value]) {
+  let cols : Array[String] = []
+  let vals : Array[@moondb.Value] = []
+  let skip_lower = match skip {
+    Some(s) => s.to_lower()
+    None => ""
+  }
+  for col in real {
+    if skip is Some(_) && skip_lower == col.to_lower() {
+      ()
+    } else {
+      match @persist.find_data_key(data, col, strict=self.strict) {
+        Some(k) => {
+          cols.push(col)
+          vals.push(json_to_value(data[k]))
+        }
+        None => ()
+      }
+    }
+  }
+  (cols, vals)
+}
+
+///|
 /// INSERT：data 里不在表结构内的字段自动剔除（java `DynamicTableWriter.insert` 的同一义务）。
 /// 返回主键：表有 `id` 列且 data 未给出 ⇒ 走本栈雪花（与仓储一致，规范表无 AUTO_INCREMENT）；
 /// 表无 `id` 列 ⇒ 0L（内存实现在这一档给的是它自己的计数，两支都只被 `let _ =` 消费，
@@ -142,24 +192,21 @@ pub impl @persist.DynamicTableWriter for MysqlTableWriter with fn insert(self, t
   check_table(table)
   let conn = self.repo.open_or_tx()
   let real = self.real_columns(conn, table)
-  let cols : Array[String] = []
-  let vals : Array[@moondb.Value] = []
-  for k, v in data {
-    if real.contains(k) && !cols.contains(k) {
-      cols.push(k)
-      vals.push(json_to_value(v))
-    }
-  }
+  let (cols, vals) = self.collect(real, data, skip=None)
   let mut new_id : Int64 = 0L
-  if real.contains("id") {
-    match data.get("id") {
-      Some(v) => new_id = json_as_i64_or(v, 0L)
-      None => {
-        new_id = next_snowflake_id()
-        cols.push("id")
-        vals.push(@moondb.Int64(new_id))
+  // 主键列（issues/151 X3 之后按列匹配档探测，不再只认字面 `id`）：
+  // data 已给值就用它，缺值走本栈雪花（规范表无 AUTO_INCREMENT，见 X9 那条留档）。
+  match @persist.match_column(real, "id", strict=self.strict) {
+    Some(id_col) =>
+      match @persist.find_data_key(data, id_col, strict=self.strict) {
+        Some(k) => new_id = json_as_i64_or(data[k], 0L)
+        None => {
+          new_id = next_snowflake_id()
+          cols.push(id_col)
+          vals.push(@moondb.Int64(new_id))
+        }
       }
-    }
+    None => ()
   }
   if cols.is_empty() {
     self.repo.close_conn(conn)
@@ -181,53 +228,64 @@ pub impl @persist.DynamicTableWriter for MysqlTableWriter with fn update(self, t
   check_table(table)
   let conn = self.repo.open_or_tx()
   let real = self.real_columns(conn, table)
-  if real.contains("id") {
-    let cnt = q(
-      conn,
-      "SELECT COUNT(*) AS c FROM `\{table}` WHERE `id` = ?",
-      [@moondb.Int64(id)],
-    )
-    if cnt.is_empty() || row_i64(cnt[0], "c") == 0L {
+  let id_col = @persist.match_column(real, "id", strict=self.strict)
+  match id_col {
+    None => {
       self.repo.close_conn(conn)
-      raise @error.Business("Row \{id} not found in \{table}")
+      // 本栈 `update` 只有"按主键 id"这一条腿（trait 签名如此）⇒ 没有 id 列就没法定位行。
+      // 旧形状在这里不做判断、直接把 `id` 拼进 SQL 撞出 1054 驱动错误；换成显性文案
+      // （spec/09 §4.6「配置错误显性暴露」，与上面 `exists_by_key` 的"配错列不炸流程"同一档判据）。
+      raise @error.Business("表 \{table} 无主键 id 列，无法按主键更新")
+    }
+    Some(col) => {
+      let cnt = q(
+        conn,
+        "SELECT COUNT(*) AS c FROM `\{table}` WHERE `\{col}` = ?",
+        [@moondb.Int64(id)],
+      )
+      if cnt.is_empty() || row_i64(cnt[0], "c") == 0L {
+        self.repo.close_conn(conn)
+        raise @error.Business("Row \{id} not found in \{table}")
+      }
+      let (cols, vals) = self.collect(real, data, skip=Some(col))
+      match cols.length() {
+        0 => ()
+        _ => {
+          vals.push(@moondb.Int64(id))
+          let _ = x(
+            conn,
+            "UPDATE `\{table}` SET \{set_clause(cols)} WHERE `\{col}` = ?",
+            vals,
+          )
+        }
+      }
+      self.repo.close_conn(conn)
     }
   }
-  let cols : Array[String] = []
-  let vals : Array[@moondb.Value] = []
-  for k, v in data {
-    if real.contains(k) && k != "id" && !cols.contains(k) {
-      cols.push(k)
-      vals.push(json_to_value(v))
-    }
-  }
-  if !cols.is_empty() {
-    vals.push(@moondb.Int64(id))
-    let _ = x(
-      conn,
-      "UPDATE `\{table}` SET \{set_clause(cols)} WHERE `id` = ?",
-      vals,
-    )
-  }
-  self.repo.close_conn(conn)
 }
 
 ///|
-/// 主键存在性（表无 `id` 列 ⇒ 恒 false，与内存实现"取不到行"同档）。
+/// 主键存在性（表无主键 `id` 列 ⇒ 恒 false，与内存实现"取不到行"同档）。
 pub impl @persist.DynamicTableWriter for MysqlTableWriter with fn exists(self, table, id) {
   check_table(table)
   let conn = self.repo.open_or_tx()
   let real = self.real_columns(conn, table)
-  if !real.contains("id") {
-    self.repo.close_conn(conn)
-    return false
+  let id_col = @persist.match_column(real, "id", strict=self.strict)
+  match id_col {
+    None => {
+      self.repo.close_conn(conn)
+      false
+    }
+    Some(col) => {
+      let cnt = q(
+        conn,
+        "SELECT COUNT(*) AS c FROM `\{table}` WHERE `\{col}` = ?",
+        [@moondb.Int64(id)],
+      )
+      self.repo.close_conn(conn)
+      !cnt.is_empty() && row_i64(cnt[0], "c") > 0L
+    }
   }
-  let cnt = q(
-    conn,
-    "SELECT COUNT(*) AS c FROM `\{table}` WHERE `id` = ?",
-    [@moondb.Int64(id)],
-  )
-  self.repo.close_conn(conn)
-  !cnt.is_empty() && row_i64(cnt[0], "c") > 0L
 }
 
 ///|
@@ -237,17 +295,21 @@ pub impl @persist.DynamicTableWriter for MysqlTableWriter with fn exists_by_key(
   check_table(table)
   let conn = self.repo.open_or_tx()
   let real = self.real_columns(conn, table)
-  if !real.contains(key) {
-    self.repo.close_conn(conn)
-    return false
+  match @persist.match_column(real, key, strict=self.strict) {
+    None => {
+      self.repo.close_conn(conn)
+      false
+    }
+    Some(col) => {
+      let cnt = q(
+        conn,
+        "SELECT COUNT(*) AS c FROM `\{table}` WHERE `\{col}` = ?",
+        [@moondb.Int64(value)],
+      )
+      self.repo.close_conn(conn)
+      !cnt.is_empty() && row_i64(cnt[0], "c") > 0L
+    }
   }
-  let cnt = q(
-    conn,
-    "SELECT COUNT(*) AS c FROM `\{table}` WHERE `\{key}` = ?",
-    [@moondb.Int64(value)],
-  )
-  self.repo.close_conn(conn)
-  !cnt.is_empty() && row_i64(cnt[0], "c") > 0L
 }
 
 ///|
@@ -256,41 +318,43 @@ pub impl @persist.DynamicTableWriter for MysqlTableWriter with fn update_by_key(
   check_table(table)
   let conn = self.repo.open_or_tx()
   let real = self.real_columns(conn, table)
-  if !real.contains(key) {
-    self.repo.close_conn(conn)
-    raise @error.Business("Row with \{key}=\{value} not found in \{table}")
-  }
-  let cnt = q(
-    conn,
-    "SELECT COUNT(*) AS c FROM `\{table}` WHERE `\{key}` = ?",
-    [@moondb.Int64(value)],
-  )
-  if cnt.is_empty() || row_i64(cnt[0], "c") == 0L {
-    self.repo.close_conn(conn)
-    raise @error.Business("Row with \{key}=\{value} not found in \{table}")
-  }
-  let cols : Array[String] = []
-  let vals : Array[@moondb.Value] = []
-  for k, v in data {
-    if real.contains(k) && k != key && !cols.contains(k) {
-      cols.push(k)
-      vals.push(json_to_value(v))
+  let biz_col = @persist.match_column(real, key, strict=self.strict)
+  match biz_col {
+    None => {
+      self.repo.close_conn(conn)
+      raise @error.Business("Row with \{key}=\{value} not found in \{table}")
     }
-  }
-  if !cols.is_empty() {
-    vals.push(@moondb.Int64(value))
-    let _ = x(
-      conn,
-      "UPDATE `\{table}` SET \{set_clause(cols)} WHERE `\{key}` = ?",
-      vals,
-    )
+    Some(col) => {
+      let cnt = q(
+        conn,
+        "SELECT COUNT(*) AS c FROM `\{table}` WHERE `\{col}` = ?",
+        [@moondb.Int64(value)],
+      )
+      if cnt.is_empty() || row_i64(cnt[0], "c") == 0L {
+        self.repo.close_conn(conn)
+        raise @error.Business("Row with \{key}=\{value} not found in \{table}")
+      }
+      let (cols, vals) = self.collect(real, data, skip=Some(col))
+      match cols.length() {
+        0 => ()
+        _ => {
+          vals.push(@moondb.Int64(value))
+          let _ = x(
+            conn,
+            "UPDATE `\{table}` SET \{set_clause(cols)} WHERE `\{col}` = ?",
+            vals,
+          )
+        }
+      }
+    }
   }
   self.repo.close_conn(conn)
 }
 
 ///|
-/// 列探测：候选 ∩ 表实际列，**保序去重**（java `filterColumns` 的同一判据）。
-/// 状态字段 `{节点ID}_{状态码}` / `{节点ID}` 的择优就靠它——列不存在则不写，不炸流程。
+/// 列探测：候选 ∩ 表实际列，**保序去重**（java `filterColumns:90-99` 的同一判据——
+/// 命中的是表列，**返回的仍是候选串**，因为调用方拿它当 data 的键用；状态字段
+/// `{节点ID}_{状态码}` / `{节点ID}` 的择优就靠它——列不存在则不写，不炸流程）。
 pub impl @persist.DynamicTableWriter for MysqlTableWriter with fn columns(self, table, candidates) {
   check_table(table)
   let conn = self.repo.open_or_tx()
@@ -298,8 +362,14 @@ pub impl @persist.DynamicTableWriter for MysqlTableWriter with fn columns(self, 
   self.repo.close_conn(conn)
   let out : Array[String] = []
   for c in candidates {
-    if real.contains(c) && !out.contains(c) {
-      out.push(c)
+    let t = c.trim(chars=" \t\r\n").to_owned()
+    if t.is_empty() {
+      ()
+    } else {
+      match @persist.match_column(real, t, strict=self.strict) {
+        Some(_) => if !out.contains(t) { out.push(t) }
+        None => ()
+      }
     }
   }
   out

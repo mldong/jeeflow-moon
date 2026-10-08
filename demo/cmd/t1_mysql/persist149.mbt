@@ -29,6 +29,9 @@ fn biz_meta(table : String, state_col : String) -> @persist.TableMeta {
   meta.add_field(@persist.FieldMeta::make("amount", "VARCHAR(64)", "金额"))
   meta.add_field(@persist.FieldMeta::make(state_col, "INT", "节点状态"))
   meta.add_field(@persist.FieldMeta::make("ghost_col", "VARCHAR(64)", "表里没有的列"))
+  // issues/150 X5 的 putIfAbsent 腿要能观察到：业务把 `f_create_time` 提交上来时，
+  // 这一列必须先过元数据白名单才谈得上"系统字段不覆写已有值"（`fill_system_fields` 在过滤之后跑）。
+  meta.add_field(@persist.FieldMeta::make("create_time", "DATETIME", "创建时间"))
   meta
 }
 
@@ -172,9 +175,17 @@ async fn t1_f149_archive_real_db() -> Unit raise {
     "t149a-user",
     "F149A 上下文列 apply_user_id 取发起人（fill_context 的 C17 回落）",
   )
-  // 归档行的 create_user 是**办结人**而不是发起人：ARCHIVE 的触发点就是办结那一次动作，
-  // 引擎把当次 exec.operator 交给 fill_system_fields（java 侧 fillSystemFields 不带 user 形参、
-  // 取环境当前用户，同档）。这一格是"真库写出来的值来自哪"的读数，不是给实现找齐。
+  // ⚠⚠ 本轮（issues/150 X5）改掉的一条既有期望值，逐字交代：
+  //   旧＝create_user 读 "leader"（办结人）；新＝读 "t149a-user"（发起人）。
+  //   依据不是"实现顺手"，是规范与参考实现两边：
+  //   · spec/09 §3:98 原文「`create_user`/`update_user` **优先取 `apply_user_id`（= 流程 operator）**
+  //     ……无 operator 的场景回落可配置默认值（`setDefaultUserValue`，缺省 `"system"`）」；
+  //   · java `JdbcDynamicTableWriter.resolveDefaultUser:231-234` 读的就是 data 里 `fillContext`
+  //     写进去的 apply_user_id，而 `ProcessInstance.getOperator()` 在 java 全仓没有第二次赋值
+  //     （`setOperator` 只命中 Execution/ProcessSurrogate 两处），归档腿拿到的就是发起人；
+  //   · 旧形状拿当次 exec.operator 无条件覆写，等于把这条优先级整条抹掉。
+  //   rust 至今仍是 operator 覆写档（`jeeflow-persist/src/lib.rs:227`）⇒ 那是 rust 的欠账，
+  //   不反过来当 moon 的基准（本轮只对齐 spec+java，不改判据文件、不动别的语言仓）。
   check_eq(
     select_cell(
       repo,
@@ -182,8 +193,8 @@ async fn t1_f149_archive_real_db() -> Unit raise {
       [@moondb.Int64(iid)],
       "v",
     ),
-    "leader",
-    "F149A 系统字段 create_user 由引擎补齐并落库（归档腿＝办结人）",
+    "t149a-user",
+    "F149A 系统字段 create_user 取 apply_user_id＝发起人（spec/09 §3:98 的优先级）",
   )
   // ghost_col 只在元数据里、表里没有 ⇒ writer 内部按真列过滤后必须被剔除（java 同义务），
   // 这一格证明列探测走的是库而不是内存白名单
@@ -219,6 +230,8 @@ async fn t1_f149_sync_real_db() -> Unit raise {
       ("operator", "t149b-user"),
       ("f_note", "sick"),
       ("f_amount", "55"),
+      // X5 的 putIfAbsent 腿：业务自己把创建时间当表单字段提交上来，系统字段这一档不许覆写
+      ("f_create_time", "2020-03-04 05:06:07"),
     ]),
   )
   check(env_code(s) == 0L, "F149B 发起 code=0")
@@ -234,6 +247,10 @@ async fn t1_f149_sync_real_db() -> Unit raise {
     "1",
     "F149B 办结后仍是一行（走 update_by_key 而非重复插入）",
   )
+  // ⚠⚠ 同 F149A：本轮（issues/150 X5）把这条既有期望值从 "leader"（经办人）改成发起人，
+  //   依据＝spec/09 §3:98「create_user/update_user 优先取 apply_user_id」＋ java
+  //   `resolveDefaultUser:231-234`（`fillSystemFields` 根本没有 user 形参）。
+  //   办结腿的"这次是谁办的"在 java/spec 里由 `update_time` 覆写 + 任务历史表承担，不由用户列承担。
   check_eq(
     select_cell(
       repo,
@@ -241,8 +258,20 @@ async fn t1_f149_sync_real_db() -> Unit raise {
       [@moondb.Int64(iid)],
       "v",
     ),
-    "leader",
-    "F149B 办结腿把 update_user 改成经办人（同事务外的独立 UPDATE 落库）",
+    "t149b-user",
+    "F149B 更新腿 update_user 仍是 apply_user_id＝发起人（spec/09 §3:98）",
+  )
+  // X5 putIfAbsent：业务自己提交的 f_create_time 必须原值留在库里（系统字段不覆写已有值）。
+  // 旧形状是 `data["create_time"] = now` 无条件覆写——业务侧自己带的建档时间会被引擎改掉。
+  check_eq(
+    select_cell(
+      repo,
+      "SELECT create_time AS v FROM t149_biz_sync WHERE process_instance_id = ?",
+      [@moondb.Int64(iid)],
+      "v",
+    ),
+    "2020-03-04 05:06:07",
+    "F149B 业务自带的 create_time 不被系统字段覆写（putIfAbsent）",
   )
   check_eq(
     select_cell(
@@ -408,4 +437,96 @@ async fn t1_f149_detached_positive_control() -> Unit raise {
   set_sql(base, "DROP TABLE t149_biz_tx", [])
   clean_9x(base)
   println("PASS F149D 阳性对照成立（判据有牙）")
+}
+
+// ── F149E 宽松列匹配的 writer 腿（issues/151 X3）──
+
+///|
+/// 只给列匹配用的表：列全下划线，值全 ASCII。
+fn loose_ddl(table : String) -> String {
+  "CREATE TABLE \{table} (id BIGINT NOT NULL, process_instance_id BIGINT, merchant_name VARCHAR(64), audit_note VARCHAR(64), create_time DATETIME, create_user VARCHAR(64), update_time DATETIME, update_user VARCHAR(64), is_deleted TINYINT, PRIMARY KEY (id))"
+}
+
+///|
+/// 这一支绕开拦截器与元数据，**只打 writer**：data 给驼峰键，表列是下划线，
+/// 必须落得进真列（java `normalizeColumn` 宽松档）；条件列（where）与列探测同一枚尺子；
+/// 严格档（`with_strict(true)`）必须落不进 ⇒ F149E 第一半的阳性对照。
+async fn t1_f149_loose_column_match() -> Unit raise {
+  println("T1-F149E writer 腿列匹配真库档：驼峰落下划线列／条件列同尺／严格档不落...")
+  let repo = @repo.MysqlRepository::from_env()
+  set_sql(repo, "DROP TABLE IF EXISTS t149_biz_loose", [])
+  set_sql(repo, "DROP TABLE IF EXISTS t149_biz_loose_strict", [])
+  set_sql(repo, loose_ddl("t149_biz_loose"), [])
+  set_sql(repo, loose_ddl("t149_biz_loose_strict"), [])
+  clean_9x(repo)
+  let w = @repo.MysqlTableWriter::from_repo(repo)
+  // ① INSERT：三个驼峰键 ⇒ 三张下划线真列
+  let d : Map[String, Json] = Map([])
+  d["processInstanceId"] = @json.number_of(990991L)
+  d["merchantName"] = @json.string_of("宽松命中")
+  d["auditNote"] = @json.string_of("驼峰落库")
+  let pk = w.insert("t149_biz_loose", d)
+  check(pk != 0L, "F149E data 无主键时由雪花补齐（返回的 pk 非 0）")
+  check_eq(
+    select_cell(
+      repo,
+      "SELECT merchant_name AS v FROM t149_biz_loose WHERE process_instance_id = 990991",
+      [],
+      "v",
+    ),
+    "宽松命中",
+    "F149E merchantName → merchant_name（宽松档真列落库，SQL 里用的是真列名）",
+  )
+  // ② 条件列也走同一枚尺子：exists_by_key / update_by_key 的键写成驼峰
+  check(
+    w.exists_by_key("t149_biz_loose", "processInstanceId", 990991L),
+    "F149E exists_by_key 的驼峰条件列命中下划线真列",
+  )
+  let u : Map[String, Json] = Map([])
+  u["merchantName"] = @json.string_of("宽松更新")
+  w.update_by_key("t149_biz_loose", u, "processInstanceId", 990991L)
+  check_eq(
+    select_cell(
+      repo,
+      "SELECT merchant_name AS v FROM t149_biz_loose WHERE process_instance_id = 990991",
+      [],
+      "v",
+    ),
+    "宽松更新",
+    "F149E update_by_key 同尺命中（SET 与 WHERE 都认下划线真列）",
+  )
+  // ③ 列探测（java filterColumns）：命中的是表列，返回的仍是候选串（调用方拿它当 data 键用）
+  let kept = w.columns("t149_biz_loose", ["merchantName", "nope_col", "merchantName"])
+  check_eq(kept.length().to_string(), "1", "F149E columns 只放行命中的候选，且保序去重")
+  check_eq(kept[0], "merchantName", "F149E columns 返回候选名（与 java 同档）")
+  // ④ 系统列（X5）真库：插入档把 create/update 四列 + is_deleted 补齐
+  check(
+    select_i64(
+      repo,
+      "SELECT COUNT(*) AS c FROM t149_biz_loose WHERE process_instance_id = 990991 AND create_user IS NULL",
+      [],
+      "c",
+    ) == 1L,
+    "F149E 直接调 writer（不经拦截器）时不补用户列——补齐是 fill_system_fields 的活，这一格钉住边界",
+  )
+  // ⑤ 阳性对照：同一份驼峰 data 在严格档下必须**不**落下划线列（X3 之前的默认行为）
+  let ws = w.with_strict(true)
+  let d2 : Map[String, Json] = Map([])
+  d2["processInstanceId"] = @json.number_of(990992L)
+  d2["merchantName"] = @json.string_of("严格档不落")
+  let _ = ws.insert("t149_biz_loose_strict", d2)
+  check_eq(
+    select_cell(
+      repo,
+      "SELECT COUNT(*) AS c FROM t149_biz_loose_strict WHERE merchant_name IS NOT NULL",
+      [],
+      "c",
+    ),
+    "0",
+    "F149E 严格档同一份 data 不落 merchant_name ⇒ 宽松档那一格不是测空气",
+  )
+  set_sql(repo, "DROP TABLE t149_biz_loose", [])
+  set_sql(repo, "DROP TABLE t149_biz_loose_strict", [])
+  clean_9x(repo)
+  println("PASS F149E writer 腿列匹配（宽松/严格两档 + 条件列 + 列探测）真库成立")
 }

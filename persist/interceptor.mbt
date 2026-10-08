@@ -7,6 +7,13 @@
 pub(all) struct PersistPostInterceptor {
   meta : DynamicMetaProviderFns
   table_writer : &DynamicTableWriter
+  /// 系统列配置（issues/150 X5，java `JdbcDynamicTableWriter:57-65` 那组可配置项的同位）。
+  system_fields : SystemFields
+  /// 列匹配档（issues/151 X3，java `setStrictColumnMatch` 同位）：`false`＝缺省宽松
+  /// （驼峰↔下划线归一），`true`＝忽略大小写的逐字相等。它与 writer 自己的 `strict`
+  /// 是同一枚判据的**两处消费点**（这里＝元数据白名单 `filter_editable`，那里＝表结构过滤），
+  /// 装配时两边都要给，只给一边就是两把尺子。
+  strict_columns : Bool
 }
 
 ///|
@@ -14,7 +21,12 @@ pub fn PersistPostInterceptor::make(
   meta_provider : InMemoryMetaProvider,
   table_writer : &DynamicTableWriter
 ) -> PersistPostInterceptor {
-  { meta: meta_provider.as_provider(), table_writer }
+  {
+    meta: meta_provider.as_provider(),
+    table_writer,
+    system_fields: SystemFields::make_default(),
+    strict_columns: false,
+  }
 }
 
 ///|
@@ -23,7 +35,41 @@ pub fn PersistPostInterceptor::make_from_provider(
   meta : DynamicMetaProviderFns,
   table_writer : &DynamicTableWriter
 ) -> PersistPostInterceptor {
-  { meta, table_writer }
+  {
+    meta,
+    table_writer,
+    system_fields: SystemFields::make_default(),
+    strict_columns: false,
+  }
+}
+
+///|
+/// 系统列配置装配口（issues/150 X5）：业务表的系统列叫 `add_time`/`creator` 之类、
+/// 或不想填 `is_deleted` 的集成方用它。缺省档见 `SystemFields::make_default`。
+pub fn PersistPostInterceptor::with_system_fields(
+  self : PersistPostInterceptor,
+  system_fields : SystemFields
+) -> PersistPostInterceptor {
+  {
+    meta: self.meta,
+    table_writer: self.table_writer,
+    system_fields,
+    strict_columns: self.strict_columns,
+  }
+}
+
+///|
+/// 严格列匹配装配口（issues/151 X3）
+pub fn PersistPostInterceptor::with_strict_columns(
+  self : PersistPostInterceptor,
+  strict_columns : Bool
+) -> PersistPostInterceptor {
+  {
+    meta: self.meta,
+    table_writer: self.table_writer,
+    system_fields: self.system_fields,
+    strict_columns,
+  }
 }
 
 ///|
@@ -127,6 +173,10 @@ async fn PersistPostInterceptor::intercept_archive(
   if exec.args.get_i64("submitType") != Some(1L) {
     return
   }
+  // 层①同链标记（issues/150 ③／X4）：位置与 java 一致——四道时机判据之后、查库之前
+  if !self.mark_chain(exec) {
+    return
+  }
   // 幂等：process_instance_id 先查后插（C16）
   if (self.table_writer).exists_by_key(table, "process_instance_id", exec.process_instance.instance_id) {
     return
@@ -138,7 +188,7 @@ async fn PersistPostInterceptor::intercept_archive(
   if filtered.is_empty() {
     return
   }
-  fill_system_fields(filtered, exec.operator, true)
+  fill_system_fields_with(self.system_fields, filtered, exec.operator, true)
   let _ = (self.table_writer).insert(table, filtered)
 }
 
@@ -153,28 +203,42 @@ async fn PersistPostInterceptor::intercept_sync(
     None => return
   }
   let instance = exec.process_instance
-  let is_task = node.node_type is @parser.Task || node.node_type is @parser.Custom
+  // 任务节点＝TaskModel 那一档（issues/150 X8）。java `PersistPostInterceptor.java:128` 判的是
+  // `execution.getNodeModel() instanceof TaskModel`，而 spec/02 §6.1 把 custom 记录类明确划在
+  // 「不解析参与者、不建待办」那一侧 ⇒ 记录类同样不是任务节点。从前它与 Task 合流，于是 SYNC 下
+  // 记录类被当任务节点全量写 f_，还把状态列写成 DOING(10)——一个记录类节点不该有的状态。
+  let is_task = node.node_type is @parser.Task
+  // 层①同链标记（X4）：与 ARCHIVE 同位——先标记，再查库定 INSERT/UPDATE
+  if !self.mark_chain(exec) {
+    return
+  }
   let exists = (self.table_writer).exists_by_key(table, "process_instance_id", instance.instance_id)
-  // 任务节点按目标节点 field.PERMISSION_* 过滤；start/结束不带 f_（start 首次 INSERT 例外全量）
+  // 任务节点按目标节点 field.PERMISSION_* 过滤；非任务节点不带 f_/tf_（首次 INSERT 例外全量）
   let field_perm = if is_task {
     self.resolve_field_permission(node)
   } else {
     None
   }
+  // issues/150 X6：两枚 flag 与 java `:130-131` 同形，都由 `!exists || taskNode` 推。
+  // 旧形状把 `tf_` 那一档硬编码成 `true` ⇒ 结束/判断/fork/join 也会把 tf_* 冗余列写回去，
+  // 覆盖掉任务节点声明的只读/隐藏限制（spec/09 §4.2「定稿只写状态＋上下文」就这么废的）。
+  // 权限档同理：首次 INSERT（`!exists`）不带权限过滤＝java 那条「发起全量」的例外。
   let include_fields = !exists || is_task
-  let data = self.extract_fields(instance.variables, field_perm, true, include_fields)
-  // 状态字段：任务节点写 DOING(10)；结束节点写实例终态；start 无状态列跳过
-  let state_code : Int? = if is_task {
-    Some(10)
-  } else if node.node_type is @parser.End {
-    Some(instance.state)
-  } else {
+  let perm = if !exists {
     None
+  } else {
+    field_perm
   }
-  match state_code {
-    Some(code) => self.put_state_field(table, data, node.id, code)
-    None => ()
+  let data = self.extract_fields(instance.variables, perm, include_fields, include_fields)
+  // 状态字段：任务节点写 DOING(10)——execPost 在流转链之后触发，此刻实例 state 可能已是终态，
+  // 不能拿 instance.state（java `:137` 同判据）；非任务节点写实例当前态，
+  // 列不存在由 `put_state_field` 的列探测滤掉，不炸流程。
+  let state_code = if is_task {
+    10
+  } else {
+    instance.state
   }
+  self.put_state_field(table, data, node.id, state_code)
   self.fill_context(data, exec)
   let meta = self.load_meta(table)
   let filtered = self.filter_editable(meta, data)
@@ -182,11 +246,42 @@ async fn PersistPostInterceptor::intercept_sync(
     return
   }
   if exists {
-    fill_system_fields(filtered, exec.operator, false)
+    fill_system_fields_with(self.system_fields, filtered, exec.operator, false)
     (self.table_writer).update_by_key(table, filtered, "process_instance_id", instance.instance_id)
   } else {
-    fill_system_fields(filtered, exec.operator, true)
+    fill_system_fields_with(self.system_fields, filtered, exec.operator, true)
     let _ = (self.table_writer).insert(table, filtered)
+  }
+}
+
+///|
+/// 同链重复触发防护·层①（issues/150 ③／X4，java `markChain:166-173` 同位）：
+/// 键＝`__persist_executed_{实例ID}_{节点ID}`，写进 `exec.args`。
+/// 本栈的 args 是整条流转链共用的一份 Map（`Execution::make` 每请求一次，`execute_node` 递归时
+/// 只换 `current_node`）⇒ 写它等效 java 那份 LinkedHashMap；跨请求的重复由层②数据库幂等兜。
+/// 节点级而非流程级＝1.8.0 那次改动的原意：任务推进与结束定稿是两个节点，都必须放行一次，
+/// 只有「同一节点在同一条链里被重复触发」（并行 fork/join 汇聚那种）才该被这一层挡住。
+fn PersistPostInterceptor::mark_chain(
+  self : PersistPostInterceptor,
+  exec : @exec.Execution
+) -> Bool {
+  let _ = self
+  let node_id = match exec.current_node {
+    Some(n) => n.id
+    None => ""
+  }
+  let chain_key = "__persist_executed_\{exec.process_instance.instance_id}_\{node_id}"
+  // `Json::True` 在 core 之外不可构造（pub enum 未带 pub(all) => read-only type），
+  // 布尔档一律走 @json 的构造/读取助手。
+  let blocked = match exec.args.get(chain_key) {
+    Some(v) => @json.as_bool(v) == Some(true)
+    None => false
+  }
+  if blocked {
+    false
+  } else {
+    exec.args.inner()[chain_key] = @json.bool_of(true)
+    true
   }
 }
 
@@ -228,8 +323,11 @@ fn PersistPostInterceptor::filter_editable(
   let filtered : Map[String, Json] = Map([])
   for field in meta.fields {
     if field.is_editable() {
-      match data.get(field.column_name) {
-        Some(v) => filtered[field.column_name] = v
+      // 键匹配与写侧同一枚尺子（issues/151 X3）：元数据里是下划线列名，表单变量去掉 `f_`
+      // 之后常是驼峰 ⇒ 精确档在这里就静默丢列。输出键取**元数据列名**，
+      // 保证落进 SQL 的永远是真列名。
+      match find_data_key(data, field.column_name, strict=self.strict_columns) {
+        Some(k) => filtered[field.column_name] = data[k]
         None => ()
       }
     }

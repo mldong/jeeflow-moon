@@ -1,5 +1,89 @@
 # CHANGELOG
 
+## 0.1.32（2026-10-08）
+
+**persist 收口普查里的 X3／X4／X5／X6／X8（＋ X7 的文档实话）：列匹配默认宽松、系统列按 spec 的优先级与
+putIfAbsent 形状、同链重复触发防护补回层①、任务节点判定对齐 `instanceof TaskModel`。**
+四模块同号（core / persist / repository-mysql / facade）；无新增模块间依赖 ⇒ 接力 pin 仍是 9 枚
+（demo 4／facade 2／persist 1／repository-mysql 2），随 version 一起抬号。
+
+- **X3 列匹配只剩精确一档**（issues/151；spec/09 §3:96 ＋ §6:290）：`MysqlTableWriter` 原来按
+  `real.contains(k)` 逐字相等挑列，`filter_editable` 也只按元数据列名逐字取键 ⇒ 表单键写成驼峰
+  （`merchantName`）而表列是下划线（`merchant_name`）时**静默丢列**，业务侧只看到"那列没写进去"。
+  现按 java `normalizeColumn:305-307`／`findDataKey:310-320`／`findColumn:293-302` 同位补一枚尺子：
+  `normalize_column`（转小写＋去下划线）＋ `column_names_equal`（严格档＝忽略大小写的逐字相等）＋
+  `find_data_key`／`match_column`。三件连带：
+  ① 写侧**遍历表列**（java `insert:109-116` 就是这个方向）⇒ 落进 SQL 反引号位的永远是**真列名**，
+  驼峰键才可能写下划线列；旧形状遍历 data、落的是 data 键名，宽松档下会拼出不存在的列。
+  ② 两键归一到同一列的**确定性规则**＝"遍历序 + 命中即停"（`find_data_key` 走 Map 插入序），
+  与 java 的 `data.keySet()` 同判据；反装顺序给另一个答案，这条由新用例钉住。
+  ③ 严格档开关落两处消费点：`MysqlTableWriter::with_strict(true)`（表结构过滤）与
+  `PersistPostInterceptor::with_strict_columns(true)`（元数据白名单）——只给一边就是两把尺子。
+- **X4 同链重复触发防护层①缺失**（issues/150 的③；spec/09 §4.5:214-221）：全仓只有层②数据库幂等
+  （`exists_by_key`），没有 java `markChain:166-173` 那把节点级闸 ⇒ 同一条执行链里同一节点被重复触发
+  （并行 fork/join 汇聚那种）就重复写一遍。补 `mark_chain`：键＝`__persist_executed_{实例ID}_{节点ID}`
+  写进 `exec.args`（本栈 args 是整条链共用的一份 Map——`Execution::make` 每请求一次、`execute_node`
+  递归只换 `current_node`，已读码核实），ARCHIVE 与 SYNC 都在"时机判据之后、查库之前"这一位调用，
+  与 java 逐字同位。**节点级不是流程级**：任务推进与结束定稿是两个节点，都必须放行一次。
+- **X5 系统列的形状**（spec/09 §3:97-98 ＋ java `JdbcDynamicTableWriter:57-65,211-234`）：
+  旧 `fill_system_fields` 列名硬写、插入档**无条件覆写** `create_time`／`create_user`、没有
+  `is_deleted`、也不读 `apply_user_id`。现改 `SystemFields`（五列名全可配、`None`＝不填、
+  `default_user_value` 缺省 `"system"`）＋ `fill_system_fields_with`：插入档一律 putIfAbsent
+  （业务自带的创建时间留得住），更新档只覆写 `update_time`、`update_user` 仍 putIfAbsent；
+  用户列取值优先级＝`apply_user_id` → 当次 operator → `default_user_value`。旧签名
+  `fill_system_fields` 保留为缺省档包装（既有调用点与用例形状不变）。
+- **X6 非任务节点覆盖业务字段**（spec/09 §4.2:159,180 ＋ java `:128-131`）：`intercept_sync` 的
+  `tf_` 那一档 flag 从前硬编码 `true` ⇒ 结束/判断/fork/join 也照样把 `tf_*` 冗余列写回去，把任务节点
+  声明的只读/隐藏限制覆盖掉（"定稿只写状态＋上下文"这条就此废）。现两枚 flag 都由
+  `!exists || taskNode` 推，且首次 INSERT 不带权限过滤（java `!exists ? null : fieldPerm`）。
+  状态码也回到 java 那一支：任务节点 DOING(10)，非任务节点写 `instance.state`
+  （列不存在由列探测滤掉），不再只认 End。
+- **X8 custom 记录类不是任务节点**（spec/09 §4.2:158 ＋ spec/02 §6.1:239 ＋ java `:128`
+  `instanceof TaskModel`）：`is_task` 从前是 `Task || Custom` ⇒ 记录类节点在 SYNC 下被当任务节点
+  全量写 `f_`，还把状态列写成 DOING(10)。现在只认 `Task`。
+- **X7 的文档实话**（`persist/README.md`）：quickstart 原来只登记一列 `note`，而本栈元数据是
+  **白名单** ⇒ 照它接会连 `process_instance_id` 一起丢掉，幂等键为空、每次办结重插一行。
+  已改成登记全上下文列并写明这条坑，同时补上两个装配口（`with_system_fields` /
+  `with_strict_columns`）与列匹配、系统列两档语义的说明。
+
+**⚠ 本轮改掉三条既有期望值（逐字交代，都不是"为了绿而改"）**：
+
+1. `persist/persist_test.mbt`「SYNC field permission filters read-only (C19) + state field」：
+   旧＝首次那一趟 `assert_true(r.get("note") is None)`（首次 INSERT 也按节点权限过滤）；
+   新＝首次那一趟全量写、权限过滤只作用于 UPDATE 腿（同一用例里补了第二趟：换到 boss 节点、
+   该节点声明 `PERMISSION_f_note=1` ⇒ `note` 不被覆盖而 `amount` 照写，C19 的原意仍被钉住）。
+   依据＝java `:130-131` 的 `!exists ? null : fieldPerm`；本仓旧实现连自己的注释
+   （"start 首次 INSERT 例外全量"）都没兑现。真流程里只读字段的提交值在**入口**就被 ①
+   （`filter_args_by_node_permission`）挡掉，根本进不了实例变量。
+2. `demo/cmd/t1_mysql/persist149.mbt` F149A：`create_user` 旧＝"leader"（办结人）→ 新＝"t149a-user"
+   （发起人）。
+3. 同文件 F149B：`update_user` 旧＝"leader"（经办人）→ 新＝"t149b-user"（发起人），并新增一格
+   `create_time` 原值留存（putIfAbsent）。
+   2·3 同依据＝spec/09 §3:98 原文「`create_user`/`update_user` **优先取 `apply_user_id`（= 流程
+   operator）**……无 operator 的场景回落可配置默认值」＋ java `resolveDefaultUser:231-234`
+   （`fillSystemFields` 根本没有 user 形参）＋ java 全仓不给 `ProcessInstance.setOperator` 第二次赋值
+   （`grep setOperator` 只命中 Execution/ProcessSurrogate）。"这次是谁办的"在 spec/java 里由
+   `update_time` 覆写＋任务历史表承担，不由用户列承担。rust 至今仍是 operator 覆写档
+   （`jeeflow-persist/src/lib.rs:222-227`）⇒ 那是 rust 的欠账，不反过来当本栈基准。
+
+**新记一条跨栈家族差（不是本栈单栈分叉，故本轮不动 fire 点）**：spec/09 §4.2 的"发起 INSERT"在 java
+是模板级——`NodeModel.execute:30-38` 每个节点都 pre→exec→post，且没有子类覆盖 `execute`；
+而 rust `engine.rs:318-323`／go `engine_impl.go:656-658`／python `engine.py:655-659`／
+node `engine.ts:667-671`／moon `engine.mbt:199-205` **五栈一致地**不在 start 与建单那一刻 fire
+后置拦截器（各自注释都写着"对齐 Java CreateTaskHandler／创建任务 ≠ 节点执行完成"）。
+⇒ 纯 `processInstance/start`（不自动办理首节点）在本栈那一趟不建行，建行点是 `startAndExecute`
+（T1-F149B 实测"发起即建行"就是走的这一支）。单栈改 fire 点只会让本栈成为唯一在 start 落库的栈，
+并把"办结腿重复写一遍"的新风险引进来；已在 hub 普查报告 §5 追加为 E7 待裁定项。
+
+**读数**：T0 `moon test --target wasm` **420/420**（本轮新增 6 支分腿用例，`persist` 包 15/15）；
+`moon check` **37 warnings, 0 errors**（告警基线不动）；T1-F
+`moon run --target wasm demo/cmd/t1_mysql`（160 真库 `jeeflow_moon_t1`）**T1-F ALL PASS**，
+含新增 F149E 八格（驼峰落下划线真列／驼峰条件列命中／`columns` 保序去重且返回候选名／
+严格档同一份 data 不落＝阳性对照）。
+变异对照四条各打红后按 md5 还原：M1 `is_task` 恢复 `Task || Custom` → 1 红；M2 层①标记恒放行 → 1 红；
+M3 `tf_` flag 恢复硬编码 `true` → 2 红；M4 列匹配只剩严格档 → 2 红。
+
+
 ## 0.1.31（2026-10-08）
 
 **issues/150 的①②：办理入口的字段权限过滤接线 ＋ `persistMode` 缺省/未知值回落 ARCHIVE（并补"定义级声明才挂载"的 opt-in 守卫）。**

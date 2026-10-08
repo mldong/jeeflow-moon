@@ -1,5 +1,5 @@
 name = "mldong/jeeflow-core"
-version = "0.1.31"
+version = "0.1.32"
 license = "Apache-2.0"
 preferred_target = "wasm"
 readme = "README.md"

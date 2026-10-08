@@ -123,6 +123,59 @@ pub fn is_table_name_safe(name : String) -> Bool {
 }
 
 ///|
+/// 列名归一（issues/151 X3）：转小写 + 去下划线 ⇒ `companyName` / `company_name` /
+/// `COMPANY_NAME` 三档等价。逐字照 java `JdbcDynamicTableWriter.normalizeColumn:305-307`。
+pub fn normalize_column(name : String) -> String {
+  let b = StringBuilder()
+  for ch in name.to_lower() {
+    if ch != '_' {
+      b.write_char(ch)
+    }
+  }
+  b.to_string()
+}
+
+///|
+/// 列名等价判定（java `findColumn:293-302` / `findDataKey:310-320` 的同一枚尺子）：
+/// - 严格档＝忽略大小写的逐字相等（java `setStrictColumnMatch(true)`）；
+/// - 宽松档（默认）＝归一后相等。
+/// 两键撞同一列时的确定性规则也在这里定：**遍历方**（`find_data_key` 走 data 插入序、
+/// `match_column` 走表列序）里第一个命中者胜出，与 java 的 `data.keySet()` / `List<ColumnMeta>`
+/// 遍历顺序同判据——不写这条，同一份 data 两次运行可能落到不同列（Map 保插入序是 MoonBit 保证，
+/// 但"命中即停"必须显式，否则宽松档会静默多写一列）。
+pub fn column_names_equal(a : String, b : String, strict~ : Bool=false) -> Bool {
+  if strict {
+    a.to_lower() == b.to_lower()
+  } else {
+    normalize_column(a) == normalize_column(b)
+  }
+}
+
+///|
+/// 在 data 中找匹配指定表列的 key（java `findDataKey`）。命中即停 ⇒ data 插入序里的第一个键胜出。
+pub fn find_data_key(data : Map[String, Json], column : String, strict~ : Bool=false) -> String? {
+  for k, _ in data {
+    if column_names_equal(k, column, strict~) {
+      return Some(k)
+    }
+  }
+  None
+}
+
+///|
+/// 候选列名 → 表里实际存在的**真列名**（java `findColumn`）。
+/// 返回真列名而不是候选名，是因为写侧要把这个串直接拼进 SQL 的反引号位；
+/// java 的 `filterColumns` 返回候选名（它之后只当 data 键用），本栈两处都按 java 各自的那档实现。
+pub fn match_column(real_cols : Array[String], candidate : String, strict~ : Bool=false) -> String? {
+  for c in real_cols {
+    if column_names_equal(c, candidate, strict~) {
+      return Some(c)
+    }
+  }
+  None
+}
+
+///|
 /// 持久化模式
 pub enum PersistMode {
   Archive
@@ -161,19 +214,118 @@ pub(open) trait DynamicTableWriter {
 }
 
 ///|
-/// 系统字段填充（时间走 Clock 注入口，D-M0-3）
-pub fn fill_system_fields(
+/// 系统列配置（issues/150 X5，java `JdbcDynamicTableWriter:57-65,211-234` 同位）。
+/// 列名可配置，`None` ＝ 不填该列（java 用 `null` 表达同一意思）；
+/// `default_user_value` ＝ 取不到操作人时的回落值（java 缺省 `"system"`）。
+pub(all) struct SystemFields {
+  create_time_col : String?
+  create_user_col : String?
+  update_time_col : String?
+  update_user_col : String?
+  is_deleted_col : String?
+  default_user_value : String
+}
+
+///|
+pub fn SystemFields::make_default() -> SystemFields {
+  {
+    create_time_col: Some("create_time"),
+    create_user_col: Some("create_user"),
+    update_time_col: Some("update_time"),
+    update_user_col: Some("update_user"),
+    is_deleted_col: Some("is_deleted"),
+    default_user_value: "system",
+  }
+}
+
+///|
+/// 用户列取值（java `resolveDefaultUser:231-234`）：**`apply_user_id` 优先**——拦截器已由
+/// `fill_context` 把流程 operator 写进这个键，BIGINT 用户列因此开箱可用；
+/// 该键缺失/为 null 才落 `default_user_value`。
+/// moon 比 java 多一档 `operator`（夹在两者之间）：java 的 `fillSystemFields` 没有 operator 形参，
+/// operator 只能经 `apply_user_id` 这条路进来，而本栈的 `fill_context` 会先过一道列权限过滤
+/// （`apply_user_id` 不在业务表列清单里时会被丢掉），少这一档就会把真实操作人写成 `"system"`。
+fn resolve_user_value(
+  data : Map[String, Json],
+  operator : String,
+  cfg : SystemFields
+) -> Json {
+  match data.get("apply_user_id") {
+    Some(v) =>
+      match v {
+        Json::Null =>
+          if operator.is_empty() {
+            @json.string_of(cfg.default_user_value)
+          } else {
+            @json.string_of(operator)
+          }
+        _ => v
+      }
+    None =>
+      if operator.is_empty() {
+        @json.string_of(cfg.default_user_value)
+      } else {
+        @json.string_of(operator)
+      }
+  }
+}
+
+///|
+/// 系统字段填充（时间走 Clock 注入口，D-M0-3）。
+/// 与 java `fillSystemFields:211-224` 逐条同判据：
+/// - 插入＝create/update 四列 + `is_deleted` 全填，且**一律 putIfAbsent**（业务自带的时间/人不覆盖）；
+/// - 更新＝`update_time` 覆写（java 用 `put`，定稿时刻必须以本次为准）、`update_user` putIfAbsent；
+/// - 列名为 `None` ⇒ 该列不填。
+pub fn fill_system_fields_with(
+  cfg : SystemFields,
   data : Map[String, Json],
   operator : String,
   is_insert : Bool
 ) -> Unit {
   let now = @model.current_time_str()
+  let user = resolve_user_value(data, operator, cfg)
   if is_insert {
-    data["create_time"] = @json.string_of(now)
-    data["create_user"] = @json.string_of(operator)
+    match cfg.create_time_col {
+      Some(col) => if data.get(col) is None { data[col] = @json.string_of(now) }
+      None => ()
+    }
+    match cfg.create_user_col {
+      Some(col) => if data.get(col) is None { data[col] = user }
+      None => ()
+    }
+    match cfg.update_time_col {
+      Some(col) => if data.get(col) is None { data[col] = @json.string_of(now) }
+      None => ()
+    }
+    match cfg.update_user_col {
+      Some(col) => if data.get(col) is None { data[col] = user }
+      None => ()
+    }
+    match cfg.is_deleted_col {
+      Some(col) => if data.get(col) is None { data[col] = @json.number_of(0L) }
+      None => ()
+    }
+  } else {
+    match cfg.update_time_col {
+      Some(col) => data[col] = @json.string_of(now)
+      None => ()
+    }
+    match cfg.update_user_col {
+      Some(col) => if data.get(col) is None { data[col] = user }
+      None => ()
+    }
   }
-  data["update_time"] = @json.string_of(now)
-  data["update_user"] = @json.string_of(operator)
+}
+
+///|
+/// 缺省列名档（`create_time`/`create_user`/`update_time`/`update_user`/`is_deleted`）——
+/// 旧调用形状保持可用，列名不同的集成方走 `fill_system_fields_with`。
+pub fn fill_system_fields(
+  data : Map[String, Json],
+  operator : String,
+  is_insert : Bool
+) -> Unit {
+  fill_system_fields_with(SystemFields::make_default(), data, operator, is_insert)
 }
 
 

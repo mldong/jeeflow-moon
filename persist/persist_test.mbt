@@ -80,28 +80,50 @@ async test "persist: ARCHIVE writes once at end+agree, idempotent by instance (C
 ///|
 async test "persist: SYNC field permission filters read-only (C19) + state field" {
   let (_provider, writer, itc) = make_persist_fixture()
-  // apply 节点 field.PERMISSION_note=1（只读）→ SYNC 任务节点不写 note
+  // boss 节点声明 field.PERMISSION_f_note=1（只读）→ SYNC 的 UPDATE 腿不写穿 note。
+  // apply（发起那一趟）不声明权限：java `:130-131` 让首次 INSERT 恒全量。
   let flow =
     $|{"name": "p", "displayName": "P", "type": "approval", "persistMode": "SYNC", "relTableName": "expense", "postInterceptors": "com.mldong.jeeflow.persist.interceptor.PersistPostInterceptor",
     $|"nodes": [
-    $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"},
+    $|  {"id": "apply", "type": "snaker:task", "text": {"value": "A"}},
+    $|  {"id": "boss", "type": "snaker:task", "text": {"value": "B"},
     $|   "properties": {"field": {"PERMISSION_f_note": 1}}},
     $|  {"id": "end", "type": "snaker:end", "text": {"value": "E"}}
     $|], "edges": []}
   let vars : Map[String, Json] = Map([])
-  vars["f_note"] = @json.string_of("应被过滤")
+  vars["f_note"] = @json.string_of("发起时全量")
   vars["f_amount"] = @json.number_of(88L)
   let exec = make_persist_exec(flow, vars, state=10, node_id="apply")
   itc.intercept(exec)
   let row = writer.get_row_by_key("expense", "process_instance_id", exec.process_instance.instance_id)
   assert_true(row is Some(_))
   let r = row.unwrap()
-  // 只读字段不写穿（权限过滤，C19）
-  assert_true(r.get("note") is None)
+  // ⚠⚠ 本轮（issues/150 X6）改掉的一条**既有测试期望值**，逐字交代：
+  //   旧＝`assert_true(r.get("note") is None)` —— 首次 SYNC 那一趟也按节点权限过滤；
+  //   新＝首次那一趟全量写（`note` 落库）。
+  //   为什么旧的是错的，而不是实现错了：参考实现 java `PersistPostInterceptor.java:130-131` 传的是
+  //     extractFields(instance, !exists ? null : fieldPerm, !exists || taskNode, !exists || taskNode)
+  //   即权限过滤只作用于 UPDATE 腿，`!exists`（首次 INSERT＝java 的发起那一趟）恒不接权限。
+  //   本仓旧实现连自己的注释（"start 首次 INSERT 例外全量"）都没兑现。
+  //   C19「只读不写穿」的原意没有丢：它挪到下面第二趟（UPDATE 腿）钉住，且那才是 java 管的那一档。
+  //   入口侧另有 issues/150 ① 的 `filter_args_by_node_permission`（提交值在进变量之前就按当前
+  //   任务节点权限滤掉），真流程里只读字段根本进不了实例变量。
+  assert_eq(cell_of(r.get("note")), "发起时全量")
   // 可编辑字段正常写入
   assert_eq(@json.as_i64(r.get("amount").unwrap()).unwrap(), 88L)
   // 状态字段 apply_10
   assert_eq(@json.as_i64(r.get("apply_10").unwrap()).unwrap(), 10L)
+  // 第二趟＝换到 boss 节点（同一条链、另一个节点 ⇒ 层①标记不挡），该节点声明 note 只读：
+  // UPDATE 腿不覆盖 note，可编辑的 amount 照写（C19 在 java 管的这一档成立）
+  exec.current_node = exec.process_model.get_node("boss")
+  exec.process_instance.variables.insert("f_note", @json.string_of("只读不该覆盖"))
+  exec.process_instance.variables.insert("f_amount", @json.number_of(99L))
+  itc.intercept(exec)
+  let r2 = writer.get_row_by_key(
+    "expense", "process_instance_id", exec.process_instance.instance_id
+  ).unwrap()
+  assert_eq(cell_of(r2.get("note")), "发起时全量")
+  assert_eq(@json.as_i64(r2.get("amount").unwrap()).unwrap(), 99L)
 }
 
 
