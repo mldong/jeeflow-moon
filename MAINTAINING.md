@@ -525,7 +525,9 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
     **10-07 issues/146 换代后基线 = 37 条**：22 → 37 的差额全部来自 async 化（+8 unused_error_type = 只传播不 raise 的
     `notify_*`/`notify` 必须带闭集 raise 标注；+7 unused_async = 三条 `async_of_sync*`/`sync_listener` 桥与内存实现的
     空转 async 闭包，MoonBit 无抑制属性）。逐条归因与替代方案见 `docs/CHANGELOG.md` 0.1.28 一节与
-    `docs/spi-guide.md`「纯内存实现的便捷口」——**后续轮次以 37 为零新增基线，不是 22**）
+    `docs/spi-guide.md`「纯内存实现的便捷口」——**后续轮次以 37 为零新增基线，不是 22**；
+    10-08 issues/149 轮实测**仍是 37**：写侧六法 async 化没涨告警（`impl … with fn` 不重复写 `async` ⇒ 内存实现零改动），
+    新增的 `repository-mysql/repo/persist_writer.mbt` 与 `demo/cmd/t1_mysql/persist149.mbt` 两支本身零告警）
 2. `moon test --target wasm` 全绿（本地，T0）
 3. T1 `moon run --target wasm repository-mysql/smoke` ALL PASS（连真库；`SKIP_MYSQL=1`
    仅限无网开发机，发版机 fail）
@@ -536,6 +538,9 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
    `moon run` 的 stdout 末尾多一个 `
 `，见 §1「依赖版本」）
 8. 四模块 `moon.mod` version 一致且与 tag 一致；**升过 registry 依赖时，互依赖 pin 也要同步抬号**
+   （`bump-version.sh` 只改 version 不改 pin。枚数**会随模块间新增依赖而变**，别照抄上一轮的数：
+   10-08 issues/149 那代因 `repository-mysql`/`demo` 各加一枚 `jeeflow-persist` ⇒ 由 7 枚变 9 枚。
+   判"抬全没"用现读：`grep -rn 'jeeflow-.*@<旧号>' --include=moon.mod .` 必须零命中）
 9. 发版后 `bash scripts/pull_verify.sh` 绿（消费者视角，正负两支 + 依赖代次读数）
 ## 4. 代决策日志（decisions-log）
 
