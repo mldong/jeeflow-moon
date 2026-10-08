@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 0.1.29（2026-10-08）
+
+**issues/148：委托 `enabled` 写侧归一——脏值落 0 建单，不再抛成 `99999999 非法id: abc`。四模块同号（core / persist / repository-mysql / facade）；无破坏性 API 变化（消费方零改动）。**
+
+- 判据出处：`spec/06-facade.md` §4.5 条款 4「`enabled` 读写两侧分别定」——写侧**键缺失 ⇒ 1**、
+  `"abc"` / `""` / `"1x"` / JSON null 等**不可解析 ⇒ 0 且不得抛**（条款点名的反例正是"toInt 直接抛"，
+  即 Node 首版把门面打成 500 那种形状）；读侧仍**只有整数 1 生效**（issues/130 拍定，本轮未动）。
+- 参考实现逐字对照 Java `JeeflowFacade.java:1557-1560`（`enabledArg == null ? 1 : toInt(enabledArg, 0)`），
+  且 13 个集成壳对 `enabled` 零命中 ⇒ 这条归一属**引擎门面**职责，不该由宿主/壳兜。
+- 施工面：`facade/actions_ext.mbt` 新增 `surrogate_enabled_arg`，`processSurrogate/save` 新建臂与
+  `apply_surrogate_fields`（update 臂）共用；update 臂因此不再需要 raise 注解。
+- ⚠ 改了**一条既有测试的期望值**（`facade/surrogate_autoapply_test.mbt`）：原断言"脏 enabled 必须被门面拒绝建单"，
+  与条款 4 选的机制（落 0）相反；现改为"建单成功"，紧随其后的"脏值委托不产生任何待办"原样保留，防护意图未削。
+  新增 `facade/surrogate_enabled_test.mbt` 两支黑盒用例（脏值档不抛且不并入、缺省与串化 `'1'` 档都=1 且都并入）。
+- 栈内验证：`moon check` 0 errors；`moon test --target wasm` **406/406**；facade 包摘新件 102 / 带新件 104。
+- 触发场景：mldong-moon（第 14 栈）进「13 栈同一套」工作流门禁，L2-18 写侧那腿（`runner.py` 载荷
+  `enabled:"abc"`，跨栈 13 栈同一份，其余各栈都要求建单成功并回读 0）。
+
 ## 0.1.28（2026-10-07）
 
 **issues/146：供数/回调族 SPI 全量 async 化 ＋ 动态表元数据端口 ＋ 事件监听器 async（站内信落点成立）。**
