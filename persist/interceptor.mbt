@@ -265,7 +265,8 @@ fn PersistPostInterceptor::is_editable(
 
 ///|
 /// 状态字段：优先 {节点ID}_{状态码} 列，无则 {节点ID} 列（列探测过滤）
-fn PersistPostInterceptor::put_state_field(
+/// issues/149: writer 写侧已 async 化，本函数是全仓唯一在同步函数里调 writer 的位点 => 随本轮改 async（调用方 intercept_sync 本就是 async）。
+async fn PersistPostInterceptor::put_state_field(
   self : PersistPostInterceptor,
   table : String,
   data : Map[String, Json],

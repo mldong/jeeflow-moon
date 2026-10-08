@@ -1362,7 +1362,13 @@ async fn run() -> Unit raise {
   t1_f119_actor_remove_trim()
   t1_f120_facade_tx_atomic()
   t1_f121_facade_tx_not_ambient()
-  t1_f122_flow_swallows_raise()
+  t1_f122_flow_swallows_raise()
+  // issues/149 persist 真库四档（ARCHIVE/SYNC/同事务回滚/阳性对照）
+  t1_f149_archive_real_db()
+  t1_f149_sync_real_db()
+  t1_f149_persist_in_tx_rollback()
+  t1_f149_detached_positive_control()
+
   println("T1-F ALL PASS (wasm → 真机 MySQL)")
 }
 

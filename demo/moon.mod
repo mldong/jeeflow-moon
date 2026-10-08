@@ -7,6 +7,7 @@ repository = "https://github.com/mldong/jeeflow-moon"
 description = "jeeflow lightweight HTTP demo (:8092, run_forever, not published)"
 import {
   "mldong/jeeflow-facade@0.1.29",
+  "mldong/jeeflow-persist@0.1.29",
   "mldong/jeeflow-repository-mysql@0.1.29",
   "mldong/jeeflow-core@0.1.29",
   "moonbitlang/async@0.22.4",

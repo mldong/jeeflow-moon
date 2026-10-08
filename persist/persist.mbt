@@ -140,14 +140,24 @@ pub fn PersistMode::from_str(s : String) -> PersistMode? {
 
 ///|
 /// DynamicTableWriter trait（MoonBit：大接口 trait 形态）
+///
+/// issues/149：六法全部 async —— 本栈写真库只有 moonmysql 的 async 连接这一条路，同步形状
+/// 发不出查询（145-6 记的机理）。async 由 **trait 声明**承载：`impl … with fn` 处不重复写
+/// `async`（实测写了判 parse error），⇒ `InMemoryTableWriter` 六支 impl 与 `&DynamicTableWriter`
+/// 的六处调用点都不用改；唯一要跟着改的是同步函数里调 writer 的 `put_state_field`。
+/// 同形参照＝`core/spi/repository.mbt` 的 `ProcessRepository`（async trait ＋ repository-mysql 真库实现）。
+/// ⚠ 列探测（`columns`）归属裁决＝**留在 writer**：参考实现 java
+/// `persist/DynamicTableWriter.java:20` 的 `filterColumns` 就挂在 writer 上，而
+/// `IDynamicMetaProvider` 管字段权限/显示元数据——两者在 java 本就并存，故不并入
+/// `DynamicMetaProviderFns`（146 缺口二），也不留"同一件事两个端口"。
 pub(open) trait DynamicTableWriter {
-  fn insert(Self, String, Map[String, Json]) -> Int64 raise @error.JeeflowError
-  fn update(Self, String, Int64, Map[String, Json]) -> Unit raise @error.JeeflowError
-  fn exists(Self, String, Int64) -> Bool raise @error.JeeflowError
-  fn exists_by_key(Self, String, String, Int64) -> Bool raise @error.JeeflowError
-  fn update_by_key(Self, String, Map[String, Json], String, Int64) -> Unit raise @error.JeeflowError
+  async fn insert(Self, String, Map[String, Json]) -> Int64 raise @error.JeeflowError
+  async fn update(Self, String, Int64, Map[String, Json]) -> Unit raise @error.JeeflowError
+  async fn exists(Self, String, Int64) -> Bool raise @error.JeeflowError
+  async fn exists_by_key(Self, String, String, Int64) -> Bool raise @error.JeeflowError
+  async fn update_by_key(Self, String, Map[String, Json], String, Int64) -> Unit raise @error.JeeflowError
   // 探测实际存在的列（状态字段 {节点ID}_{状态码}/{节点ID} 过滤）；缺省全保留
-  fn columns(Self, String, Array[String]) -> Array[String] raise @error.JeeflowError
+  async fn columns(Self, String, Array[String]) -> Array[String] raise @error.JeeflowError
 }
 
 ///|
