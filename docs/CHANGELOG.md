@@ -1,5 +1,49 @@
 # CHANGELOG
 
+## 0.1.33（2026-10-08）
+
+**普查最后两条实打实的分叉收口：X10 `storageType` 五档（写侧 `MetaTableWriter` ＋ 读侧
+`MetaTableReader`）与 X9（自增主键检测 + 主键生成器配置口）；X12 按判定保持现状，但把实话写进
+`persist/README.md`。** 四模块同号；没有新增模块间依赖 ⇒ 接力 pin 枚数不变（现读 9 枚，判据是
+`grep -rn 'jeeflow-.*@<旧号>' --include=moon.mod` 零命中）。
+
+- **X10（spec/10 全篇）**：`FieldMeta` 从前只有列名/类型/权限，写侧因此只能"一键一列"，
+  表单里的对象/数组字段（级联、树选、明细表）根本没有落点。现补 `name`（表单字段名，缺省＝列名，
+  所以既有夹具行为不变）、`storage_type`（`StorageType` 五档，**名称/数字双解析**：`"JSON"`|`"json"`|`3`
+  都算 JSON 档，码值 1-5 与 mldong `SchemaFieldStorageTypeEnum` 逐字同序）、`expand_fields` /
+  `target_table` / `foreign_key`；`TableMeta` 补 `primary_key`（缺省 `id`）与
+  `find_field`/`find_field_by_column`。新增两支：
+  - `MetaTableWriter`（装饰器，与 java `MetaTableWriter.java:46-173` 同形状）——实现同一个
+    `DynamicTableWriter` trait，所以拦截器与 facade 的调用点一个字不用改，装配时把真库 writer 包一层。
+    EXPAND 把对象展成多列、JSON 把对象序列化成串、ONE2ONE/ONE2MANY 收进子表清单并在主表插入拿到
+    主键后**递归插入**（外键＝主表主键、`apply_user_id` 自主表 putIfAbsent 继承，spec/10 §5 那条
+    "子表系统用户字段"）；**更新档子表不参与**（spec/10 §5 中途更新）；未被任何字段消费的键
+    （上下文/状态列/系统列）直通；表没配元数据 ⇒ 整批委托基础 writer（spec/10 §3 零破坏）。
+  - `MetaTableReader`（spec/10 §6）——`read_by_process_instance` 按同一份元数据反组装：EXPAND
+    还原成对象且**展开列不再顶层平铺**、JSON 回解、子表还原成对象/数组、未消费列小写原样带出、
+    无元数据原样返回行。`as_biz_data_reader()` 产出的闭包与 `Ctx.biz_data_reader` 同签名
+    ⇒ 宿主一行接线，facade 的 bizData 出口与 issues/137 的泄漏纪律不动（spec/12 §12.1
+    「钉行为不钉机制」）。
+  - 读侧端口 `DynamicTableReaderFns` 的入参打平成**一个** `TableKeyQuery`（表/列/值）而不是三个：
+    本栈的 `async` 闭包体内不 await 就判 `unused_async`，而 `@spi` 的同步→异步桥只有 1/2 参两档，
+    单参数才接得上 ⇒ 纯内存实现（含 T0 夹具）经桥注册、零新增告警。这是形状选择，不是省事。
+- **X9（java `JdbcDynamicTableWriter:117-131,255-257`）**：`MysqlTableWriter` 从前只要表有 `id`
+  列且 data 没给值就一律塞雪花。现在先探 `information_schema.COLUMNS.EXTRA` 的 `auto_increment`：
+  自增列**不注入**、交给库，插完在同一条连接上读 `LAST_INSERT_ID()`（换连接读不到，这是会话变量）；
+  非自增列走新增的 `with_pk_generator` 口（java `setPrimaryKeyGenerator` 的同位），没配仍回落雪花——
+  java 那一档是抛清晰错误，本栈不抛（会把所有没配生成器的既有集成方打挂），差异写进注释不藏。
+- **X12**：判定"本栈结构上不可能犯"保持不实现，但把这条判据的触发条件写进 `persist/README.md`
+  （哪天 `PersistPostInterceptor` 的字段改成可选，就得回来补 spec/09 §4.6 的"未注入静默跳过 vs 显性报错"）。
+
+**读数**：T0 `moon test --target wasm` **424/424**（新增 4 支 X10 分腿：双解析、写侧五档、
+读侧反组装、无元数据回落＋更新档不动子表）；`moon check` **37 warnings, 0 errors**（告警基线不动）；
+T1-F `moon run --target wasm demo/cmd/t1_mysql`（160 真库）**T1-F ALL PASS**，新增 F149F 七格
+（EXPAND 两列、JSON 落串、ONE2MANY 两行外键对齐、`apply_user_id` 不凭空造、AUTO_INCREMENT 返回库的
+连续小号、data 显式主键原样用）。
+
+**跨栈现状（不粉饰）**：spec/10 §7 的发布形态表只列 Java/Go/Python/Node；rust/php/csharp 至今零实现，
+本栈从这一版起是**第四个真做出来的语言**。差别写在案上，不冒充八栈齐平。
+
 ## 0.1.32（2026-10-08）
 
 **persist 收口普查里的 X3／X4／X5／X6／X8（＋ X7 的文档实话）：列匹配默认宽松、系统列按 spec 的优先级与

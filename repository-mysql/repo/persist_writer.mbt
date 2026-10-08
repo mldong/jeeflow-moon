@@ -18,12 +18,17 @@ pub(all) struct MysqlTableWriter {
   /// 列匹配档（issues/151 X3，java `setStrictColumnMatch` 同位）：`false`＝缺省宽松
   /// （驼峰↔下划线归一），`true`＝忽略大小写的逐字相等。
   strict : Bool
+  /// 主键生成器（issues/150 X9，java `setPrimaryKeyGenerator` 同位）：入参表名、返回主键值；
+  /// `None`＝用本栈缺省的雪花 id（`next_snowflake_id`，与仓储写 `wf_*` 用的是同一个生成器）。
+  /// 之所以留这个口而不是硬写雪花：第三方业务表的主键可能是别的形状（uuid 转数字、号段表、
+  /// 集成方自己的雪花 worker），java 侧集成方就是一行 `setPrimaryKeyGenerator(IdWorker::next)`。
+  pk_generator : ((String) -> Int64)?
 }
 
 ///|
 /// 同事务装配口：一个请求＝一个仓储实例，writer 从它派生即共享该实例的事务槽
 pub fn MysqlTableWriter::from_repo(repo : MysqlRepository) -> MysqlTableWriter {
-  MysqlTableWriter::{ repo, strict: false }
+  MysqlTableWriter::{ repo, strict: false, pk_generator: None }
 }
 
 ///|
@@ -33,7 +38,17 @@ pub fn MysqlTableWriter::with_strict(
   self : MysqlTableWriter,
   strict : Bool
 ) -> MysqlTableWriter {
-  MysqlTableWriter::{ repo: self.repo, strict }
+  MysqlTableWriter::{ repo: self.repo, strict, pk_generator: self.pk_generator }
+}
+
+///|
+/// 自定义主键生成器（java `setPrimaryKeyGenerator` 的同位，"能配就正"的最小口）。
+/// 只影响「主键列存在、data 没给值、且该列不是 AUTO_INCREMENT」那一档。
+pub fn MysqlTableWriter::with_pk_generator(
+  self : MysqlTableWriter,
+  pk_generator : (String) -> Int64
+) -> MysqlTableWriter {
+  MysqlTableWriter::{ repo: self.repo, strict: self.strict, pk_generator: Some(pk_generator) }
 }
 
 ///|
@@ -41,7 +56,9 @@ pub fn MysqlTableWriter::with_strict(
 /// ⚠ 集成方拿它装配 persist 就等于放弃"业务表写与 wf_* 同事务"，别当默认口用。
 pub fn MysqlTableWriter::detached(repo : MysqlRepository) -> MysqlTableWriter {
   MysqlTableWriter::{
-    repo: MysqlRepository::{ config: repo.config, tx: Ref(None) }, strict: false
+    repo: MysqlRepository::{ config: repo.config, tx: Ref(None) },
+    strict: false,
+    pk_generator: None,
   }
 }
 
@@ -75,6 +92,41 @@ async fn MysqlTableWriter::real_columns(
     }
   }
   out
+}
+
+///|
+/// 自增主键列（issues/150 X9，java `loadTableMeta:255-257` 读 `EXTRA` 的同一条判据）。
+/// 只在「主键列存在且 data 没给值」时才多问一次——不给每张表都加一趟元数据查询。
+async fn MysqlTableWriter::auto_increment_column(
+  self : MysqlTableWriter,
+  conn : @client.MysqlConn,
+  table : String
+) -> String? raise @error.JeeflowError {
+  let _ = self
+  let rows = q(
+    conn,
+    "SELECT COLUMN_NAME AS cname FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND UPPER(EXTRA) LIKE '%AUTO_INCREMENT%' LIMIT 1",
+    [@moondb.Text(table)],
+  )
+  match rows {
+    [] => None
+    _ =>
+      match row_text(rows[0], "cname", "") {
+        "" => None
+        c => Some(c)
+      }
+  }
+}
+
+///|
+/// 自增列刚生成的主键（java `insert:148-150` 走 `getGeneratedKeys()`；本栈同义形状）。
+/// 必须用**同一条连接**读，否则 `LAST_INSERT_ID()` 是会话变量、换连接就取不到。
+async fn last_insert_id(conn : @client.MysqlConn) -> Int64 raise @error.JeeflowError {
+  let rows = q(conn, "SELECT LAST_INSERT_ID() AS c", [])
+  match rows {
+    [] => 0L
+    _ => row_i64(rows[0], "c")
+  }
 }
 
 ///|
@@ -194,22 +246,44 @@ pub impl @persist.DynamicTableWriter for MysqlTableWriter with fn insert(self, t
   let real = self.real_columns(conn, table)
   let (cols, vals) = self.collect(real, data, skip=None)
   let mut new_id : Int64 = 0L
-  // 主键列（issues/151 X3 之后按列匹配档探测，不再只认字面 `id`）：
-  // data 已给值就用它，缺值走本栈雪花（规范表无 AUTO_INCREMENT，见 X9 那条留档）。
+  // 主键档（issues/150 X9，java `insert:117-131` 同位）：
+  //   data 已给值 → 用它；
+  //   该列是 AUTO_INCREMENT → **不注入**，交给库自增，插完在同一条连接上读 LAST_INSERT_ID()
+  //     （旧形状一律塞雪花：能写进去，但把自增序列跳过去了，第三方"id AUTO_INCREMENT"表
+  //      拿到的主键不是它自己那套连续号）；
+  //   非自增 → 用配置的主键生成器，没配则回落本栈雪花（mldong 规范表主键统一 id BIGINT＋雪花）。
+  //   java 这一档是「非自增且未配生成器 ⇒ 抛清晰错误」；本栈不抛，因为雪花是本栈既成缺省
+  //   （149 之前就是这样），抛会把所有没配生成器的既有集成方打挂——差异写在这里，不藏。
+  let mut id_from_db = false
   match @persist.match_column(real, "id", strict=self.strict) {
+    None => ()
     Some(id_col) =>
       match @persist.find_data_key(data, id_col, strict=self.strict) {
         Some(k) => new_id = json_as_i64_or(data[k], 0L)
         None => {
-          new_id = next_snowflake_id()
-          cols.push(id_col)
-          vals.push(@moondb.Int64(new_id))
+          let auto_col = self.auto_increment_column(conn, table)
+          let is_auto = match auto_col {
+            Some(a) => @persist.column_names_equal(a, id_col)
+            None => false
+          }
+          if is_auto {
+            id_from_db = true
+          } else {
+            let gen_id = match self.pk_generator {
+              Some(g) => g(table)
+              None => next_snowflake_id()
+            }
+            new_id = gen_id
+            cols.push(id_col)
+            vals.push(@moondb.Int64(gen_id))
+          }
         }
       }
-    None => ()
   }
   if cols.is_empty() {
     self.repo.close_conn(conn)
+    // 一张表除了主键没有任何可写列（java 在这一档 return null）：本栈按"配置错误显性暴露"报，
+    // 幂等腿拿不到 0L 静默通过 ⇒ 集成方至少知道写空了。
     raise @error.Business("persist 写侧无可写入列: \{table}")
   }
   let ph = marks(cols.length())
@@ -218,6 +292,9 @@ pub impl @persist.DynamicTableWriter for MysqlTableWriter with fn insert(self, t
     "INSERT INTO `\{table}` (\{qualified(cols)}) VALUES (\{ph})",
     vals,
   )
+  if id_from_db {
+    new_id = last_insert_id(conn)
+  }
   self.repo.close_conn(conn)
   new_id
 }

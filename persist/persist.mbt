@@ -2,6 +2,64 @@
 // DynamicTableWriter + PersistPostInterceptor（ARCHIVE/SYNC，spec/09）+ 元数据 + 表名安全。
 
 ///|
+/// 存储类型（issues/151 X10／spec/10 §2.1）：**名称/数字双解析**，对齐 mldong
+/// `dev_schema_field` 的 1-5 与 java `StorageType.fromValue`。
+pub(all) enum StorageType {
+  Normal
+  Json
+  Expand
+  One2One
+  One2Many
+} derive(Eq, Debug)
+
+///|
+/// 双解析（spec/10 §2.1「string | number，缺省 NORMAL」）：
+/// - 数字 1..5 → 五档；其它数字/非数字 → Normal（不报错，spec/09 §4.6 的"未知值不炸"同档）
+/// - 字符串大小写不敏感，允许 `"JSON"`/`"json"`；数字写成字符串也认；未知名 → Normal
+fn parse_i64_opt(s : String) -> Int64? {
+  try {
+    Some(@string.parse_int64(s))
+  } catch {
+    _ => None
+  }
+}
+
+///|
+fn storage_type_of_code(n : Int64) -> StorageType {
+  match n {
+    2L => Expand
+    3L => Json
+    4L => One2One
+    5L => One2Many
+    _ => Normal
+  }
+}
+
+///|
+pub fn storage_type_of(v : Json) -> StorageType {
+  match v {
+    Json::String(s) =>
+      match s.to_upper() {
+        "JSON" => Json
+        "EXPAND" => Expand
+        "ONE2ONE" => One2One
+        "ONE2MANY" => One2Many
+        "NORMAL" => Normal
+        _ =>
+          match parse_i64_opt(s) {
+            Some(n) => storage_type_of_code(n)
+            None => Normal
+          }
+      }
+    _ =>
+      match @json.as_i64(v) {
+        Some(n) => storage_type_of_code(n)
+        None => Normal
+      }
+  }
+}
+
+///|
 /// 字段元数据（动态表列）
 pub(all) struct FieldMeta {
   mut column_name : String
@@ -10,10 +68,30 @@ pub(all) struct FieldMeta {
   mut nullable : Bool
   mut default_value : String?
   mut permission : Int // 1 只读 / 2 可编辑 / 3 隐藏
+  /// 表单字段名（spec/10 §2.1：实例变量 `f_` 去前缀后的名字）。
+  /// 缺省＝`column_name`——所以只登记列名的旧用法（149/150 那几轮的夹具）行为一字不变。
+  mut name : String
+  /// 存储类型（缺省 Normal＝直写列）
+  mut storage_type : StorageType
+  /// EXPAND 专用：子字段名 → 表列名
+  mut expand_fields : Map[String, String]
+  /// ONE2ONE/ONE2MANY 专用：子表表名
+  mut target_table : String
+  /// ONE2ONE/ONE2MANY 专用：子表外键列（空＝回落主表 `primary_key`）
+  mut foreign_key : String
 }
 
 ///|
-pub fn FieldMeta::make(column_name : String, column_type : String, display_name : String) -> FieldMeta {
+pub fn FieldMeta::make(
+  column_name : String,
+  column_type : String,
+  display_name : String,
+  name? : String = "",
+  storage_type? : StorageType = Normal,
+  expand_fields? : Map[String, String] = Map([]),
+  target_table? : String = "",
+  foreign_key? : String = ""
+) -> FieldMeta {
   {
     column_name,
     column_type,
@@ -21,6 +99,11 @@ pub fn FieldMeta::make(column_name : String, column_type : String, display_name 
     nullable: true,
     default_value: None,
     permission: 2,
+    name: if name.is_empty() { column_name } else { name },
+    storage_type,
+    expand_fields,
+    target_table,
+    foreign_key,
   }
 }
 
@@ -39,11 +122,37 @@ pub(all) struct TableMeta {
   mut table_name : String
   mut display_name : String
   mut fields : Array[FieldMeta]
+  /// 主键列名（spec/10 §2.1 顶层 `primaryKey`，缺省 `id`）：
+  /// ONE2ONE/ONE2MANY 的子表外键缺省回落它，读侧也按它取主表主键值。
+  mut primary_key : String
 }
 
 ///|
-pub fn TableMeta::make(table_name : String, display_name : String) -> TableMeta {
-  { table_name, display_name, fields: [] }
+pub fn TableMeta::make(table_name : String, display_name : String, primary_key? : String = "id") -> TableMeta {
+  { table_name, display_name, fields: [], primary_key }
+}
+
+///|
+/// 按**表单字段名**找字段（宽松列名匹配，issues/151 X3 那枚尺子）。
+/// 写侧用它判断"这个 data 键是不是已被某个字段消费"（java `findField:74`）。
+pub fn TableMeta::find_field(self : TableMeta, key : String) -> FieldMeta? {
+  for f in self.fields {
+    if column_names_equal(key, f.name) || column_names_equal(key, f.column_name) {
+      return Some(f)
+    }
+  }
+  None
+}
+
+///|
+/// 按**表列名**找字段（读侧判断某列是否已被消费，java `findFieldByColumn:74`）
+pub fn TableMeta::find_field_by_column(self : TableMeta, column : String) -> FieldMeta? {
+  for f in self.fields {
+    if column_names_equal(column, f.column_name) {
+      return Some(f)
+    }
+  }
+  None
 }
 
 ///|
@@ -333,6 +442,8 @@ pub fn fill_system_fields(
 // 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。
 pub extend PersistMode with Eq::{equal, not_equal}
 pub extend PersistMode with Debug::{to_repr}
+pub extend StorageType with Eq::{equal, not_equal}
+pub extend StorageType with Debug::{to_repr}
 
 
 ///|

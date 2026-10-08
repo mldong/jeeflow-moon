@@ -5,9 +5,11 @@ import {
   "mldong/jeeflow-core/spi" @spi,
   "mldong/jeeflow-core/json" @json,
   "mldong/jeeflow-core/error" @error,
+  "moonbitlang/core/string" @string,
 }
 
 import {
   "mldong/jeeflow-persist" @persist,
+  "mldong/jeeflow-core/spi" @spi,
   "moonbitlang/async",
 } for "test"

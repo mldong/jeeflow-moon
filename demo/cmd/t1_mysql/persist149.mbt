@@ -530,3 +530,112 @@ async fn t1_f149_loose_column_match() -> Unit raise {
   clean_9x(repo)
   println("PASS F149E writer 腿列匹配（宽松/严格两档 + 条件列 + 列探测）真库成立")
 }
+
+// ── F149F 元数据五档与自增主键（issues/151 X10 ＋ issues/150 X9）──
+
+///|
+/// 这一支绕开拦截器，直接把 `MetaTableWriter` 接在真库 writer 上：
+/// EXPAND 展成两张真列、JSON 档落串、ONE2MANY 递归插子表（外键＝主表主键、apply_user_id 继承），
+/// 并验 AUTO_INCREMENT 主键交库自增（X9：旧形状给每张有 `id` 列的表都塞雪花）。
+async fn t1_f149_meta_storage_types() -> Unit raise {
+  println("T1-F149F 元数据五档真库落点（EXPAND/JSON/ONE2MANY）+ AUTO_INCREMENT 交库自增...")
+  let repo = @repo.MysqlRepository::from_env()
+  set_sql(repo, "DROP TABLE IF EXISTS t149_biz_meta", [])
+  set_sql(repo, "DROP TABLE IF EXISTS t149_biz_meta_item", [])
+  set_sql(repo, "DROP TABLE IF EXISTS t149_biz_auto", [])
+  set_sql(
+    repo,
+    "CREATE TABLE t149_biz_meta (id BIGINT NOT NULL, process_instance_id BIGINT, apply_user_id VARCHAR(64), merchant_name VARCHAR(64), province VARCHAR(64), detail_addr VARCHAR(64), extra TEXT, PRIMARY KEY (id))",
+    [],
+  )
+  set_sql(
+    repo,
+    "CREATE TABLE t149_biz_meta_item (id BIGINT NOT NULL, order_id BIGINT, apply_user_id VARCHAR(64), item_name VARCHAR(64), PRIMARY KEY (id))",
+    [],
+  )
+  set_sql(
+    repo,
+    "CREATE TABLE t149_biz_auto (id BIGINT NOT NULL AUTO_INCREMENT, note VARCHAR(64), PRIMARY KEY (id))",
+    [],
+  )
+  clean_9x(repo)
+  let provider = @persist.InMemoryMetaProvider::new()
+  let meta = @persist.TableMeta::make("t149_biz_meta", "T149F 主表")
+  meta.add_field(@persist.FieldMeta::make("process_instance_id", "BIGINT", "实例ID"))
+  meta.add_field(@persist.FieldMeta::make("apply_user_id", "VARCHAR(64)", "申请人"))
+  meta.add_field(@persist.FieldMeta::make("merchant_name", "VARCHAR(64)", "商户"))
+  meta.add_field(@persist.FieldMeta::make(
+    "address", "VARCHAR(64)", "地址",
+    storage_type=@persist.Expand,
+    expand_fields=Map([("province", "province"), ("detail", "detail_addr")]),
+  ))
+  meta.add_field(@persist.FieldMeta::make("extra", "TEXT", "附加", storage_type=@persist.Json))
+  meta.add_field(@persist.FieldMeta::make(
+    "items", "VARCHAR(64)", "明细",
+    storage_type=@persist.One2Many,
+    target_table="t149_biz_meta_item",
+    foreign_key="order_id",
+  ))
+  provider.register(meta)
+  let base = @repo.MysqlTableWriter::from_repo(repo)
+  let mw = @persist.MetaTableWriter::make(base, provider.as_provider())
+  let d : Map[String, Json] = Map([])
+  d["processInstanceId"] = @json.number_of(990995L)   // 幂等键也走宽松列匹配（X3 那一枚尺子）
+  d["merchantName"] = @json.string_of("甲公司")
+  d["address"] = @json.object_of([
+    ("province", @json.string_of("浙")),
+    ("detail", @json.string_of("A 路 1 号")),
+  ])
+  d["extra"] = @json.object_of([("tag", @json.string_of("urgent"))])
+  d["items"] = @json.array_of([
+    @json.object_of([("itemName", @json.string_of("行一"))]),
+    @json.object_of([("itemName", @json.string_of("行二"))]),
+  ])
+  let pk = mw.insert("t149_biz_meta", d)
+  check(pk != 0L, "F149F 主表插入返回主键")
+  check_eq(
+    select_cell(
+      repo,
+      "SELECT CONCAT(province, '/', detail_addr) AS v FROM t149_biz_meta WHERE process_instance_id = 990995",
+      [],
+      "v",
+    ),
+    "浙/A 路 1 号",
+    "F149F EXPAND：address 对象落成两张真列（spec/10 §5）",
+  )
+  check(
+    select_cell(
+      repo,
+      "SELECT extra AS v FROM t149_biz_meta WHERE process_instance_id = 990995",
+      [],
+      "v",
+    ).contains("urgent"),
+    "F149F JSON：对象序列化成串写进 TEXT 列",
+  )
+  check_eq(
+    select_cell(repo, "SELECT COUNT(*) AS c FROM t149_biz_meta_item WHERE order_id = ?", [@moondb.Int64(pk)], "c"),
+    "2",
+    "F149F ONE2MANY：两条子表行，外键＝主表主键",
+  )
+  check_eq(
+    select_cell(repo, "SELECT COUNT(*) AS c FROM t149_biz_meta_item WHERE apply_user_id IS NOT NULL", [], "c"),
+    "0",
+    "F149F 边界：本次 data 里没有 apply_user_id ⇒ 子表也不该凭空有（继承只继承主表**已有**的那个键）",
+  )
+  // X9：AUTO_INCREMENT 主键交库自增——旧形状给有 `id` 列的表一律塞雪花（~1.9e18），
+  // 这里必须拿到库自己的小号；同时"表里没有任何可写列"以外的路径都还照常报清晰错。
+  let ad : Map[String, Json] = Map([])
+  ad["note"] = @json.string_of("auto-inc")
+  let auto_id = base.insert("t149_biz_auto", ad)
+  check(auto_id > 0L && auto_id < 1000000L, "F149F AUTO_INCREMENT 主键交库（返回的是库给的连续号，不是雪花）：\{auto_id}")
+  // 阳性对照：同一张自增表，data 显式给了 id ⇒ 用 data 的，不抢自增值
+  let gd : Map[String, Json] = Map([])
+  gd["id"] = @json.number_of(424242L)
+  gd["note"] = @json.string_of("given")
+  check(base.insert("t149_biz_auto", gd) == 424242L, "F149F data 已给主键 ⇒ 原样用（不注入不自增）")
+  set_sql(repo, "DROP TABLE t149_biz_meta", [])
+  set_sql(repo, "DROP TABLE t149_biz_meta_item", [])
+  set_sql(repo, "DROP TABLE t149_biz_auto", [])
+  clean_9x(repo)
+  println("PASS F149F 元数据五档写侧 + 自增主键判定真库成立")
+}

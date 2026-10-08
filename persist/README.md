@@ -60,6 +60,22 @@ Process definition drives everything:
   (a business-supplied `create_time` survives); the update leg overwrites `update_time` only.
   User columns read `apply_user_id` first (= the flow's operator), then the current operator,
   then the configured fallback (default `"system"`) — spec/09 §3, matching the Java reference.
+- **Storage types (spec/10)** — a field's `storageType` (name or code 1-5) drives how it lands:
+  `NORMAL` straight to a column, `EXPAND` one object → several columns (`expandFields` maps
+  sub-field → column), `JSON` object/array → a JSON string column, `ONE2ONE`/`ONE2MANY` → a
+  recursive sub-table insert/update keyed by the parent's primary key (inheriting the parent's
+  `apply_user_id`). Sub-tables never participate in mid-flow updates. Wrap any writer with
+  `MetaTableWriter::make(base, provider)`; read the same shape back with
+  `MetaTableReader::make(provider, reader_fns)` whose `as_biz_data_reader()` slots straight into
+  `Ctx::with_biz_data_reader`.
+- **Auto-increment / pk generation** — a missing `id` is filled by the configured
+  `with_pk_generator` (or this stack's snowflake by default); `AUTO_INCREMENT` columns are left
+  to the database and read back via `LAST_INSERT_ID()` on the same connection.
+
+> **X12 的实话**：`PersistPostInterceptor` 的两个字段都是必填，所以 java `:83-87`
+> 那一档「未注入 writer ⇒ `ServiceContext.find` 兜底、再找不到就静默跳过」在本栈**结构上不存在**。
+> 这不是免检：哪天把它改成可选字段或可选注册，spec/09 §4.6 的「未注入静默跳过 vs 显性报错」判据
+> 必须连着补回来（普查 `jeeflow-hub/issues/151` 的 X12 行记着这一句）。
 
 ## License
 

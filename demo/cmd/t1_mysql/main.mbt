@@ -1369,6 +1369,7 @@ async fn run() -> Unit raise {
   t1_f149_persist_in_tx_rollback()
   t1_f149_detached_positive_control()
   t1_f149_loose_column_match()
+  t1_f149_meta_storage_types()
 
   println("T1-F ALL PASS (wasm → 真机 MySQL)")
 }
