@@ -633,7 +633,7 @@ fn rel_fallback_name(meta : Json) -> String? {
 }
 
 ///|
-pub async fn[R : @spi.ProcessRepository, E] Facade::high_light(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
+pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::high_light(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let id = match arg_i64(args, "id") {
     Some(v) => v
     None => raise @error.Business("缺少id参数")
@@ -664,8 +664,12 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::high_light(self : Facade[R, 
       // 同上：坏定义 ⇒ 进度/路径两档都留空（旧 Err ⇒ ()）
       try {
         let model = @parser.parse_model(d.content)
-        build_node_progress(model, history, node_progress)
-        collect_path(model, model.get_start(), active, history_nodes, edges, inst.variables, history)
+        self.build_node_progress(model, history, node_progress)
+        // issues/153②：路径补全多带 `inst`/`d` 两参——决策边求值要 Execution（实例变量之外的
+        // 前置任务变量取自历史任务，实例/定义是 `Execution::make` 的必需件），求值口＝引擎那一个。
+        self.collect_path(
+          model, model.get_start(), active, history_nodes, edges, inst.variables, history, inst, d
+        )
       } catch {
         _ => ()
       }
@@ -693,7 +697,13 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::high_light(self : Facade[R, 
 }
 
 ///|
-fn build_node_progress(
+/// 节点成员进度（issues/153③ · spec 06 §4.6 义务 3）：由包内自由函数抬成 `Facade` 方法
+/// 并改 `async`——成员 `name` 要经 `IUserProvider`（本栈形态＝`ctx.user_provider` 那一支
+/// async 闭包 SPI）解析，自由函数拿不到 `self.engine`，同步函数调不了 async SPI。
+/// 抬成方法/改 async 都是**为接通既有 SPI 口**，不是新增能力：判据、名册来源
+/// （`operatorList_{node}` 优先 ⇒ actor_ids 并集）、会签 `type`、done/active 判定逐字未动。
+async fn[R, E] Facade::build_node_progress(
+  self : Facade[R, E],
   model : @parser.ProcessModel,
   history : Array[@model.ProcessTask],
   out : Json
@@ -755,8 +765,27 @@ fn build_node_progress(
     for id in members {
       let m = @json.empty_object()
       @json.obj_set(m, "id", @json.string_of(id))
-      // name 解析由调用方注入 user provider 前�先空串（前端降级显示 id）
-      @json.obj_set(m, "name", @json.string_of(""))
+      // issues/153③（spec 06 §4.6 义务 3）：name **必须**经 IUserProvider 解析，只有查不到才空串。
+      // 本轮之前这里是硬编码空串，上一行注释写着「由调用方注入 user provider 前先空串」——
+      // 但**不存在那个调用方**（`high_light` 直接把 model/history 递进来，从未注入过 provider），
+      // 于是 SPI 注册了也永远出空串，违反义务 3（spec 明写"注册了但这一路没接"就是违约）。
+      // 接线姿势照本包既有唯一一处 user_provider 用法 `actions_main.mbt:685-696`（candidatePage），
+      // 判据对齐 java `JeeflowFacade.java:689-697` `resolveUserName`：
+      // provider 未注册 ⇒ 空串（这才是 spec 许可的降级档）；注册了但查不到 / realName 为空 /
+      // 解析报错 ⇒ 空串（前端降级显示 id）。
+      let member_name = match self.engine.context().user_provider {
+        Some(get_user) =>
+          try {
+            match (get_user)(id) {
+              Some(u) => u.real_name()
+              None => ""
+            }
+          } catch {
+            _ => ""
+          }
+        None => ""
+      }
+      @json.obj_set(m, "name", @json.string_of(member_name))
       let mut done = false
       for t in ts {
         if t.task_state == 20 && t.actor_ids.contains(id) {
@@ -784,38 +813,101 @@ fn build_node_progress(
 }
 
 ///|
+/// 决策边求值入参（issues/153② · spec 06 §4.6 义务 2）：args ＝ 实例变量 ∪ 决策节点
+/// **前置任务**变量。逐字对齐 go `facade/facade.go:1269-1297`（`evalDecisionExpr`）与
+/// java `JeeflowFacade.java:735-746`：取决策节点**第一条入边**的源节点，在历史任务里找
+/// 第一个 `task_name` 命中的行，把它的任务变量并进实例变量（前置任务变量覆盖同名实例变量）。
+fn decision_args(
+  model : @parser.ProcessModel,
+  decision : @parser.NodeModel,
+  instance_vars : @json.FlowData,
+  history_tasks : Array[@model.ProcessTask]
+) -> @json.FlowData {
+  let args = @json.FlowData::new()
+  args.merge(instance_vars)
+  match model.get_input_edges(decision.id).get(0) {
+    Some(in_edge) => {
+      let src = in_edge.source_node_id
+      for t in history_tasks {
+        if t.task_name == src {
+          args.merge(t.variables)
+          break
+        }
+      }
+    }
+    None => ()
+  }
+  args
+}
+
+///|
 /// 路径补全：start 沿 outputs 递归，遇活跃节点停止；决策节点表达式求值只收 true 边（C14）
-fn collect_path(
+///
+/// issues/153②（spec 06 §4.6 义务 2）：**本轮之前这里完全不滤**——决策节点的每条出边一律收，
+/// 于是未走的分支也被点亮（`scripts/action-manifest.json:148` 早就承诺了"只收 true 边"，
+/// 是代码没做到，不是契约没写）。现按 go `facade.go:1233-1270` `collectPath` 的形状求值后过滤：
+/// · **带表达式**的出边先求值，判 false 的边「边名与目标节点都不收」⇒ 整条分支不亮；
+/// · **不带表达式**的出边照收（java `JeeflowFacade.java:707-710` 的
+///   `node instanceof DecisionModel && isNotEmpty(tm.getExpr()) && !eval(...)` 同判据）。
+/// 求值口＝`Engine::evaluate_expression`（引擎路由决策边那一支，同一个口不分两套）；
+/// 求值报错按 go `facade.go:1293-1296`「err ⇒ false」判，不让一次求值失败把整份高亮清空
+/// （故本函数不 raise，错误在这一格就地收敛）。
+/// 由包内自由函数抬成 `Facade` 方法：求值口在 `self.engine` 上，`collect_path` 需要它。
+fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::collect_path(
+  self : Facade[R, E],
   model : @parser.ProcessModel,
   node : @parser.NodeModel?,
   active : Array[String],
   history : Array[String],
   edges : Array[String],
   instance_vars : @json.FlowData,
-  history_tasks : Array[@model.ProcessTask]
+  history_tasks : Array[@model.ProcessTask],
+  inst : @model.ProcessInstance,
+  flow_define : @model.ProcessDefine
 ) -> Unit {
   match node {
     Some(n) => {
+      let is_decision = n.node_type is @parser.Decision
       for tm in model.get_output_edges(n.id) {
-        let edge_name = match tm.label {
-          Some(l) => Some(l)
-          None => Some(tm.id)
-        }
-        match edge_name {
-          Some(en) => if !edges.contains(en) { edges.push(en) }
-          None => ()
-        }
-        let next = model.get_target_node(tm)
-        match next {
-          Some(nx) => {
-            if !active.contains(nx.id) && !history.contains(nx.id) {
-              history.push(nx.id)
+        // 决策节点的带表达式出边：求值 false ⇒ 这一支没实际执行，边名与目标节点都不收
+        let take = match tm.expr() {
+          Some(expr) =>
+            if !is_decision || expr.is_empty() {
+              true
+            } else {
+              let merged = decision_args(model, n, instance_vars, history_tasks)
+              let exec = @exec.Execution::make(inst, model, flow_define, inst.operator, merged)
+              try {
+                (self.engine).evaluate_expression(expr, exec)
+              } catch {
+                _ => false
+              }
             }
-            if !active.contains(nx.id) {
-              collect_path(model, Some(nx), active, history, edges, instance_vars, history_tasks)
-            }
+          None => true
+        }
+        if take {
+          let edge_name = match tm.label {
+            Some(l) => Some(l)
+            None => Some(tm.id)
           }
-          None => ()
+          match edge_name {
+            Some(en) => if !edges.contains(en) { edges.push(en) }
+            None => ()
+          }
+          let next = model.get_target_node(tm)
+          match next {
+            Some(nx) => {
+              if !active.contains(nx.id) && !history.contains(nx.id) {
+                history.push(nx.id)
+              }
+              if !active.contains(nx.id) {
+                self.collect_path(
+                  model, Some(nx), active, history, edges, instance_vars, history_tasks, inst, flow_define
+                )
+              }
+            }
+            None => ()
+          }
         }
       }
     }

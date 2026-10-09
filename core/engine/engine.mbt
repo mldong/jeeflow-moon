@@ -521,7 +521,14 @@ fn[R, E] Engine::evaluate_decision(self : Engine[R, E], _exec : @exec.Execution,
 }
 
 ///|
-fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::evaluate_expression(self : Engine[R, E], expr : String, exec : @exec.Execution) -> Bool raise @error.JeeflowError {
+/// 决策/条件表达式求值的**唯一口**（issues/153② · spec 06 §4.6 义务 2）：
+/// 门面 `highLight` 的路径补全与引擎路由决策边（本文件选边处）必须走这一支，
+/// 两处判据不得各写一套——否则画布点亮的路径和令牌真正走过的路径会分叉。
+/// ⚠️ 本栈两档：SPI `expression_evaluator` 注册了走 SPI；**未注册回落内置 `simple_eval`**。
+/// 这与 java/go 不同（那两栈只有 SPI 一条腿，未注册时门面整档判 false 是 spec 许可的
+/// 降级档；moon 有内置兜底 ⇒ 门面侧不存在"未注册 ⇒ 全判 false"那一档）。
+/// 可见性本轮由包内 `fn` 抬成 `pub`（issues/153②：**仅放宽可见性，函数体逐字未动**）。
+pub fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::evaluate_expression(self : Engine[R, E], expr : String, exec : @exec.Execution) -> Bool raise @error.JeeflowError {
   match self.ctx.expression_evaluator {
     Some(eval) => {
       let vars : Map[String, Json] = Map([])

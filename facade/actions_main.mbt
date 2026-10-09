@@ -352,6 +352,18 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 }
 
 ///|
+/// 审批记录（spec 06 §processInstance/approvalRecord · issues/154 四条口径逐条对号）：
+/// ① 排序 `ORDER BY id ASC`——本栈两条取数腿都已经是 id 升序，无需门面再排：内存仓
+///    `core/memory/memory.mbt:233` `find_history_tasks` 走 `sorted_ids`→`@model.sort_i64`（升序）；
+///    SQL 腿 `repository-mysql/repo/repository.mbt:376` 明写 `ORDER BY id`。共享方法
+///    `engine_ops.mbt:100` 也吃这条腿，本轮不动它（排序已合规，动它是无收益的连带风险）。
+/// ② 实例 id 不存在 ⇒ 空数组，不报「流程实例不存在」——本函数**从不** `find_instance_by_id`，
+///    直接 `find_history_tasks(id)`，查不到行就是空表 ⇒ 已合规（`withdraw` 那种先查实例再 raise
+///    `InstanceNotFound` 的姿势才是违约形状，此处没有）。
+/// ③ 任务变量为空 ⇒ `ext` 出空对象，**不得**回落实例变量——本函数只读 `t.variables`，
+///    `to_object_json()` 对空 FlowData 出 `{}`，代码里不存在任何实例变量回落分支 ⇒ 已合规。
+/// ④ 出口列集合＝九键（id/taskName/displayName/taskType/performType/taskState/operator/finishTime/ext），
+///    `variable` 原串不得再出现——`variable` 那一列本轮之前就已下线，本轮补首列 `id` 补齐九键。
 pub async fn[R : @spi.ProcessRepository, E] Facade::approval_record(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let id = match arg_i64(args, "id") {
     Some(v) => v
@@ -361,6 +373,11 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::approval_record(self : Facad
   let rows = @json.empty_array()
   for t in history {
     let vo = @json.empty_object()
+    // issues/154①（spec 06 §processInstance/approvalRecord · 九键首列）：行主键 `id` 必须是
+    // **字符串**——雪花 id 19 位，出 number 会被 JS 截精度（同 issues/75/92 那一族坑）。
+    // 逐字对齐 java `JeeflowFacade.approvalRecord`（`vo.put("id", String.valueOf(t.getTaskId()))`）
+    // 与 go `facade.go` 同处；本栈没有宿主 Jackson 的 Long→String 通道，字符串化只能引擎自己做。
+    @json.obj_set(vo, "id", @json.string_of(t.task_id.to_string()))
     @json.obj_set(vo, "taskName", @json.string_of(t.task_name))
     @json.obj_set(vo, "displayName", @json.string_of(t.display_name))
     @json.obj_set(vo, "taskType", num_json(t.task_type))
@@ -454,7 +471,8 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::update_cc_status(self : Faca
 ///|
 pub async fn[R : @spi.ProcessRepository, E] Facade::cc_list(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let page_num = arg_i64_or(args, "pageNum", 1L)
-  let page_size = arg_i64_or(args, "pageSize", 20L)
+  // issues/154④（spec 06 §processInstance/ccList）：默认档 20 → 10，与其它分页 action 同口径
+  let page_size = arg_i64_or(args, "pageSize", 10L)
   let filters = facade_parse_m_filters(args)
   let query = @model.PageQuery::new(page_num, page_size)
   query.set_operator(Some(operator_arg(args)))
