@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## 0.1.36（2026-10-10）
+
+**issues/159 收口：simple_eval 三处违反 spec 06 §4.6 义务 2 第三条 ⚠（issues/158 立法）的「蒙方向」
+修正 ＋ collect_path 边名出口取 id。** 五模块同号；接力 pin 九枚同步（demo 不发布）。
+
+- **修**：`Engine::simple_eval`（core/engine/engine.mbt）
+  - 裸名代入：新增 `resolve_bare_names`——`${var}`/`#var` 之外的裸标识符从 args 查值代入
+    （str/i64 双查，同 #var 形）；**查不到原样保留**，交给排序运算判 false（缺失变量不蒙 "0"——
+    蒙 0 会让缺失变量的 `<=` 边判真，重演 159 落错支）。true/false/null 字面量与引号内内容不代入。
+  - 排序运算（`>` `>=` `<` `<=`）改走新 `compare_numeric`：两侧必须都是数字，**非数字操作数判 false**
+    （spec 明文）；字符串字典序兜底只保留给 `==`/`!=`（spec 不约束那两档）。
+  - 死臂修正：`>` 臂判 `Some(2)`、`<=` 臂"非 Some(2) 即 true"，而 compare_values 只产
+    `Some(-1/0/1)` ⇒ **`>` 恒 false、`<=` 恒 true**——正是 157 轮探针 "amount=5000 走 task3"
+    的根因；0.1.35 的 i153 夹具只用 `==`/`!=` 恰好绕开排序运算，故漏网。
+  - `${}` 形连带：与 `#var` 同款 str/i64 双查（修前数字档变量被代成字面 "0"）。
+- **修**：`Facade::collect_path`（facade/actions_ext.mbt）边名出口取**边 id**、label（`text.value`）
+  不再优先——参考实现 java `AbstractNodeParser` `tm.setName(edge.getId())`，画布文案从不进出口。
+- **判据**：core `i159_decision_expr_test.mbt` 六格（裸名数字/字符串形态、缺失变量不蒙方向、`${}` 回归、
+  等式、布尔字面量）＋ facade `i159_l2_39_test.mbt` 三格（停在分支上 amount=5000 走 task2、反档 500 走
+  task3、缺失变量不蒙方向；边名出口断言 id）。修前全红（含 active=[task3] 落错支仓内复现）、修后全绿；
+  变异对照（副本还原两源文件）core 6/6 红 ＋ facade 落错支红。
+- **T0**：`moon test --target wasm` 446/446；**T1**：`repository-mysql/smoke` ＋ `demo/cmd/t1_mysql`
+  ALL PASS（160 专用库 jeeflow_moon_t1）；**T2**：`scripts/smoke_t2.sh` ALL PASS（含 [6] 高亮）。
+- **关联**：issues/159（本案）、issues/158（立法出处）、issues/164（无命中档在 moon 从此可达：
+  缺失变量 ⇒ 两边全 false ⇒ 现状停住，行为未动待拍）、issues/157（发版轮 moon 腿打了 0.1.33 代旧镜像、
+  0.1.35 未上门禁的流程教训）。
+
+
 ## 0.1.34（2026-10-09）
 
 **issues/152 委托三件收口的 moon 腿**：`processSurrogate/page` 的归属不变式落到引擎自己身上，
