@@ -108,7 +108,11 @@ fn in_progress_rows()
 }
 
 ///|
-/// 已完成 9 条：advance 推到 state=20（分支无关）
+/// 已完成 9 条：advance 推到 state=20（分支无关）。
+/// issues/166 A（2026-10-11）：F5/F8/F9 补 finalAmount=8000——三行的 deptLeader 本是
+/// 15 文件编号时代 11-assignee-vars 的判定变量，flows 目录插入 06-…-expire.json 后
+/// define=12 已是 10-mixed-mode（八仓同序），决策边 finalAmount>5000/<=5000 没这把键
+/// 无路可走；补键走 e8→boss→end（与旧蒙臂 edges[0] 同形），矩阵"9 行已完成"原意复原。
 fn finished_rows()
   -> Array[(Int64, String, Map[String, Json], Array[String])] {
   let rows : Array[(Int64, String, Map[String, Json], Array[String])] = []
@@ -116,11 +120,11 @@ fn finished_rows()
   rows.push((8L, "userB", Map([]), ["boss", "manager"]))
   rows.push((2L, "manager", Map([]), ["boss"]))
   rows.push((10L, "director", Map([]), []))
-  rows.push((12L, "userC", sb_extra([("deptLeader", @json.string_of("leader"))]), []))
+  rows.push((12L, "userC", sb_extra([("deptLeader", @json.string_of("leader")), ("finalAmount", @json.number_of(8000L))]), []))
   rows.push((1L, "director", Map([]), []))
   rows.push((5L, "manager", Map([]), []))
-  rows.push((12L, "userA", sb_extra([("deptLeader", @json.string_of("director"))]), []))
-  rows.push((12L, "userB", sb_extra([("deptLeader", @json.string_of("user1"))]), []))
+  rows.push((12L, "userA", sb_extra([("deptLeader", @json.string_of("director")), ("finalAmount", @json.number_of(8000L))]), []))
+  rows.push((12L, "userB", sb_extra([("deptLeader", @json.string_of("user1")), ("finalAmount", @json.number_of(8000L))]), []))
   rows
 }
 
