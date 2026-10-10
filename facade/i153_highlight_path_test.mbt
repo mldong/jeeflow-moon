@@ -28,8 +28,8 @@ fn i153_check(cond : Bool, label : String) -> Unit {
 ///   e_norm = `${level} != vip` → norm_task → end
 /// 出边不带 `text` ⇒ 本栈边名回落 `id`（`collect_path` 的 label-or-id 口径），断言可以直接
 /// 钉在 e_vip / e_norm 这两个字面上（java 那支钉的是 e4/e6/e3，同形）。
-/// 表达式取 `${var} == 字面量` 形：本栈 `simple_eval` 的变量引用是 `${var}`/`#var` 两形，
-/// 且 `==`/`!=` 两档判据在内置兜底里是好的（`>`/`<=` 另案，不在本轮范围，故夹具刻意绕开）。
+/// 表达式取 `${var} == 字面量` 形：`==`/`!=` 与 `>`/`<=` 都已在内置兜底里判对
+/// （`>`/`<=` 曾恒假/恒真，0.1.36 由 issues/159 收口）；本夹具保留 ==/!= 形作为等式档的独立覆盖。
 fn i153_decision_flow() -> String {
   let s = $|{"name": "i153-dec", "displayName": "决策高亮夹具", "type": "approval",
   $| "nodes": [

@@ -886,10 +886,10 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::collect_pa
           None => true
         }
         if take {
-          let edge_name = match tm.label {
-            Some(l) => Some(l)
-            None => Some(tm.id)
-          }
+          // issues/159 读数 3：边名出口取**边 id**（参考实现 java `AbstractNodeParser`
+          // `tm.setName(edge.getId())`）；`text.value` 的 label 是画布文案，从不进出口——
+          // 修前 label 优先，带标签的边在出口里变成中文文案（157 轮探针实测读数）。
+          let edge_name : String? = if tm.id.is_empty() { None } else { Some(tm.id) }
           match edge_name {
             Some(en) => if !edges.contains(en) { edges.push(en) }
             None => ()
