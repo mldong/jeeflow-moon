@@ -297,13 +297,36 @@ pub fn NodeModel::form_key(self : NodeModel) -> String? {
 }
 
 ///|
+/// 顶层优先、`field` 子对象兜底取串（issues/177 R11：候选人双源，形状同会签条件腿）
+fn NodeModel::prop_str_dual(self : NodeModel, key : String) -> String? {
+  match self.prop_str(key) {
+    Some(s) => return Some(s)
+    None => ()
+  }
+  match self.properties.get("field") {
+    Some(field_val) =>
+      match field_val {
+        Json::Object(field_obj) =>
+          for k, v in field_obj {
+            if k == key {
+              return @json.as_str(v)
+            }
+          }
+        _ => ()
+      }
+    None => ()
+  }
+  None
+}
+
+///|
 pub fn NodeModel::candidate_users(self : NodeModel) -> String? {
-  self.prop_str("candidateUsers")
+  self.prop_str_dual("candidateUsers")
 }
 
 ///|
 pub fn NodeModel::candidate_groups(self : NodeModel) -> String? {
-  self.prop_str("candidateGroups")
+  self.prop_str_dual("candidateGroups")
 }
 
 ///|

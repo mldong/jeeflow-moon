@@ -169,3 +169,42 @@ test "parser: first task node guard" {
   assert_true(model.get_first_task_node() is None)
   assert_true(model.is_first_task_node("x") == false)
 }
+
+///|
+test "parser: candidate keys dual source (issues/177 R11)" {
+  let json =
+    $|{"name": "i177-flow", "displayName": "I177", "type": "approval",
+    $|"nodes": [
+    $|  {"id": "start", "type": "snaker:start", "text": {"value": "S"}},
+    $|  {"id": "pick", "type": "snaker:task", "text": {"value": "P"},
+    $|   "properties": {"field": {"candidateUsers": "u1,u2", "candidateGroups": "g1"}}},
+    $|  {"id": "end", "type": "snaker:end", "text": {"value": "E"}}
+    $|],
+    $|"edges": [
+    $|  {"id": "e1", "sourceNodeId": "start", "targetNodeId": "pick"},
+    $|  {"id": "e2", "sourceNodeId": "pick", "targetNodeId": "end"}
+    $|]}
+  let model = @parser.parse_model(json)
+  let pick = model.get_node("pick").unwrap()
+  assert_eq(pick.candidate_users().unwrap(), "u1,u2")
+  assert_eq(pick.candidate_groups().unwrap(), "g1")
+}
+
+///|
+test "parser: candidate keys top-level wins over field (issues/177 R11)" {
+  let json =
+    $|{"name": "i177-flow2", "displayName": "I177b", "type": "approval",
+    $|"nodes": [
+    $|  {"id": "start", "type": "snaker:start", "text": {"value": "S"}},
+    $|  {"id": "pick", "type": "snaker:task", "text": {"value": "P"},
+    $|   "properties": {"candidateUsers": "top1", "field": {"candidateUsers": "nested1"}}},
+    $|  {"id": "end", "type": "snaker:end", "text": {"value": "E"}}
+    $|],
+    $|"edges": [
+    $|  {"id": "e1", "sourceNodeId": "start", "targetNodeId": "pick"},
+    $|  {"id": "e2", "sourceNodeId": "pick", "targetNodeId": "end"}
+    $|]}
+  let model = @parser.parse_model(json)
+  let pick = model.get_node("pick").unwrap()
+  assert_eq(pick.candidate_users().unwrap(), "top1")
+}
