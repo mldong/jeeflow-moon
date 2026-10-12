@@ -994,7 +994,8 @@ async fn t1_f118_custom_history_row() -> Unit raise {
     )
     check(tid >= 990000L && tid < 1000000L, "\{name} 历史行 id 落 9xxxxx 段（真 INSERT 出来的）")
     check_eq(task_cell(repo, tid, "task_state"), "20", "\{name} 库里历史行 task_state=20")
-    check_eq(task_cell(repo, tid, "operator"), "f118-applicant", "\{name} 库里历史行 operator=当前操作人")
+    // R10（issues/176）：AUTO 腿内执行主体随动——custom 行在 startAndExecute 执行栈内落行（spec04:60-62；python G9 同族处置）
+    check_eq(task_cell(repo, tid, "operator"), "flow.auto", "\{name} 库里历史行 operator=当前操作人")
     // §6.2 第 **1bis** 条：DONE 留痕行必须带完成时间。这一列在真库上原先恒 NULL，两个原因
     // 叠在一起才看得见——聚合不赋值 ＋ save_task 的 INSERT 语句压根没这一列（值随语句一起丢），
     // 而内存仓整行存 ⇒ 单测全绿。判据必须读**库里的列**。
@@ -1017,7 +1018,7 @@ async fn t1_f118_custom_history_row() -> Unit raise {
       count_of(
         repo,
         "SELECT COUNT(*) AS cnt FROM wf_process_task_actor WHERE process_task_id = ? AND actor_id = ?",
-        [@moondb.Int64(tid), @moondb.Text("f118-applicant")],
+        [@moondb.Int64(tid), @moondb.Text("flow.auto")],
       ).to_string(),
       "1",
       "\{name} 参与者行真落库（actor_id=当前操作人）",
