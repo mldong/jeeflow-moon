@@ -671,7 +671,10 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
           model, model.get_start(), active, history_nodes, edges, inst.variables, history, inst, d
         )
       } catch {
-        _ => ()
+        e =>
+          // issues/162（R7 搭车）：保留降级面（对外仍 code=0、进度/路径留空）——失败支落可诊断日志，
+          // 形状照本仓既有 [jeeflow] println 口径（bizData 腿同文件 :600）。三件齐：instanceId／defineId／err。
+          println("[jeeflow] WARN highLight 模型补全腿失败: instanceId=\{id} defineId=\{d.id} err=\{e}")
       }
     }
     None => ()
