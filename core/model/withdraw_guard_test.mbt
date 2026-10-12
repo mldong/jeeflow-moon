@@ -122,9 +122,9 @@ test "i134-m 负向④：非 10 全档 sweep（20/30/40/45/50/99）一律拒且�
   let i50 = wg_doing_instance()
   i50.pending()
   wg_assert_rejected(i50, 50, "state=50")
-  // 99 已废弃（abandon_task 顺带把实例推到 99）
+  // 99 已废弃（issues/180 后 abandon_task 不再连带推实例；直接置态造样本）
   let i99 = wg_doing_instance()
-  i99.abandon_task(i99.tasks[0].task_id)
+  i99.state = @model.InstanceState::Abandon.code()
   wg_assert_rejected(i99, 99, "state=99")
 }
 

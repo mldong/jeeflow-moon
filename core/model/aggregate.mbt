@@ -154,6 +154,7 @@ pub fn ProcessInstance::complete_task(
 }
 
 ///|
+/// 仅任务级（不连带实例置 99）——spec 04 与 go/py/node 对齐，issues/180
 pub fn ProcessInstance::abandon_task(
   self : ProcessInstance,
   task_id : Int64
@@ -167,7 +168,6 @@ pub fn ProcessInstance::abandon_task(
   match found {
     Some(t) => {
       t.abandon()
-      self.state = InstanceState::Abandon.code()
     }
     None => raise @error.TaskNotFound(task_id)
   }
