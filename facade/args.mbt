@@ -326,9 +326,33 @@ pub fn content_bytes(args : Map[String, Json]) -> String? {
 ///|
 /// candidate 行键归一（issues/80）
 pub fn candidate_row(actor_id : String, real_name : String, extra : Map[String, Json]?) -> Json {
+  // issues/178 R12（spec 06:722）：id 三级回落 src.id → src.userId（user_id）→ actorId，
+  // 一律字符串化；realName 缺省回落归一后 id。修前 id 恒 actor_id（provider 真主键被丢）。
+  let mut id = actor_id
+  match extra {
+    Some(src) => {
+      let pick : String? = match src.get("id") {
+        Some(v) => @json.as_str(v)
+        None =>
+          match src.get("userId") {
+            Some(v) => @json.as_str(v)
+            None =>
+              match src.get("user_id") {
+                Some(v) => @json.as_str(v)
+                None => None
+              }
+          }
+      }
+      match pick {
+        Some(s) => id = s
+        None => ()
+      }
+    }
+    None => ()
+  }
   let row = @json.empty_object()
-  @json.obj_set(row, "id", @json.string_of(actor_id))
-  @json.obj_set(row, "realName", @json.string_of(if real_name.is_empty() { actor_id } else { real_name }))
+  @json.obj_set(row, "id", @json.string_of(id))
+  @json.obj_set(row, "realName", @json.string_of(if real_name.is_empty() { id } else { real_name }))
   match extra {
     Some(src) => {
       match src.get("userId") {

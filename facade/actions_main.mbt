@@ -701,20 +701,72 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::candidate_page(self : Facade
   let rows = @json.empty_array()
   if !candidates.is_empty() {
     for actor in candidates {
-      // provider: `(String) -> UserInfo? raise JeeflowError`；取不到或报错 ⇒ 空串（旧语义）
-      let info = match self.engine.context().user_provider {
-        Some(get_user) =>
+      // issues/178 R12（spec 06:728 映射优先级链）：第一级 user_search_provider.find_by_id
+      // （行键原料进 extra）→ 第二级 user_provider.getUser → 兜底；修前只查第二级、
+      // extra 恒 None ⇒ userId/userName/deptName 永不出。provider 报错档保持旧语义（吞）。
+      let mut info = ""
+      let mut extra : Map[String, Json]? = None
+      match self.engine.context().user_search_provider {
+        Some(usp) =>
           try {
-            match (get_user)(actor) {
-              Some(u) => u.real_name()
-              None => ""
+            match (usp.find_by_id)(actor) {
+              Some(m) => {
+                match m.get("realName") {
+                  Some(v) =>
+                    match @json.as_str(v) {
+                      Some(s) => info = s
+                      None => ()
+                    }
+                  None => ()
+                }
+                if info.is_empty() {
+                  match m.get("real_name") {
+                    Some(v) =>
+                      match @json.as_str(v) {
+                        Some(s) => info = s
+                        None => ()
+                      }
+                    None => ()
+                  }
+                }
+                extra = Some(m)
+              }
+              None => ()
             }
           } catch {
-            _ => ""
+            _ => ()
           }
-        None => ""
+        None => ()
       }
-      @json.arr_push(rows, candidate_row(actor, info, None))
+      match extra {
+        None => {
+          match self.engine.context().user_provider {
+            Some(get_user) =>
+              try {
+                match (get_user)(actor) {
+                  Some(u) => {
+                    info = u.real_name()
+                    let m : Map[String, Json] = Map([])
+                    if !u.user_id().is_empty() {
+                      m["userId"] = @json.string_of(u.user_id())
+                    }
+                    m["realName"] = @json.string_of(u.real_name())
+                    if !u.dept_name().is_empty() {
+                      m["deptName"] = @json.string_of(u.dept_name())
+                    }
+                    extra = Some(m)
+                  }
+                  None => ()
+                }
+              } catch {
+                _ => ()
+              }
+            None => ()
+          }
+        }
+        Some(_) => ()
+      }
+      @json.arr_push(rows, candidate_row(actor, info, extra))
     }
     // 分页信封（pageNum=1 pageSize=rows）
     let obj = @json.empty_object()
@@ -725,10 +777,17 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::candidate_page(self : Facade
     @json.obj_set(obj, "rows", rows)
     return obj
   }
-  // 无模型候选 → 用户搜索分页
+  // 无模型候选 → 用户搜索分页（issues/178 R12：吃调用方入参——修前 PageQuery::new(1L,10L)
+  // 写死，连 pageNum/pageSize/m_* 都不吃；java :982 queryParser.parse(args) 同位）
   match self.engine.context().user_search_provider {
     Some(usp) => {
-      let page = (usp.page)(@model.PageQuery::new(1L, 10L))
+      let page_num = arg_i64_or(args, "pageNum", 1L)
+      let page_size = arg_i64_or(args, "pageSize", 10L)
+      let query = @model.PageQuery::new(page_num, page_size)
+      for f in facade_parse_m_filters(args) {
+        query.add_filter(f)
+      }
+      let page = (usp.page)(query)
       let out = @json.empty_object()
       @json.obj_set(out, "pageNum", @json.number_of(page.page_num()))
       @json.obj_set(out, "pageSize", @json.number_of(page.page_size()))
