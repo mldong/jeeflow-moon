@@ -400,10 +400,10 @@ async test "withdraw 正向: 发起人撤回 → 整单 30 + update_user 回写 
   let back = repo.find_task_by_id(doing_id).unwrap()
   assert_eq(back.task_state, 30)
   assert_eq(back.update_user.unwrap_or("<null>"), "applicant")
-  // 已完成(20) 行不被撤回改写：状态保持 20，update_user 仍是办结人
+  // 已完成(20) 行不被撤回改写：状态保持 20，update_user 保持办结时的执行主体（R10 起=flow.auto，撤回不得覆写）
   let apply = task_by_name(repo, iid, "apply")
   assert_eq(apply.task_state, 20)
-  assert_eq(apply.update_user.unwrap_or("<null>"), "applicant")
+  assert_eq(apply.update_user.unwrap_or("<null>"), "flow.auto")
   // 出口读回（detail 的 state + tasks 行状态；update_user 的出口读回见 processInstance/page 行）
   let detail = data_of(facade.flow("processInstance/detail", targs([("id", iid.to_string())])))
   assert_eq(@json.get_i64(detail, "state").unwrap_or(-1L), 30L)
@@ -823,7 +823,9 @@ async test "回归红线: 转办后撤单，被摘走的人 doneList 不凭空�
     assert_true(!page_has_instance(done, iid))
     assert_eq(record_count_of(done), 0L)
   }
-  // 真正办过申请节点的 applicant 仍读得到自己那一行（不被撤回清空）
+  // R10（issues/176）：apply 行由 flow.auto 代执行 ⇒ 不进 applicant 已办；留痕仍在，改锚 flow.auto 档可查
   let mine = done_page(facade, "applicant")
-  assert_true(page_has_instance(mine, iid))
+  assert_true(!page_has_instance(mine, iid))
+  let auto_rows = done_page(facade, "flow.auto")
+  assert_true(page_has_instance(auto_rows, iid))
 }

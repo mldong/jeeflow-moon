@@ -62,7 +62,9 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
       Some(v) => flow_args.insert("tf_nextNodeOperator", v)
       None => ()
     }
-    let _ = (self.engine).execute_task_async(task.task_id, operator, flow_args)
+    // issues/176：spec 04:60-62——apply 节点由 flow.auto 代执行（operator 列=flow.auto，
+    // 不进发起人已办）；u_* 由发起腿留下、引擎对 flow.auto 跳过注入（对齐 boot2 :317）
+    let _ = (self.engine).execute_task_async(task.task_id, "flow.auto", flow_args)
   }
   let o = @json.empty_object()
   @json.obj_set(o, "processInstanceId", i64_json(inst.instance_id))
