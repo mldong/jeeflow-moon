@@ -117,11 +117,22 @@ pub async fn notify(
     try {
       (listener)(event)
     } catch {
-      _ => () // 单监听器异常隔离（对齐 PHP per-listener catch / Rust catch_unwind）
+      err => println(listener_error_warning(event, err)) // F08 口径下半句（audit8 R19）：逐支隔离＋带原因 ERROR 日志；文案判据在 listener_error_warning
     }
   }
 }
 
+
+///|
+/// 监听器异常隔离的诊断日志文案（F08 裁定完整口径＝「每支 try/catch ＋ 带原因 ERROR 日志」的
+/// 后半句；audit8 R19 补齐）。抽纯函数的理由同 engine 的 custom_*_warning：println 的效果在
+/// 测试里读不回来，判据留在纯函数、副作用留在调用点。
+pub fn listener_error_warning(event : ProcessEvent, err : @error.JeeflowError) -> String {
+  let event_name = event.event_type().name()
+  let source_id = event.source_id()
+  let reason = err.message()
+  "[jeeflow] ERROR 事件监听器异常已隔离 event=\{event_name} sourceId=\{source_id} err=\{reason}（不回滚主流程、不中断后续监听器）"
+}
 
 // ── 显式 extend（implicit_impl_as_method 弃办：impl 的方法不再被隐式提升为常规方法）──
 // 由 scripts/moon_warn_w2.py 从编译器消息里生成；一行一个 (类型, trait)，可 diff 可复审。

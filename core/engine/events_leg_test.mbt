@@ -186,3 +186,15 @@ async test "i132-events: 码 1 子流程发起支同样带 instanceId（§11.3 c
   assert_true(start.data.contains_key("instanceId"))
   assert_eq(start.data.get_i64("instanceId"), Some(child.instance_id))
 }
+
+///|
+test "i184(R19) 监听器异常隔离日志带原因（F08 口径：event/sourceId/err 三件可归因）" {
+  let line = @event.listener_error_warning(
+    @event.ProcessEvent::make(@event.TaskTransfer, 7L),
+    @error.Business("boom"),
+  )
+  assert_true(line.contains("event=TASK_TRANSFER"))
+  assert_true(line.contains("sourceId=7"))
+  assert_true(line.contains("boom"))
+  assert_true(line.contains("ERROR"))
+}
