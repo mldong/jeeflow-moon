@@ -167,15 +167,15 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::get_last_by_name(self : Faca
   query.add_filter(@model.QueryFilter::make("t", @model.Eq, "name", name))
   query.set_order_by("t.version desc")
   let page = (self.repo).page_defines(query)
-  // 内存仓储无 SQL orderBy：facade 级按 version 取最大（rust 同款语义）
-  let mut best : @model.DefineRow? = None
-  for r in page.rows() {
-    match best {
-      Some(b) => if r.version > b.version { best = Some(r) }
-      None => best = Some(r)
-    }
+  // issues/197：两条腿现在都消费 order_by ⇒ page(1,1) 的首行就是「该名的最新版本」，
+  // 门面不再做补偿。旧写法在这儿又 max 一次，但循环只看得见那一行，形同空转
+  // （出处卡 C7-L3 M-4② 点名的就是这条注释描述的补偿）。
+  let first : @model.DefineRow? = if page.rows().is_empty() {
+    None
+  } else {
+    Some(page.rows()[0])
   }
-  match best {
+  match first {
     Some(def) => {
       let o = @json.empty_object()
       @json.obj_set(o, "id", i64_json(def.id))

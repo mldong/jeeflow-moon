@@ -249,6 +249,49 @@ pub fn cc_page_data_sql(page_size : Int64, offset : Int64) -> String {
 }
 
 ///|
+/// 定义分页 ORDER BY（issues/197／audit8 R31）：本腿曾硬编码 `ORDER BY pd.id DESC`、
+/// 完全不消费 `PageQuery.order_by`。列名白名单＝java `DEFINE_WHITELIST` 八列
+/// （`JdbcProcessRepository:1345-1348` 现读），别名一律重写到本腿主表 `pd`；白名单外跳过该子句，
+/// 全部跳过／未给 ⇒ 回落 `pd.id DESC`（java `buildOrder` 同档）。
+/// 方向词只由解析器产出的布尔量决定，`order_by` 原文永不进 SQL 串 ⇒ 零注入面。
+pub fn define_page_order_sql(order_by : String?) -> String {
+  let terms = match order_by {
+    None => []
+    Some(s) => @model.parse_order_by(s)
+  }
+  let b = StringBuilder()
+  let mut emitted = false
+  for t in terms {
+    let bare = @model.order_column_bare(t.column)
+    if is_define_order_column(bare) {
+      if emitted {
+        b.write_string(", ")
+      }
+      let dir = if t.desc { " DESC" } else { " ASC" }
+      b.write_string("pd." + bare + dir)
+      emitted = true
+    }
+  }
+  if emitted {
+    " ORDER BY " + b.to_string()
+  } else {
+    " ORDER BY pd.id DESC"
+  }
+}
+
+///|
+fn is_define_order_column(bare : String) -> Bool {
+  bare == "id" ||
+  bare == "name" ||
+  bare == "display_name" ||
+  bare == "type" ||
+  bare == "state" ||
+  bare == "version" ||
+  bare == "create_time" ||
+  bare == "update_time"
+}
+
+///|
 pub impl @spi.ProcessRepository for MysqlRepository with fn page_defines(self, query) {
   let (page_num, page_size, offset) = page_bounds(query)
   let (m_where_raw, m_params) = @query.build_m_where(query.filters())
@@ -262,7 +305,7 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn page_defines(self, q
   }
   let count_rows = q(conn, count_sql, count_params)
   let total = if count_rows.is_empty() { 0L } else { row_i64(count_rows[0], "cnt") }
-  let sql = "SELECT pd.id, pd.name, pd.display_name, pd.type, pd.state, pd.version, pd.create_time, pd.create_user, pd.update_time, pd.update_user FROM wf_process_define pd WHERE 1=1" + m_where + " ORDER BY pd.id DESC LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()
+  let sql = "SELECT pd.id, pd.name, pd.display_name, pd.type, pd.state, pd.version, pd.create_time, pd.create_user, pd.update_time, pd.update_user FROM wf_process_define pd WHERE 1=1" + m_where + define_page_order_sql(query.order_by()) + " LIMIT " + page_size.to_string() + " OFFSET " + offset.to_string()
   let rows = q(conn, sql, m_params)
   self.close_conn(conn)
   let out : Array[@model.DefineRow] = []

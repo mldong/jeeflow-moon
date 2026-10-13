@@ -184,6 +184,66 @@ async fn t1_m3_mparams() -> Unit raise {
   clean_9x(repo)
 }
 
+///|
+/// T1-M9（issues/197／audit8 R31）：`page_defines` 的条件与 `order_by` 真落进 SQL。
+/// 夹具刻意让「版本最大」与「最后插入」不是同一行 ⇒ 只认硬编码 `ORDER BY pd.id DESC`
+/// 的实现必然红；条件整档没下发时 record_count 会是 3 不是 2。
+/// 纯文本档（白名单／回落／注入形状）在 repository-mysql/repo/i197_define_order_sql_test.mbt，
+/// 这一格守的是「impl 到底有没有调那个函数」。
+async fn t1_m9_define_order_by() -> Unit raise {
+  let repo = @repo.MysqlRepository::from_env()
+  clean_9x(repo)
+  let conn = repo.open_raw()
+  let ins =
+    "INSERT INTO wf_process_define (id, name, display_name, type, state, content, version, create_time, create_user) VALUES (?, ?, ?, 'approval', 1, '{}', ?, NOW(), 't1')"
+  let _ = @repo.x(conn, ins, [
+    @moondb.Int64(990011L), @moondb.Text("t1-i197-a"), @moondb.Text("t1-i197-a"), @moondb.Int64(7L),
+  ])
+  let _ = @repo.x(conn, ins, [
+    @moondb.Int64(990012L), @moondb.Text("t1-i197-a"), @moondb.Text("t1-i197-a"), @moondb.Int64(3L),
+  ])
+  let _ = @repo.x(conn, ins, [
+    @moondb.Int64(990013L), @moondb.Text("t1-i197-b"), @moondb.Text("t1-i197-b"), @moondb.Int64(5L),
+  ])
+  conn.close()
+
+  // 正向：同名两行＋版本倒序 ⇒ 首行必须是版本最大的 990011（它的 id 反而是三行里最小的）
+  let q = @model.PageQuery::new(1L, 1L)
+  q.add_filter(@model.QueryFilter::make("t", @model.Eq, "name", "t1-i197-a"))
+  q.set_order_by("t.version desc")
+  let p = repo.page_defines(q)
+  check(p.record_count() == 2L, "T1-M9 条件下发：t1-i197-a 只 2 行（实得 \{p.record_count()}）")
+  check(p.rows().length() == 1 && p.rows()[0].id == 990011L, "T1-M9 order_by 下发：首行＝版本最大 990011")
+  check(p.rows().length() == 1 && p.rows()[0].version == 7, "T1-M9 首行 version=7")
+
+  // 缺省序档：不给 order_by ⇒ id 倒序（与内存腿缺省同档），首行 990012
+  let q2 = @model.PageQuery::new(1L, 1L)
+  q2.add_filter(@model.QueryFilter::make("t", @model.Eq, "name", "t1-i197-a"))
+  let p2 = repo.page_defines(q2)
+  check(p2.rows().length() == 1 && p2.rows()[0].id == 990012L, "T1-M9 缺省序＝id 倒序 ⇒ 首行 990012")
+
+  // 负向：查无此名 ⇒ 空页（条件不下发时这里会放出别名的行）
+  let q3 = @model.PageQuery::new(1L, 10L)
+  q3.add_filter(@model.QueryFilter::make("t", @model.Eq, "name", "t1-i197-missing"))
+  q3.set_order_by("t.version desc")
+  let p3 = repo.page_defines(q3)
+  check(p3.record_count() == 0L && p3.rows().is_empty(), "T1-M9 查无此名 ⇒ 空页")
+
+  // 白名单外 ⇒ 回落 id 倒序，且不把攻击串拼进去（能跑完本身即证明语法没被破坏）
+  let q4 = @model.PageQuery::new(1L, 1L)
+  q4.add_filter(@model.QueryFilter::make("t", @model.Eq, "name", "t1-i197-a"))
+  q4.set_order_by("t.password desc; DROP TABLE wf_process_define")
+  let p4 = repo.page_defines(q4)
+  check(p4.record_count() == 2L, "T1-M9 非法列＋攻击串：条件照旧生效，count＝2（实得 \{p4.record_count()}）")
+  check(p4.rows().length() == 1 && p4.rows()[0].id == 990012L, "T1-M9 回落档首行＝id 最大 990012")
+  // 攻击串没被拼进去 ⇒ 表还在、行还在（DROP 若真执行，下面两条一条也活不到）
+  let conn2 = repo.open_raw()
+  let alive = @repo.q(conn2, "SELECT COUNT(*) AS cnt FROM wf_process_define WHERE id IN (990011, 990012, 990013)", [])
+  conn2.close()
+  check(!alive.is_empty() && @repo.row_i64(alive[0], "cnt") == 3L, "T1-M9 注入未落地：三条夹具行仍在")
+  clean_9x(repo)
+}
+
 /// 事务体：两条 INSERT 后主动抛错。抽成具名 async fn 是因为内联 `fn() { … }` 闭包
 /// 在本工具链下两头堵——不标 async 吃 deprecated_syntax，标了 `async fn()` 又把效应推成
 /// 开放 Error、与 execute_in_tx 声明的闭集 raise JeeflowError 不匹配。
@@ -940,6 +1000,8 @@ async fn t1_all() -> Unit raise {
   t1_m2_hydrate()
   println("T1-M3 m_ params...")
   t1_m3_mparams()
+  println("T1-M9 page_defines 条件＋order_by 真落 SQL（issues/197）...")
+  t1_m9_define_order_by()
   println("T1-M4 tx rollback...")
   t1_m4_tx_rollback()
   println("T1-M5 idempotent execute...")

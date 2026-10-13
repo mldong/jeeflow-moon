@@ -566,23 +566,260 @@ pub impl @spi.ProcessRepository for MemoryRepository with fn page_cc_instances(s
 }
 
 ///|
+/// 定义表可过滤／可排序的列（issues/197）。裸列名口径，别名由 `order_column_bare` 剥掉；
+/// `DcUnknown` ＝该列不存在 ⇒ 条件档判「这行不匹配」，排序档跳过该子句。
+priv enum DefineCol {
+  DcId
+  DcName
+  DcDisplayName
+  DcType
+  DcState
+  DcVersion
+  DcCreateTime
+  DcUpdateTime
+  DcUnknown
+}
+
+///|
+/// 行值：数值列走整数档（防 "10" < "9" 的串比较错觉）；时间列本就是 ISO 串，串比即时间序
+priv enum DefineVal {
+  DvInt(Int64)
+  DvText(String)
+  DvNull
+}
+
+///|
+fn define_col_of(column : String) -> DefineCol {
+  match @model.order_column_bare(column) {
+    "id" => DcId
+    "name" => DcName
+    "display_name" => DcDisplayName
+    "type" => DcType
+    "state" => DcState
+    "version" => DcVersion
+    "create_time" => DcCreateTime
+    "update_time" => DcUpdateTime
+    _ => DcUnknown
+  }
+}
+
+///|
+fn opt_text_to_val(s : String?) -> DefineVal {
+  match s {
+    None => DvNull
+    Some(v) => DvText(v)
+  }
+}
+
+///|
+fn define_value(d : @model.ProcessDefine, col : DefineCol) -> DefineVal {
+  match col {
+    DcId => DvInt(d.id)
+    DcName => DvText(d.name)
+    DcDisplayName => DvText(d.display_name)
+    DcType => DvText(d.define_type)
+    DcState => DvInt(d.state.to_int64())
+    DcVersion => DvInt(d.version.to_int64())
+    DcCreateTime => opt_text_to_val(d.create_time)
+    DcUpdateTime => opt_text_to_val(d.update_time)
+    DcUnknown => DvNull
+  }
+}
+
+///|
+fn define_row_value(r : @model.DefineRow, col : DefineCol) -> DefineVal {
+  match col {
+    DcId => DvInt(r.id)
+    DcName => DvText(r.name)
+    DcDisplayName => DvText(r.display_name)
+    DcType => DvText(r.define_type)
+    DcState => DvInt(r.state.to_int64())
+    DcVersion => DvInt(r.version.to_int64())
+    DcCreateTime => opt_text_to_val(r.create_time)
+    DcUpdateTime => opt_text_to_val(r.update_time)
+    DcUnknown => DvNull
+  }
+}
+
+///|
+/// Int64 解析（本仓既有口径＝`facade/args.mbt:188` 的 `@string.parse_int64`＋try/catch）
+fn parse_int64_opt(s : String) -> Int64? {
+  try {
+    Some(@string.parse_int64(s.trim()))
+  } catch {
+    _ => None
+  }
+}
+
+///|
+/// 字面量按被比那一侧的档位对齐：数值列吃得下整数就走整数档，吃不下就退成串（结果必然不等）。
+/// 不去模仿 MySQL 把 'abc' 折成 0 的那股怪味——SQL 腿是 Text 绑定＋列侧折叠，同向即可。
+fn define_literal(v : DefineVal, lit : String) -> DefineVal {
+  match v {
+    DvInt(_) =>
+      match parse_int64_opt(lit) {
+        Some(n) => DvInt(n)
+        None => DvText(lit)
+      }
+    _ => DvText(lit)
+  }
+}
+
+///|
+fn define_val_text(v : DefineVal) -> String {
+  match v {
+    DvInt(n) => n.to_string()
+    DvText(s) => s
+    DvNull => ""
+  }
+}
+
+///|
+/// 比较器：数值对数值走整数，其余一律 `cmp_str` 逐码位
+/// （绕开 core String::compare 的已知坑，见 `core/model/util.mbt` 里 cmp_str 的 D-M3-2 注释）
+fn define_val_cmp(a : DefineVal, b : DefineVal) -> Int {
+  match (a, b) {
+    (DvInt(x), DvInt(y)) => if x < y { -1 } else if x > y { 1 } else { 0 }
+    _ => @model.cmp_str(define_val_text(a), define_val_text(b))
+  }
+}
+
+///|
+fn define_val_eq(a : DefineVal, b : DefineVal) -> Bool {
+  define_val_cmp(a, b) == 0
+}
+
+///|
+/// In／Nin 的逗号清单 membership（不 trim，逐字对齐 SQL 腿的 `f.value().split(",")`）
+fn define_val_in(v : DefineVal, list_text : String) -> Bool {
+  let items = list_text.split(",").collect()
+  let mut found = false
+  for item in items {
+    if define_val_eq(v, define_literal(v, item.to_owned())) {
+      found = true
+    }
+  }
+  found
+}
+
+///|
+/// Bt 的双端闭区间；项数不足 2 ⇒ 与 SQL 腿「整条条件不加」同档＝不筛掉该行
+fn define_val_bt(v : DefineVal, range_text : String) -> Bool {
+  let parts = range_text.split(",").collect()
+  if parts.length() < 2 {
+    true
+  } else {
+    let lo = define_literal(v, parts[0].to_owned())
+    let hi = define_literal(v, parts[1].to_owned())
+    define_val_cmp(v, lo) >= 0 && define_val_cmp(v, hi) <= 0
+  }
+}
+
+///|
+/// 条件过滤（issues/197 补上的那一档）：判据与 SQL 腿 `build_m_where` 同形——所有条件都要命中；
+/// NULL 参与任何比较都是 unknown ⇒ 该行不出；未知列（DcUnknown ⇒ DvNull）同样不出。
+/// 定义表没有归属列（`repository-mysql/query/query.mbt:93-99` 现读四条全是 operator／actor_id），
+/// 故 issues/129 案 A「归属列空值 ⇒ 空页」那一层在本腿无适用面。
+fn define_matches(d : @model.ProcessDefine, filters : Array[@model.QueryFilter]) -> Bool {
+  for f in filters {
+    let v = define_value(d, define_col_of(f.column()))
+    if v is DvNull {
+      return false
+    }
+    let lit = define_literal(v, f.value())
+    let ok = match f.op() {
+      @model.Eq => define_val_eq(v, lit)
+      @model.Ne => !define_val_eq(v, lit)
+      @model.Like => define_val_text(v).contains(f.value())
+      @model.Gt => define_val_cmp(v, lit) > 0
+      @model.Lt => define_val_cmp(v, lit) < 0
+      @model.Ge => define_val_cmp(v, lit) >= 0
+      @model.Le => define_val_cmp(v, lit) <= 0
+      @model.In => define_val_in(v, f.value())
+      @model.Nin => !define_val_in(v, f.value())
+      @model.Bt => define_val_bt(v, f.value())
+    }
+    if !ok {
+      return false
+    }
+  }
+  true
+}
+
+///|
+/// 排序档：白名单外的子句跳过（java `buildOrder` 同档）；空数组＝缺省 id 倒序
+fn define_sort_keys(order_by : String?) -> Array[(DefineCol, Bool)] {
+  let keys : Array[(DefineCol, Bool)] = []
+  let terms = match order_by {
+    None => []
+    Some(s) => @model.parse_order_by(s)
+  }
+  for t in terms {
+    match define_col_of(t.column) {
+      DcUnknown => ()
+      col => keys.push((col, t.desc))
+    }
+  }
+  keys
+}
+
+///|
+/// a 是否该排在 b 之后；末位兜底＝id 倒序，给「同 version」一个确定答案，与本栈 SQL 腿缺省序同档
+fn define_row_after(
+  a : @model.DefineRow,
+  b : @model.DefineRow,
+  keys : Array[(DefineCol, Bool)],
+) -> Bool {
+  for kv in keys {
+    let c = define_val_cmp(define_row_value(a, kv.0), define_row_value(b, kv.0))
+    if c != 0 {
+      return if kv.1 { c < 0 } else { c > 0 }
+    }
+  }
+  a.id < b.id
+}
+
+///|
+fn sort_define_rows(rows : Array[@model.DefineRow], keys : Array[(DefineCol, Bool)]) -> Unit {
+  for i in 1..<rows.length() {
+    let key = rows[i]
+    let mut j = i - 1
+    while j >= 0 && define_row_after(rows[j], key, keys) {
+      rows[j + 1] = rows[j]
+      j = j - 1
+    }
+    rows[j + 1] = key
+  }
+}
+
+///|
 pub impl @spi.ProcessRepository for MemoryRepository with fn page_defines(self, query) {
+  // issues/197（audit8 R31）：这一腿原先 `filters`／`order_by` 两者都不读，还按 id **升序**出页
+  // ⇒ 门面 4 个带条件的内部调用（deploy／processDesign redeploy／saveDeployedDefine／
+  // getLastByName）拿到的是「全表 id 最小的任意名定义」，redeploy 会把新内容写进别的定义行。
+  // 现在与 SQL 腿同判据：条件过滤 ＋ 消费 order_by ＋ 缺省 id 倒序。形照 java
+  // `MemoryProcessRepository.pageDefines:571-597`——那儿的注释逐字点名
+  // 「通用条件过滤（含 t.name EQ / t.state GT，JeeflowFacade deploy 版本查询依赖）」。
+  let keys = define_sort_keys(query.order_by())
   let rows : Array[@model.DefineRow] = []
   for did in sorted_ids(self.defines) {
     let d = self.defines[did]
-    let row = @model.DefineRow::new_empty()
-    row.id = d.id
-    row.name = d.name
-    row.display_name = d.display_name
-    row.define_type = d.define_type
-    row.state = d.state
-    row.version = d.version
-    row.create_time = d.create_time
-    row.create_user = d.create_user
-    row.update_time = d.update_time
-    row.update_user = d.update_user
-    rows.push(row)
+    if define_matches(d, query.filters()) {
+      let row = @model.DefineRow::new_empty()
+      row.id = d.id
+      row.name = d.name
+      row.display_name = d.display_name
+      row.define_type = d.define_type
+      row.state = d.state
+      row.version = d.version
+      row.create_time = d.create_time
+      row.create_user = d.create_user
+      row.update_time = d.update_time
+      row.update_user = d.update_user
+      rows.push(row)
+    }
   }
+  sort_define_rows(rows, keys)
   let total = rows.length().to_int64()
   @model.PageResult::new(query.page_num(), query.page_size(), total, page_slice(rows, query.page_num(), query.page_size()))
 }
