@@ -105,3 +105,14 @@ test "metadata: handler types and custom register" {
   )
   assert_eq(reg.list_handlers("AssignmentHandler").length(), 8)
 }
+
+///|
+test "metadata: ActionPermissionProvider entry matches reference (issues/184)" {
+  let reg = @metadata.HandlerRegistry::new()
+  let handlers = reg.list_handlers("ActionPermissionProvider")
+  assert_eq(handlers.length(), 1)
+  assert_eq(handlers[0].class_name(), "com.mldong.jeeflow.spi.DefaultActionPermissionProvider")
+  assert_false(handlers[0].class_name().contains(".impl."))
+  assert_eq(handlers[0].display_name(), "action 权限码默认映射（boot3 注解语义归纳）")
+  assert_eq(handlers[0].order(), 0)
+}

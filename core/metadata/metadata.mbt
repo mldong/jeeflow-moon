@@ -197,8 +197,8 @@ pub fn HandlerRegistry::new() -> HandlerRegistry {
   // Default ActionPermissionProvider
   handlers.push({
     handler_type: "ActionPermissionProvider",
-    class_name: "com.mldong.jeeflow.spi.impl.DefaultActionPermissionProvider",
-    display_name: "默认权限码提供者",
+    class_name: "com.mldong.jeeflow.spi.DefaultActionPermissionProvider",
+    display_name: "action 权限码默认映射（boot3 注解语义归纳）",
     order: 0,
     group: "built-in",
   })
