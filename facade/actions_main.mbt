@@ -600,7 +600,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::task_detail(self : Facade[R,
               // issues/62：taskModel 补 form/ext（C14/C19）
               @json.obj_set(tm, "form", opt_json(node.form_key()))
               let ext_obj = @json.empty_object()
-              match node.properties.get("ext") {
+              match node.properties.get("field") {
                 Some(e) =>
                   match e {
                     Json::Object(m) =>
