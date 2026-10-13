@@ -54,7 +54,9 @@ async fn[R, E] Engine::add_user_info(
   args : @json.FlowData,
   operator : String
 ) -> Unit raise @error.JeeflowError {
-  if operator == "flow.auto" || operator == "flow.admin" {
+  // issues/194：spec 04:55-56「忽略大小写」——java FlowUtil.addUserInfoToArgs 用 equalsIgnoreCase
+  let lower = operator.to_lower()
+  if lower == "flow.auto" || lower == "flow.admin" {
     return
   }
   match self.ctx.user_provider {

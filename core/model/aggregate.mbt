@@ -604,7 +604,9 @@ pub fn ProcessTask::resume_from_interrupt(self : ProcessTask) -> Unit {
 ///|
 /// 处理人校验："flow.auto"/"flow.admin" 直通
 pub fn ProcessTask::is_allowed(self : ProcessTask, operator : String) -> Bool {
-  if operator == "flow.auto" || operator == "flow.admin" {
+  // issues/194：spec 04:55-56「忽略大小写」——与门面 is_privileged_operator 同口径
+  let lower = operator.to_lower()
+  if lower == "flow.auto" || lower == "flow.admin" {
     return true
   }
   self.is_doing() && self.actor_ids.contains(operator)
