@@ -1,5 +1,89 @@
 # CHANGELOG
 
+## 0.1.45（2026-10-14）
+
+**issues/197 收口：`PageQuery.order_by` 全栈零消费者＋内存腿 `page_defines` 连 `filters` 都不读。**
+五模块同号；接力 pin 九枚同步（demo 不发布）。
+
+- **修**：`repository-mysql`／内存仓的定义查询两腿——SQL 腿硬编码 `ORDER BY id DESC` 不接 `order_by`，
+  内存腿**完全不读 `filters`** 就返回全集。带条件的内部调用点四处全打在内存腿上，后果是
+  `processDesign/redeploy` 把新内容**覆盖到另一条定义行**、`deploy`／`saveDeployedDefine` 的 version
+  基数**取自别的流程**、`getLastByName` **返回异名定义且 `code=0`**。
+- **跨栈现读**：java／go／python／node 四家的内存腿都滤条件 ⇒ 本仓独家缺陷（不是分布差）。
+- **判据**：新格覆盖排序与过滤两轴；`moon test --target wasm` 全量绿，`moon check` 警告数与基线全等。
+- **发版**：publish 四步（core→persist→repository-mysql→facade）逐支 success＋安装侧回拉验证 OK；
+  接力 pin **14 处**（5 模块 version＋9 处内部依赖代次）同步。
+
+## 0.1.44（2026-10-13）
+
+**issues/194 收口：`flow.auto`／`flow.admin` 哨兵大小写两派（本仓栈内两套口径，重一档）。**
+
+- **修**：`core/model/aggregate.mbt` 与 `core/engine/engine.mbt` 两处用**精确串比对**认这两个哨兵，
+  而仓内另有按忽略大小写处理的口径 ⇒ 同一份输入在不同调用点两个答案。宿主传异写
+  （`Flow.Auto`／`FLOW_ADMIN`）时系统代执行与管理员语义直接失效。
+  规范 04 逐字带「忽略大小写」⇒ 契约已在，改的是行为。
+- **判据**：两处各钉一枚异写档＋变异对照；`moon check` 46 warnings／0 errors 与基线全等。
+- **同批**：rust `v1.0.41`＋php `v1.3.34`。
+
+## 0.1.43（2026-10-13）
+
+**两案并批发版：issues/184（内置第 8 档类全名错串）＋ issues/185（监听器异常隔离但零日志）。**
+
+- **修（184）**：`ActionPermissionProvider` 内置第 8 档的 `className` 多了一段 `.impl.`、`displayName`
+  亦非同串——**两字段同改**，对齐 java／csharp 的参照串。头注写「移植 rust」，把 rust 的错串连带搬来，
+  故与 rust `v1.0.40` 同案同批（参照串源在 csharp，不是两家自创）。
+- **修（185）**：`notify` 的隔离臂是 `catch { _ => () }`——异常不吃流程，但**原因整条丢掉**＝零日志，
+  缺裁定的「带原因 ERROR 日志」半句。本版补日志，并把文案抽成纯函数 `listener_error_warning` 便于判据断言。
+- **判据**：四处（两案各两处）变异逐处咬合；全量 **467/467** 绿。
+
+## 0.1.42（2026-10-13）
+
+**issues/182 收口：`properties.ext` 错键族——本仓读 `ext` 恒 `{}`。**
+
+- **修（一行）**：`facade/actions_main.mbt` 的 `taskModel.ext` 原料改读 `properties.field`。
+  基准就是 `properties.field`：全仓没有任何生产方往 `ext` 写 ⇒ persist 字段权限与 `taskModel.ext` 恒空。
+- **同案两仓**：rust `v1.0.38` 是同族另一形（读 `ext` 恒 `null`）。本仓的入口字段权限过滤缺失早由
+  issues/150 收口，不并案。
+- **判据**：3 枚＋变异＋**还原后 md5 全等**。
+
+## 0.1.41（2026-10-13）
+
+**issues/180 收口：`abandonTask` 不再连带把整单置 99。**
+
+- **修**：任务级废弃只废任务，删掉实例 state 的写点——对齐规范 04 与 go／python／node。
+  本仓该方法**已被接线调用**（与 rust 同档），废弃一处会连带打掉同实例其余待办。
+- **判据**：3 枚；夹具改为**直接置态**（不让判据依赖废弃语义自己），变异对照。
+- **同批**：java `v1.8.49`／php `v1.3.28`／rust `v1.0.37`／csharp `v1.0.23`。
+
+## 0.1.40（2026-10-12）
+
+**issues/178 收口：`candidatePage` 三处同案——映射只走第二级＋搜索腿丢入参＋分页默认值写死。**
+
+- **修**：① 候选映射接上 `findById`→`getUser`→兜底 的优先级链，行键 `id`／`realName` 按级回落；
+  ② 搜索腿入参（`pageNum`／`pageSize`／`m_*`）透传——`PageQuery::new(1L, 10L)` **写死退役**，
+  此前前端翻页与条件搜索结构性失效。
+- **判据**：七个用例族＋变异 MA/MB/MC；复跑全量 459 绿。
+- **同批**：go `v1.8.50`／python `v1.8.47`／node `v1.8.48`／rust `v1.0.36`。
+
+## 0.1.39（2026-10-12）
+
+**issues/177 收口：候选人属性取数改「顶层优先·`properties.field` 嵌套兜底」。**
+
+- **修**：parser 只读顶层，设计器实际写在嵌套形 `properties.field` 里 ⇒ 按 UI 配的候选人被读成空。
+  读取形状对齐 issues/163 已立的尺子。
+- **判据**：2 枚新格＋变异红样；复跑全量 453 绿。
+- **同批**：go／python／node／php／rust。
+
+## 0.1.38（2026-10-12）
+
+**issues/176 收口：`startAndExecute` 自动办理腿的 operator 改 `flow.auto`。**
+
+- **修**：一键「发起并直接办掉申请节点」时那条任务的办理人记成系统哨兵，不再记成真实发起人；
+  三不变量不动（实例发起人／apply 节点参与者／`u_*` 仍记发起人）。`doneList` 可见性随之回到产品语义。
+- **demo 期望随动**：`F118` 期望随本次改动翻新——`custom` 记录行的执行主体随动 `flow.auto`
+  （真库腿复跑抓出，两档＋参与者锚全绿）。
+- **判据**：跨栈门禁同轮落格；八引擎同批（java／go／python／node／php／rust／csharp）。
+
 ## 0.1.36（2026-10-10）
 
 **issues/159 收口：simple_eval 三处违反 spec 06 §4.6 义务 2 第三条 ⚠（issues/158 立法）的「蒙方向」
