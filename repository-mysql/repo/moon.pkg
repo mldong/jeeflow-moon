@@ -12,3 +12,8 @@ import {
   "moonbitlang/core/encoding/utf8" @utf8,
   "moonbitstack/moondb" @moondb,
 }
+
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs" @fs,
+} for "test"
