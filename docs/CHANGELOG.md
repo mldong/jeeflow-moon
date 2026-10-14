@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.1.46（2026-10-14）
+
+**issues/201 收口：SPI 求值抛错不再静默折 false（audit8 R79，owner 拍 C＝只统一留痕）。**
+五模块同号；接力 pin 九枚同步（demo 不发布）。
+
+- **现读更正**：静默点在**引擎** `evaluate_expression` 的 SPI catch——门面那条 catch 对「求值失败」
+  结构性不可达（它只罩 `simple_eval`，而后者零 raise）。
+- **修**：引擎 SPI catch 臂补带原因输出（实例号／定义号／expr／err 四件，引擎层拿不到 nodeId 未硬造）
+  ＋新增 `eval_failure_warning` 纯函数（文案单点，同 `listener_error_warning` 法）。遍历宽度维持折 false
+  （行为零变化），合法判假不落这条日志。
+- **判据**：`facade/i201_eval_failure_log_test.mbt` 四枚（纯函数文案一枚＋三档各一枚，按 instanceId 归因）
+  ＋变异 M1/M2；`moon test` 全仓 487/487，`moon check` 警告数与基线全等。
+- **发版**：tag `v0.1.46`（引擎 commit `215fc79`＋release `500269e`）；publish 四步逐支 success＋安装侧
+  回拉验证 OK；接力 pin **14 处**（5 模块 version＋9 处内部依赖代次）同步。
+
 ## 0.1.45（2026-10-14）
 
 **issues/197 收口：`PageQuery.order_by` 全栈零消费者＋内存腿 `page_defines` 连 `filters` 都不读。**
