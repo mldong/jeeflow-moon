@@ -84,6 +84,20 @@
   （真库腿复跑抓出，两档＋参与者锚全绿）。
 - **判据**：跨栈门禁同轮落格；八引擎同批（java／go／python／node／php／rust／csharp）。
 
+## 0.1.37（2026-10-11）
+
+**issues/164＋166 收口：决策节点零命中改为显式报错。** 五模块同号；接力 pin 九枚同步（demo 不发布）。
+
+- **修**：遍历完全部出边仍无命中（带 expr 的边全判 false／判定变量缺失／零出边／自定义决策处理器未命中）
+  时抛「`decision节点无法确定下一步执行路线`」，门面出口 `99999999`＋该 msg（逐字对齐 java 的
+  `NOT_FOUND_NEXT_NODE`）。改前本仓该档**静默停住**：令牌不前进也不报错，办理人看到 `code=0`"成功"、
+  实例挂在 `state=10` 且没有任何人的待办。
+- **种子**：demo 的 FINISHED 三行（F5/F8/F9）补 `finalAmount=8000`——flows 目录加入第六份 expire 流程后
+  define=12 已是 `10-mixed-mode`，映射漂移使三行不再必然办结；补键后 demo 重置读数回到 15/10。
+- **判据**：`core/engine/i164_decision_nomatch_test.mbt` 三格（内联夹具）＋变异对照（摘报错改回静默即红）；
+  core/engine 151/151、全项目 449/449；demo（内置 `simple_eval` 通用求值）重置 15/10 零种子报错。
+- **消费方**：`mldong-moon` 插件 pin 四处＋descriptor `plugin_version` 同批跟版。
+
 ## 0.1.36（2026-10-10）
 
 **issues/159 收口：simple_eval 三处违反 spec 06 §4.6 义务 2 第三条 ⚠（issues/158 立法）的「蒙方向」
