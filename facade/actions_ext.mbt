@@ -10,7 +10,7 @@ fn[R : @spi.ProcessRepository, E] Facade::ext(self : Facade[R, E]) -> E {
 ///|
 pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::design_page(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let page_num = arg_i64_or(args, "pageNum", 1L)
-  let page_size = arg_i64_or(args, "pageSize", 20L)
+  let page_size = arg_i64_or(args, "pageSize", 10L)
   let filters = facade_parse_m_filters(args)
   let page = (self.ext()).page_designs(@model.PageQuery::new(page_num, page_size))
   finalize_page(page, design_to_json, filters, page_num, page_size)
@@ -391,7 +391,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 ///|
 pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::surrogate_page(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let page_num = arg_i64_or(args, "pageNum", 1L)
-  let page_size = arg_i64_or(args, "pageSize", 20L)
+  let page_size = arg_i64_or(args, "pageSize", 10L)
   let filters = facade_parse_m_filters(args)
   // issues/152 ②（spec 06 §4.5「processSurrogate/page 归属不变式」）：t.operator 是归属列，
   // 与 instance_page 逐字同形注入 §2.5 归一后的 operator（缺键/空串/全空白 ⇒ 缺省 user1）——

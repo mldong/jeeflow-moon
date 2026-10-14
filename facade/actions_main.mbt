@@ -8,7 +8,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::define_page(
   args : Map[String, Json]
 ) -> Json raise @error.JeeflowError {
   let page_num = arg_i64_or(args, "pageNum", 1L)
-  let page_size = arg_i64_or(args, "pageSize", 20L)
+  let page_size = arg_i64_or(args, "pageSize", 10L)
   let filters = facade_parse_m_filters(args)
   let page = (self.repo).page_defines(@model.PageQuery::new(page_num, page_size))
   finalize_page(page, define_row_to_json, filters, page_num, page_size)
@@ -195,7 +195,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::get_last_by_name(self : Faca
 ///|
 pub async fn[R : @spi.ProcessRepository, E] Facade::instance_page(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let page_num = arg_i64_or(args, "pageNum", 1L)
-  let page_size = arg_i64_or(args, "pageSize", 20L)
+  let page_size = arg_i64_or(args, "pageSize", 10L)
   let filters = facade_parse_m_filters(args)
   let query = @model.PageQuery::new(page_num, page_size)
   query.set_operator(Some(operator_arg(args)))
@@ -487,7 +487,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::cc_list(self : Facade[R, E],
 ///|
 pub async fn[R : @spi.ProcessRepository, E] Facade::todo_list(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let page_num = arg_i64_or(args, "pageNum", 1L)
-  let page_size = arg_i64_or(args, "pageSize", 20L)
+  let page_size = arg_i64_or(args, "pageSize", 10L)
   let filters = facade_parse_m_filters(args)
   let query = @model.PageQuery::new(page_num, page_size)
   query.set_operator(Some(operator_arg(args)))
@@ -498,7 +498,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::todo_list(self : Facade[R, E
 ///|
 pub async fn[R : @spi.ProcessRepository, E] Facade::done_list(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let page_num = arg_i64_or(args, "pageNum", 1L)
-  let page_size = arg_i64_or(args, "pageSize", 20L)
+  let page_size = arg_i64_or(args, "pageSize", 10L)
   let filters = facade_parse_m_filters(args)
   let query = @model.PageQuery::new(page_num, page_size)
   query.set_operator(Some(operator_arg(args)))
