@@ -543,7 +543,11 @@ pub fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::evalua
       for k, v in exec.args.inner() {
         vars[k] = v
       }
-      // SPI 是 `-> Json raise JeeflowError`：值即 Json。求值失败按旧语义当 false
+      // SPI 是 `-> Json raise JeeflowError`：值即 Json。
+      // issues/201（audit8 R79 拍 C＝求值器自身抛异常必须落一条带原因的可诊断日志，遍历宽度不钉）：
+      // 旧形状 `catch { _ => false }` 把「SPI 抛错」与「求值为假」压成同一个 false ⇒ 表达式坏在
+      // 对外读数上与"这条分支没走"完全同形、零线索（本栈 162 腿的 WARN 在门面外层，够不到这里）。
+      // 宽度维持折 false（该边不收、其余边继续遍历），只补可归因的一句。
       try {
         let v = (eval)(expr, vars)
         match v {
@@ -554,11 +558,30 @@ pub fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::evalua
           _ => false
         }
       } catch {
-        _ => false
+        e => {
+          println(
+            eval_failure_warning(
+              exec.process_instance.instance_id, exec.process_instance.define_id, expr, e.message(),
+            ),
+          )
+          false
+        }
       }
     }
     None => self.simple_eval(expr, exec)
   }
+}
+
+///|
+/// issues/201 的日志文案单点（纯函数、零副作用，判据可直接断言文本；副作用那条腿由
+/// `println` 落 stdout＋变异读数判别，与本仓 `listener_error_warning`（162/R19）同法）。
+pub fn eval_failure_warning(
+  instance_id : Int64,
+  define_id : Int64,
+  expr : String,
+  err : String,
+) -> String {
+  "[jeeflow] WARN 决策边表达式求值失败，该边按 false 处理（分支不收、其余边继续遍历）: instanceId=\{instance_id} defineId=\{define_id} expr=\{expr} err=\{err}"
 }
 
 ///|
