@@ -415,6 +415,10 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 fn surrogate_enabled_arg(args : Map[String, Json]) -> Int {
   match args.get("enabled") {
     None => 1
+    // issues/236（audit8 R68②）：布尔折算 true→1 / false→0（spec06 §4.5 条款 5）。旧形状让
+    // Json::True 落到 as_i64⇒None 再落字符串档 parse 失败⇒0，等于把「启用」读成「停用」。
+    Some(Json::True) => 1
+    Some(Json::False) => 0
     Some(v) =>
       match @json.as_i64(v) {
         Some(n) => n.to_int()
@@ -498,9 +502,11 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
 ///|
 fn[R, E] Facade::apply_surrogate_fields(self : Facade[R, E], s : @model.ProcessSurrogate, args : Map[String, Json], operator : String) -> Unit {
   let _ = self
+  // issues/236（audit8 R68①）缺键＝清空（基准＝java `applySurrogateFields` 无条件覆盖；
+  // 旧形状此处保留原值＝八栈里的混合第三形）。save 路径共用本函数，新行这两列本就是空串，不受影响。
   match arg_str(args, "processName") {
     Some(v) => s.process_name = v
-    None => ()
+    None => s.process_name = ""
   }
   // 授权人仅显式传入且**非空白**时覆盖（issues/77 不清空原授权人 + issues/152 ③：空串/全空白
   // 不得写进 operator——那种行是「死行」，get_surrogate 的 WHERE operator = ? 永不命中，
@@ -513,7 +519,7 @@ fn[R, E] Facade::apply_surrogate_fields(self : Facade[R, E], s : @model.ProcessS
   }
   match arg_str(args, "surrogate") {
     Some(v) => s.surrogate = v
-    None => ()
+    None => s.surrogate = ""
   }
   s.start_time = parse_surrogate_time(arg_str(args, "startTime"))
   s.end_time = parse_surrogate_time(arg_str(args, "endTime"))
