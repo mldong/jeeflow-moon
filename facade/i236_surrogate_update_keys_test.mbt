@@ -54,7 +54,7 @@ async test "236 缺键档：只带 id 的 update 清空流程名与被委托人�
   let before = data_of(facade.flow("processSurrogate/detail", targs([("id", sg_id)])))
   sg_ok(
     @json.get_str(before, "processName") == Some("i236-clear"),
-    "基线：detail 应能读到 process_name=i236-clear，整行实得 \{before}（id=\{sg_id}）",
+    "基线：detail 应能读到 process_name=i236-clear，实得 \{@json.get_str(before, "processName").unwrap_or("(缺)")}",
   )
   sg_ok(i236_enabled(before) == 0L, "基线：enabled 应为 0，实得 \{i236_enabled(before)}")
 
@@ -64,12 +64,12 @@ async test "236 缺键档：只带 id 的 update 清空流程名与被委托人�
 
   sg_ok(
     i236_blank(d, "processName"),
-    "缺 processName ⇒ 应清空，实得 \{@json.get_str(d, "processName")}",
+    "缺 processName ⇒ 应清空，实得 \{@json.get_str(d, "processName").unwrap_or("(缺)")}",
   )
-  sg_ok(i236_blank(d, "surrogate"), "缺 surrogate ⇒ 应清空，实得 \{@json.get_str(d, "surrogate")}")
+  sg_ok(i236_blank(d, "surrogate"), "缺 surrogate ⇒ 应清空，实得 \{@json.get_str(d, "surrogate").unwrap_or("(缺)")}")
   sg_ok(
     @json.get_str(d, "operator") == Some("leader236"),
-    "operator 专例：缺省必须保留原授权人，实得 \{@json.get_str(d, "operator")}",
+    "operator 专例：缺省必须保留原授权人，实得 \{@json.get_str(d, "operator").unwrap_or("(缺)")}",
   )
   sg_ok(i236_enabled(d) == 1L, "缺 enabled ⇒ 复位 1（java enabledArg==null⇒1 同形），实得 \{i236_enabled(d)}")
 }
