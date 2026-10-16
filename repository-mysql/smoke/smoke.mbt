@@ -993,6 +993,47 @@ async fn t1_m8_tx_ownership_boundary() -> Unit raise {
   clean_9x(base)
 }
 ///|
+/// T1-M10 空转档（audit8 R95，10-16 owner 拍甲补上）——spec/12 §12.4 第三档，专抓
+/// 「名义有事务、实际盖不住写」：SPI 声明在不在、模板注册没注册、代码读起来像不像有事务，
+/// 全都看不出这个破口，只有跑这一档才现形。三腿各钉一件事：
+/// ① 事务内写完，**同一条事务连接**必须读得到——读的是真实仓储路径 `find_instance_by_id`
+///    （它内部就是 `open_or_tx()`），不是手摘 `current_tx_conn`：测的是那 42 个调用点把读写汇到
+///    哪条连接上，而不是管子本身；
+/// ② 提交之前另开一条**独立连接**读不到（`open_raw()` 恒新开）——这腿同时防"事务压根没开、每句
+///    autocommit"那种假象把 ① 一起糊过去；
+/// ③ 抛错回滚后独立连接仍读不到（终态不存在）。
+/// 阳性对照（变异，读数见 notes/R95.md）＝把 `open_or_tx` 退回「每句自取新连接」⇒ ① 必红；
+/// 去掉回滚臂 ⇒ ③ 必红。
+async fn m10_body(r : @repo.MysqlRepository) -> Unit raise {
+  r.save_instance(m6_inst(990040L))
+  let seen = r.find_instance_by_id(990040L)
+  let readable = match seen {
+    Some(_) => true
+    None => false
+  }
+  check(readable, "T1-M10 空转档①：事务内在同一条连接上读得到自己刚写的行")
+  let other = m6_row_count(r, 990040L)
+  check(other == 0L, "T1-M10 空转档②：独立连接在提交前读不到未提交的行（实得 \{other}）")
+  raise @error.Business("m10-boom-in-tx")
+}
+
+///|
+async fn t1_m10_tx_read_your_own_writes() -> Unit raise {
+  println("T1-M10 空转档：同连接读回＋提交前独立连接不可见＋回滚后不存在（spec/12 §12.4 第三档）...")
+  let base = @repo.MysqlRepository::from_env()
+  clean_9x(base)
+  let r = base.new_request()
+  let raised = try {
+    r.execute_in_tx(m10_body)
+    false
+  } catch {
+    _ => true
+  }
+  check(raised, "T1-M10 抛错按预期外传（模板已 ROLLBACK）")
+  check(m6_row_count(base, 990040L) == 0L, "T1-M10 空转档③：回滚后独立连接读不到该行")
+  clean_9x(base)
+}
+///|
 async fn t1_all() -> Unit raise {
   println("T1-M1 page five keys...")
   t1_m1_page()
@@ -1021,6 +1062,7 @@ async fn t1_all() -> Unit raise {
   t1_m6_tx_scope_isolation()
   t1_m7_nested_tx_reuse()
   t1_m8_tx_ownership_boundary()
+  t1_m10_tx_read_your_own_writes()
   println("T1 ALL PASS (wasm → 160)")
   println("门面级 withdraw/transfer 真机对拍另跑：moon run --target wasm demo/cmd/t1_mysql")
 }
