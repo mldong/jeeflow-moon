@@ -431,11 +431,53 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   args : @json.FlowData,
   target_name : String?
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
-  match target_name {
-    Some(n) => self.execute_jump_mode_async(task_id, operator, args, Named(n))
+  // audit8 R86①：空串与"没带"同档＝血缘回退。基准＝java JeeflowEngineImpl.java:184 的
+  // ``StringUtils.isEmpty(nodeName)``（go/py/node/php/csharp 五栈同判据，都在**引擎内**分这一档）；
+  // 本栈此前只分 ``Option::None``，而门面把 "taskName 传了空串" 喂成 ``Some("")`` ⇒ 同一份请求
+  // 两栈给出不同答案（那六栈走回退、本栈静默 no-op）。
+  let named = match target_name {
+    Some(n) if n.length() != 0 => Some(n)
+    _ => None
+  }
+  match named {
+    Some(n) => {
+      // audit8 R86②：跳转目标节点名在**任何状态变更前**校验。六栈的报错点在 prepare 之后，
+      // 靠外层事务回滚兜住"任务未被动"那一腿；本栈的门面/仓储没有事务模板这一层 ⇒ 校验必须
+      // 前置，否则报红的同时任务已 DONE、办结事件已发＝实例原地失联，还留下半截事实。
+      // 摘掉这一处校验 ⇒ 下方 dispatch 支给出的是 Internal 文案，R86 用例照红（判据有牙）。
+      self.require_jump_node(task_id, n)
+      self.execute_jump_mode_async(task_id, operator, args, Named(n))
+    }
     // issues/121 P2：target 为空＝血缘版"退回上一步"（submitType=3）。
     // 此前这条与"退回发起人"（6）共用 get_first_task_node()，两语义塌成同值（issues/119）。
     None => self.execute_jump_mode_async(task_id, operator, args, Rollback)
+  }
+}
+
+///|
+/// R86 前置校验：走「任务 → 实例 → 定义 → 模型」这条**只读**链，确认节点名在模型里存在。
+/// 任一环节读不到就**放行**（那种形状由引擎主体给出它自己的 TaskNotFound/InstanceNotFound/
+/// DefineNotFound，本函数不抢别人的档）；只在"读到了、模型里却没有这个节点"时拦下。
+async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::require_jump_node(
+  self : Engine[R, E],
+  task_id : Int64,
+  name : String
+) -> Unit raise @error.JeeflowError {
+  let task = match (self.repo()).find_task_by_id(task_id) {
+    Some(t) => t
+    None => return
+  }
+  let instance = match (self.repo()).find_instance_by_id(task.process_instance_id) {
+    Some(i) => i
+    None => return
+  }
+  let dfn = match (self.repo()).find_define_by_id(instance.define_id) {
+    Some(d) => d
+    None => return
+  }
+  match @parser.parse_model(dfn.content).get_node(name) {
+    Some(_) => ()
+    None => raise @error.Business("根据节点名称[\{name}]无法找到节点模型")
   }
 }
 
@@ -454,7 +496,10 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
     Named(name) =>
       match model.get_node(name) {
         Some(node) => self.execute_node(exec, node)
-        None => ()
+        // R86：契约性报错在 ``execute_and_jump_async`` 的前置校验那一处（唯一出口，文案逐字对齐
+        // 六栈）。走到这里还查不到＝"校验后模型变了"的不可能形状，留一条 Internal 兜底，
+        // 不再像旧实现那样静默 no-op——那个 ``None => ()`` 就是本案病灶（对外 code=0＋原地失联）。
+        None => raise @error.Internal("跳转目标节点在入口校验后消失: \{name}")
       }
     FirstNode =>
       match model.get_first_task_node() {
