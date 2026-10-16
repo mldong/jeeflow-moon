@@ -3,7 +3,8 @@
 // ITransactionTemplate 口径（D-M1-1）：Unit 形态——回调内写外部可变单元带回结果。
 
 ///|
-/// IProcessRepository（spec/05，26 方法，全 async）
+/// IProcessRepository（spec/05，全 async）。法数不在此写死——本 trait 的 `async fn` 声明条数
+/// 就是权威读数（audit8 R71：旧文案写 26、现读 29，注释里的计数会随契约演进而失真）
 ///
 /// 抄送两条义务（issues/141 · spec 06-facade §2.5 / §4）——两仓储（内存 / MySQL）必须同判据同答案：
 /// · **G1 分页归属必填**：`page_cc_instances` 的归属列 `cc.actor_id`（本栈取值通道＝`PageQuery.operator`）
@@ -79,7 +80,8 @@ pub(open) trait ProcessRepository {
 }
 
 ///|
-/// IProcessExtRepository（spec/05，14 方法：design/his/surrogate）
+/// IProcessExtRepository（spec/05，design/his/surrogate 三族）。法数同上——不写死
+/// （audit8 R71：旧文案写 14、现读 13）
 pub(open) trait ProcessExtRepository {
   async fn find_design_by_id(Self, Int64) -> @model.ProcessDesign? raise @error.JeeflowError
   async fn save_design(Self, @model.ProcessDesign) -> Unit raise @error.JeeflowError

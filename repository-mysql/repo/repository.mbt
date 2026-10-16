@@ -1,4 +1,5 @@
-// MySQL 仓储 IProcessRepository 全 24 方法 —— 移植自 rust repository-sqlx/lib.rs
+// MySQL 仓储对 `@spi.ProcessRepository` 的逐条实现（法数以 trait 声明为准，不在此写死；
+// audit8 R71 旧文案写"全 24 方法"，与 trait 现读不符）—— 移植自 rust repository-sqlx/lib.rs
 // SQL 与 rust/java 编辑源同款；每操作独立连接（autocommit，方案 §2.3）。
 
 ///|
