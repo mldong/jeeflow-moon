@@ -847,10 +847,50 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::resolve_va
 }
 
 ///|
-/// 前置拦截器派发（issues/116 批次 D 补的最小挂点）。
+/// 按档解析「本节点这一次该跑的拦截器」（audit8 R91，issues/234 §4.2／spec02 §3 三条）。
+/// 基准＝java `NodeModel.java:49-59`：节点 `properties` 声明优先，串空才回落流程根同名键，
+/// 两档**不叠加**；两档都没声明才回落引擎级注册列表（＝R91 之前的现状语义，向后兼容）。
+/// 声明名一律查 `Ctx.named_interceptors`（键形按丙＝java 类全名串），查不到 ⇒ 显式报错并带
+/// 档位与 nodeId（issues/60 纪律：不静默跳过）；不缓存错误 ⇒ 每节点每次真解析。
+/// 同档多名的执行序＝`order` 升序（与本栈注册列表同尺；java 按声明序反射实例化，那是它的
+/// `order` 缺省形，本栈 `InterceptorFn` 自带 order ⇒ 以 order 为准）。
+fn[R, E] Engine::resolve_interceptors(
+  self : Engine[R, E],
+  exec : @exec.Execution,
+  phase : String
+) -> Array[@spi.InterceptorFn] raise @error.JeeflowError {
+  let is_pre = phase == "pre"
+  let prop = if is_pre { "preInterceptors" } else { "postInterceptors" }
+  match exec.process_model.interceptor_decl(exec.current_node, prop) {
+    None => if is_pre { self.ctx.pre_interceptors } else { self.ctx.interceptors }
+    Some(d) => {
+      let node_id = match exec.current_node {
+        Some(n) => n.id
+        None => "-"
+      }
+      let out : Array[@spi.InterceptorFn] = []
+      for piece in d.split(",") {
+        let name = piece.trim(chars=" \t\r\n").to_owned()
+        if name.is_empty() {
+          continue
+        }
+        match self.ctx.named_interceptor(name) {
+          Some(ic) => out.push(ic)
+          None => raise @error.Business(
+            "\{prop} 声明的拦截器未注册: \{name}（nodeId=\{node_id}）")
+        }
+      }
+      out.sort_by(fn(a, b) { a.order.compare(b.order) })
+      out
+    }
+  }
+}
+
+///|
+/// 前置拦截器派发（issues/116 批次 D 补的最小挂点；audit8 R91 起改走 `resolve_interceptors`）。
 /// 历史：本函数是空实现 ⇒ `Ctx::register_interceptor` 注册的东西只在**后置**跑，
 /// 建单期第三方无处可挂（issues/116 §3、issues/104 §P1）。
-/// 现按 order 遍历 `ctx.pre_interceptors` —— 一条**与后置数组分开**的通道：
+/// 未声明时按 order 遍历 `ctx.pre_interceptors` —— 一条**与后置数组分开**的通道：
 /// `InterceptorFn` 只有一个 `run`（无 before/after 之分），复用后置数组会让
 /// persist 的 PersistPostInterceptor 双触发（归档/SYNC 写两遍），故另起 pre 通道。
 /// 委托自动生效不经本函数（时机对不上，见 `surrogate.mbt` 头部 ①②）。
@@ -858,14 +898,16 @@ async fn[R, E] Engine::fire_pre_interceptors(
   self : Engine[R, E],
   exec : @exec.Execution
 ) -> Unit raise @error.JeeflowError {
-  for interceptor in self.ctx.pre_interceptors {
+  for interceptor in self.resolve_interceptors(exec, "pre") {
     (interceptor.run)(exec)
   }
 }
 
 ///|
+/// 后置拦截器派发（audit8 R91 起改走 `resolve_interceptors`；persist 的「声明才挂载」闸门
+/// 与本案共用同一处读取，见 `persist/interceptor.mbt::persist_interceptor_declared`）。
 async fn[R, E] Engine::fire_post_interceptors(self : Engine[R, E], exec : @exec.Execution) -> Unit raise @error.JeeflowError {
-  for interceptor in self.ctx.interceptors {
+  for interceptor in self.resolve_interceptors(exec, "post") {
     (interceptor.run)(exec)
   }
 }

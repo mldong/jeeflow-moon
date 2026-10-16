@@ -83,8 +83,10 @@ pub fn PersistPostInterceptor::as_interceptor(
 
 ///|
 ///|
-/// 本拦截器在流程定义里的声明名（与 java 类全名逐字一致——门禁夹具与 mldong 后台写的都是这个串）
-let persist_class_name : String = "com.mldong.jeeflow.persist.interceptor.PersistPostInterceptor"
+/// 本拦截器在流程定义里的声明名（与 java 类全名逐字一致——门禁夹具与 mldong 后台写的都是这个串）。
+/// audit8 R91 起对宿主公开：声明档存在时引擎只查 `Ctx.named_interceptor`（两档不叠加），
+/// 装配方要按这一枚串把自己注册进去 ⇒ 别再各自手抄一遍类名。
+pub const PERSIST_CLASS_NAME : String = "com.mldong.jeeflow.persist.interceptor.PersistPostInterceptor"
 
 ///|
 /// 定义级 opt-in（java 的挂载方式＝"声明即挂载"：`NodeModel.execPostInterceptors` 先取节点级
@@ -93,27 +95,18 @@ let persist_class_name : String = "com.mldong.jeeflow.persist.interceptor.Persis
 /// 会把每一条"办结+同意"的流程都拖去写一张与流程同名的表，表不存在即硬失败
 /// （`JdbcDynamicTableWriter.exists()` 抛 SQLException，且拦截器按 spec/12 §12.2 不隔离）。
 /// 比对规则与 java 的 `Class.forName` 等价：逗号分段、逐段 trim、与类全名逐字相等。
+/// audit8 R91 起本闸门读的是通用件 `@parser.ProcessModel::interceptor_decl`（＝引擎派发同一处
+/// 判据），且声明档存在时拦截器实体还得在 `Ctx.named_interceptors` 按名查到（宿主两头都要给）。
 fn persist_interceptor_declared(exec : @exec.Execution) -> Bool {
-  let name = persist_class_name
-  let node_decl = match exec.current_node {
-    Some(n) =>
-      match n.properties.get("postInterceptors") {
-        Some(Json::String(s)) => s.trim(chars=" \t\r\n").to_owned()
-        _ => ""
-      }
-    None => ""
-  }
-  let decl = if node_decl.is_empty() {
-    exec.process_model.post_interceptors.unwrap_or("")
-  } else {
-    node_decl
-  }
-  if decl.is_empty() {
-    return false
+  // 读取整条交给通用件（audit8 R91）：节点声明优先→串空回落流程根→两档都空＝None＝不挂载。
+  // 与引擎派发共用一处判据，persist 不再自读 properties（原先那条自读腿是同一段代码的第二份）。
+  let decl = match exec.process_model.interceptor_decl(exec.current_node, "postInterceptors") {
+    Some(d) => d
+    None => return false
   }
   let mut hit = false
   for piece in decl.split(",") {
-    if piece.trim(chars=" \t\r\n").to_owned() == name {
+    if piece.trim(chars=" \t\r\n").to_owned() == PERSIST_CLASS_NAME {
       hit = true
     }
   }

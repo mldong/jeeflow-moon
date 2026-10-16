@@ -8,6 +8,7 @@ pub(all) struct ProcessModel {
   model_type : String
   expire_time : String?
   persist_mode : String? // ARCHIVE / SYNC
+  pre_interceptors : String? // 定义级前置拦截器声明（audit8 R91 补齐：逗号分隔类全名，java ProcessModel.preInterceptors 同位）
   post_interceptors : String? // 定义级后置拦截器声明（逗号分隔类全名；java NodeModel.execPostInterceptors 同位）
   rel_table_name : String?
   nodes : Array[NodeModel]
@@ -122,6 +123,50 @@ pub fn ProcessModel::can_rejected(
 ///|
 pub fn ProcessModel::get_end_nodes(self : ProcessModel) -> Array[NodeModel] {
   self.get_nodes_by_type(End)
+}
+
+///|
+/// 声明串归一：缺失／非串／纯空白（含 `"postInterceptors": ""` 这把共享夹具里常见的空声明）
+/// 一律 ⇒ `None`＝「没声明」。审计要点：不能把空串当声明——那会让「声明档」命中而把
+/// 引擎级注册列表整条绕过去（`flows/10-mixed-mode.json` 就是两把键都写成空串的形状）。
+fn normalize_interceptor_decl(s : String?) -> String? {
+  match s {
+    Some(v) => {
+      let t = v.trim(chars=" \t\r\n").to_owned()
+      if t.is_empty() {
+        None
+      } else {
+        Some(t)
+      }
+    }
+    None => None
+  }
+}
+
+///|
+/// 按档取「本次动作生效的拦截器声明」（audit8 R91，issues/234 §4.2／spec02 §3 三条）。
+/// 基准＝java `NodeModel.java:49-59`：节点 `properties` 声明优先，串空才回落流程根同名键，
+/// **两档不叠加**（节点声明了就不再执行根声明里的那些）。两档都没声明 ⇒ `None`，回落动作归
+/// 调用方：引擎侧回落「引擎级注册列表」＝R91 之前的现状语义；persist 侧把 `None` 当「没声明
+/// ＝不挂载」。`prop` 用 java 属性名原串（`"preInterceptors"`／`"postInterceptors"`），
+/// 它同时是错误文案里的档位名。本栈模型已在 `exec.process_model` 里 ⇒ 无 DB 回查，
+/// 不存在 go/py/node 那条「根声明每定义只回查一行」的读放大问题。
+pub fn ProcessModel::interceptor_decl(
+  self : ProcessModel, node : NodeModel?, prop : String
+) -> String? {
+  let node_decl = match node {
+    Some(n) => n.prop_str(prop)
+    None => None
+  }
+  let root_decl = if prop == "preInterceptors" {
+    self.pre_interceptors
+  } else {
+    self.post_interceptors
+  }
+  match normalize_interceptor_decl(node_decl) {
+    Some(v) => Some(v)
+    None => normalize_interceptor_decl(root_decl)
+  }
 }
 
 ///|
@@ -394,6 +439,8 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
   let expire_time = @json.get_str(root, "expireTime")
   let persist_mode = @json.get_str(root, "persistMode")
   // 定义级后置拦截器声明（issues/150 的②要它才安全：java 是"声明即挂载"，节点级缺省回落流程级）
+  // 定义级前置拦截器声明（audit8 R91：节点未声明时的回落档；键形＝java 类全名串，与 post 同形）
+  let pre_interceptors = @json.get_str(root, "preInterceptors")
   let post_interceptors = @json.get_str(root, "postInterceptors")
   let rel_table_name = match @json.get_str(root, "relTableName") {
     Some(s) => Some(s)
@@ -474,7 +521,7 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
       }
     None => ()
   }
-  { name, display_name, model_type, expire_time, persist_mode, post_interceptors, rel_table_name, nodes, edges }
+  { name, display_name, model_type, expire_time, persist_mode, pre_interceptors, post_interceptors, rel_table_name, nodes, edges }
 }
 
 

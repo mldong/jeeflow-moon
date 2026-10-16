@@ -91,6 +91,10 @@ fn make_facade_persist_with(
     v
   })
   let _ = ctx.register_interceptor(itc.as_interceptor())
+  // audit8 R91：本案夹具把 persist 的类全名写进了 `postInterceptors`（见上面那份 flow JSON），
+  // 声明档一旦存在就只查按名注册表（两档不叠加，java `NodeModel.java:56-62` 同形）⇒ 装配方
+  // 两头都要给，只挂引擎级列表会在解析那一步显式报"未注册"（issues/60 纪律，不静默跳过）。
+  let _ = ctx.register_named_interceptor(@persist.PERSIST_CLASS_NAME, itc.as_interceptor())
   @facade.Facade::make(ctx)
 }
 

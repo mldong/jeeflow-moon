@@ -74,6 +74,11 @@ pub(all) struct Ctx[R, E] {
   /// 返回值取 `Json`：本栈流程变量的载体就是 Json（`@json.FlowData`），处理器无返回值时
   /// 返回 `@json.null_json()` ⇒ 引擎不写键（对齐 python「ret is not None 才写」）。
   custom_handlers : Map[String, (async (@exec.Execution) -> Json raise @error.JeeflowError)]
+  /// 按名拦截器注册表（audit8 R91，键形按丙＝java 类全名串，与 `assignment_handlers`／
+  /// `custom_handlers` 同一惯例）：流程定义里 `preInterceptors`／`postInterceptors` 声明的
+  /// 每一项都要在这一档查得到实体——MoonBit 没有反射，java 那句 `Class.forName(className)`
+  /// 在本栈无从执行 ⇒ 实体只能由宿主按名给。查不到由引擎显式报错（issues/60 纪律，不静默跳过）。
+  named_interceptors : Map[String, InterceptorFn]
   // ── 有序集合 ──
   interceptors : Array[InterceptorFn]
   /// 前置扩展位（issues/116 批次 D）：与 `interceptors` **分开注册、分开触发**。
@@ -104,6 +109,7 @@ pub fn[R, E] Ctx::new(repository : R, ext_repository : E) -> Ctx[R, E] {
     assignment_handlers: Map([]),
     decision_handlers: Map([]),
     custom_handlers: Map([]),
+    named_interceptors: Map([]),
     interceptors: [],
     pre_interceptors: [],
     event_listeners: [],
@@ -152,6 +158,7 @@ pub fn[R, E] Ctx::for_request(
     assignment_handlers: self.assignment_handlers.copy(),
     decision_handlers: self.decision_handlers.copy(),
     custom_handlers: self.custom_handlers.copy(),
+    named_interceptors: self.named_interceptors.copy(),
     interceptors: self.interceptors.copy(),
     pre_interceptors: self.pre_interceptors.copy(),
     event_listeners: self.event_listeners.copy(),
@@ -287,6 +294,21 @@ pub fn[R, E] Ctx::register_decision_handler(
 pub fn[R, E] Ctx::register_interceptor(self : Ctx[R, E], i : InterceptorFn) -> Unit {
   self.interceptors.push(i)
   self.interceptors.sort_by(fn(a, b) { a.order.compare(b.order) })
+}
+
+///|
+/// 按名注册拦截器（audit8 R91）：`name`＝流程定义声明里的原样串（java 类全名），
+/// 与 `register_interceptor`（引擎级列表）是两档——声明档存在时只走本表，两档不叠加。
+pub fn[R, E] Ctx::register_named_interceptor(
+  self : Ctx[R, E], name : String, i : InterceptorFn
+) -> Unit {
+  self.named_interceptors[name] = i
+}
+
+///|
+/// 按名查拦截器实体（只查表；查不到由调用方报错，本函数不缓存错误⇒每次真查）
+pub fn[R, E] Ctx::named_interceptor(self : Ctx[R, E], name : String) -> InterceptorFn? {
+  self.named_interceptors.get(name)
 }
 
 ///|
