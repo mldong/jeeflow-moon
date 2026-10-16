@@ -124,7 +124,8 @@ pub async fn MetaTableReader::assemble(
   // 未在元数据里的列（process_instance_id / apply_user_id / 系统字段）原样带出，键统一小写
   // （跨方言一致，java `:73-77`）；EXPAND 展开列已消费 ⇒ 不再平铺
   for k, kv in row {
-    if meta.find_field_by_column(k) is None && !is_expand_column(meta, k) {
+    // 与写侧直通闸同档（strict）：R78 的下限＝同一栈读腿与写腿必须同尺，否则驼峰列名会被写腿落库、被读腿平铺成第二个键
+    if meta.find_field_by_column(k, strict=true) is None && !is_expand_column(meta, k) {
       let low = k.to_lower()
       if result.get(low) is None {
         result[low] = kv

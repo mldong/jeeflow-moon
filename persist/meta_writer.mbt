@@ -92,8 +92,11 @@ fn MetaTableWriter::split(
         }
     }
   }
+  // 直通闸与字段消费同一把尺子（strict=true）：这里若用宽松档，"元数据声明过列名"的键
+  // 会被判成已消费而实际没人写＝静默丢列（R78 甲′：引擎注入/表单带来的幂等键必须能落到真列，
+  // java `MetaTableWriter:73-77` 的 findField 本就只折大小写、不做分隔符归一）
   for k, v in data {
-    if meta.find_field(k) is None && row.get(k) is None {
+    if meta.find_field(k, strict=true) is None && row.get(k) is None {
       row[k] = v
     }
   }

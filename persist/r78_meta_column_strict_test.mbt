@@ -80,3 +80,50 @@ fn r78_reader() -> @persist.MetaTableReader {
   let writer = @persist.InMemoryTableWriter::new()
   @persist.MetaTableReader::make(provider.as_provider(), x10_reader(writer))
 }
+
+// ── 甲′补的两枚：直通闸本身（T1-F F149F 的真库红就是它造成的）──
+// 元数据声明过蛇形列 ⇒ 旧写法用**宽松** find_field 判"有没有被声明"，驼峰幂等键被判成
+// "已声明所以不用直通"，而字段消费腿在 strict 下又没写这一列 ⇒ 两不管＝静默丢列（真库里落 NULL）。
+// java 的 findField 只折大小写，不做分隔符归一 ⇒ 直通闸必须同尺。
+///|
+fn r78_idem_meta() -> @persist.TableMeta {
+  let meta = @persist.TableMeta::make("biz_r78_idem", "R78 幂等键表")
+  meta.add_field(@persist.FieldMeta::make("process_instance_id", "BIGINT", "流程实例id"))
+  meta.add_field(@persist.FieldMeta::make("merchant_name", "VARCHAR(64)", "商户"))
+  meta
+}
+
+///|
+async test "r78 甲′ 直通闸 驼峰幂等键不被声明判据吞掉" {
+  let provider = @persist.InMemoryMetaProvider::new()
+  provider.register(r78_idem_meta())
+  let writer = @persist.InMemoryTableWriter::new()
+  let mw = @persist.MetaTableWriter::make(writer, provider.as_provider())
+  let data : Map[String, Json] = Map([
+    ("processInstanceId", @json.number_of(990995L),
+    ), ("merchantName", @json.string_of("驼峰商户")),
+  ])
+  let _ = mw.insert("biz_r78_idem", data)
+  let rows = writer.get_table_rows("biz_r78_idem")
+  assert_true(rows.length() >= 1)
+  // 两个驼峰键都没被元数据腿消费（strict 禁归一）⇒ 必须整把直通出去，不许静默丢
+  assert_true(rows[0].get("processInstanceId") == Some(@json.number_of(990995L)))
+  assert_true(rows[0].get("merchantName") == Some(@json.string_of("驼峰商户")))
+}
+
+///|
+async test "r78 甲′ 直通闸阳性对照 逐字相符的键由字段消费、不重复直通" {
+  let provider = @persist.InMemoryMetaProvider::new()
+  provider.register(r78_idem_meta())
+  let writer = @persist.InMemoryTableWriter::new()
+  let mw = @persist.MetaTableWriter::make(writer, provider.as_provider())
+  let data : Map[String, Json] = Map([
+    ("process_instance_id", @json.number_of(990996L),
+    ), ("apply_user_id", @json.string_of("u1")),
+  ])
+  let _ = mw.insert("biz_r78_idem", data)
+  let row = writer.get_table_rows("biz_r78_idem")[0]
+  // 幂等键由字段腿写进列（值一把），直通不把它覆盖成第二把键；apply_user_id 未声明 ⇒ 直通
+  assert_true(row.get("process_instance_id") == Some(@json.number_of(990996L)))
+  assert_true(row.get("apply_user_id") == Some(@json.string_of("u1")))
+}

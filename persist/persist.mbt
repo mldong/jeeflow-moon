@@ -135,9 +135,14 @@ pub fn TableMeta::make(table_name : String, display_name : String, primary_key? 
 ///|
 /// 按**表单字段名**找字段（宽松列名匹配，issues/151 X3 那枚尺子）。
 /// 写侧用它判断"这个 data 键是不是已被某个字段消费"（java `findField:74`）。
-pub fn TableMeta::find_field(self : TableMeta, key : String) -> FieldMeta? {
+pub fn TableMeta::find_field(
+  self : TableMeta,
+  key : String,
+  strict~ : Bool=false
+) -> FieldMeta? {
   for f in self.fields {
-    if column_names_equal(key, f.name) || column_names_equal(key, f.column_name) {
+    // strict=true ⇒ 只折大小写、不做驼峰↔下划线归一＝java `TableMeta.findField` 同款尺子
+    if column_names_equal(key, f.name, strict~) || column_names_equal(key, f.column_name, strict~) {
       return Some(f)
     }
   }
@@ -146,9 +151,13 @@ pub fn TableMeta::find_field(self : TableMeta, key : String) -> FieldMeta? {
 
 ///|
 /// 按**表列名**找字段（读侧判断某列是否已被消费，java `findFieldByColumn:74`）
-pub fn TableMeta::find_field_by_column(self : TableMeta, column : String) -> FieldMeta? {
+pub fn TableMeta::find_field_by_column(
+  self : TableMeta,
+  column : String,
+  strict~ : Bool=false
+) -> FieldMeta? {
   for f in self.fields {
-    if column_names_equal(column, f.column_name) {
+    if column_names_equal(column, f.column_name, strict~) {
       return Some(f)
     }
   }
