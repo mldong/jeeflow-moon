@@ -66,9 +66,9 @@ fn MetaTableWriter::split(
   let row : Map[String, Json] = Map([])
   let subs : Array[(FieldMeta, Json)] = []
   for f in meta.fields {
-    let key = match find_data_key(data, f.name) {
+    let key = match find_data_key(data, f.name, strict=true) {
       Some(k) => Some(k)
-      None => find_data_key(data, f.column_name)
+      None => find_data_key(data, f.column_name, strict=true)
     }
     match key {
       None => ()

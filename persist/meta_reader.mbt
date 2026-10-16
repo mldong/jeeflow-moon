@@ -79,7 +79,7 @@ pub async fn MetaTableReader::assemble(
 ) -> Map[String, Json] raise @error.JeeflowError {
   let result : Map[String, Json] = Map([])
   for f in meta.fields {
-    let v = match find_data_key(row, f.column_name) {
+    let v = match find_data_key(row, f.column_name, strict=true) {
       Some(k) => Some(row[k])
       None => None
     }
@@ -92,7 +92,7 @@ pub async fn MetaTableReader::assemble(
         let obj = @json.empty_object()
         let mut any = false
         for sub_name, col in f.expand_fields {
-          match find_data_key(row, col) {
+          match find_data_key(row, col, strict=true) {
             Some(k) => {
               @json.obj_set(obj, sub_name, row[k])
               any = true
@@ -146,7 +146,7 @@ async fn MetaTableReader::read_sub_table(
   if f.target_table.is_empty() {
     return None
   }
-  let pk_key = match find_data_key(row, parent_meta.primary_key) {
+  let pk_key = match find_data_key(row, parent_meta.primary_key, strict=true) {
     Some(k) => k
     None => return None
   }
