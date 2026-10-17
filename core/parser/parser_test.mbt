@@ -208,3 +208,26 @@ test "parser: candidate keys top-level wins over field (issues/177 R11)" {
   let pick = model.get_node("pick").unwrap()
   assert_eq(pick.candidate_users().unwrap(), "top1")
 }
+
+///
+/// R119：首任务节点按 nodes 序取第一个 `snaker:task`，不跟 start 首条出边
+/// （首边到 decision 时旧实现返回 decision，导致 isFirstTaskNode 全假）。
+test "parser: first task by node order, not start edge" {
+  let json =
+    $|{"name": "first-task", "displayName": "First", "type": "approval",
+    $|"nodes": [
+    $|  {"id": "start", "type": "snaker:start", "text": {"value": "开始"}},
+    $|  {"id": "d1", "type": "snaker:decision", "text": {"value": "判断"}},
+    $|  {"id": "apply", "type": "snaker:task", "text": {"value": "申请"}},
+    $|  {"id": "end", "type": "snaker:end", "text": {"value": "结束"}}
+    $|],
+    $|"edges": [
+    $|  {"id": "e1", "sourceNodeId": "start", "targetNodeId": "d1"},
+    $|  {"id": "e2", "sourceNodeId": "d1", "targetNodeId": "apply"},
+    $|  {"id": "e3", "sourceNodeId": "apply", "targetNodeId": "end"}
+    $|]}
+  let model = @parser.parse_model(json)
+  assert_eq(model.get_first_task_node().unwrap().id, "apply")
+  assert_true(model.is_first_task_node("apply"))
+  assert_false(model.is_first_task_node("d1"))
+}

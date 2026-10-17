@@ -78,14 +78,14 @@ pub fn ProcessModel::get_target_node(self : ProcessModel, edge : EdgeModel) -> N
 ///|
 /// start 后第一个任务节点
 pub fn ProcessModel::get_first_task_node(self : ProcessModel) -> NodeModel? {
-  match self.get_start() {
-    Some(start) =>
-      match self.get_output_edges(start.id).get(0) {
-        Some(edge) => self.get_node(edge.target_node_id)
-        None => None
-      }
-    None => None
+  // spec/06:710：首个 `snaker:task` 节点按 nodes 序取，不跟 start 首条出边
+  // （首边到 fork/decision 时旧实现会把非任务节点当首任务）。对齐 java/csharp。
+  for n in self.nodes {
+    if n.node_type is Task {
+      return Some(n)
+    }
   }
+  None
 }
 
 ///|
