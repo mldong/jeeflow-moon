@@ -192,7 +192,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
     for e in exec.process_model.get_output_edges(node.id) {
       match exec.process_model.get_target_node(e) {
         Some(next) => next_nodes.push(next)
-        None => ()
+        None => println(unknown_edge_warning(node.id, e.target_node_id))
       }
     }
     for next in next_nodes {
@@ -240,7 +240,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
       Some(edge) =>
         match exec.process_model.get_target_node(edge) {
           Some(next) => self.execute_node(exec, next)
-          None => ()
+          None => println(unknown_edge_warning(node.id, edge.target_node_id))
         }
       None =>
         // issues/164 A：零命中（两条 expr 边全 false / 变量缺失 / 零出边 / 自定义处理器
@@ -256,7 +256,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
     for e in exec.process_model.get_output_edges(node.id) {
       match exec.process_model.get_target_node(e) {
         Some(next) => next_nodes.push(next)
-        None => ()
+        None => println(unknown_edge_warning(node.id, e.target_node_id))
       }
     }
     for next in next_nodes {
@@ -272,7 +272,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
       for e in exec.process_model.get_output_edges(node.id) {
         match exec.process_model.get_target_node(e) {
           Some(next) => next_nodes.push(next)
-          None => ()
+          None => println(unknown_edge_warning(node.id, e.target_node_id))
         }
       }
       for next in next_nodes {
@@ -416,6 +416,10 @@ pub fn custom_clazz_missing_warning(node_id : String) -> String {
   "[jeeflow] custom 节点未配置 clazz（缺失或空串），不执行处理器、照常落历史行并继续流转" + ": nodeId=\{node_id}"
 }
 
+pub fn unknown_edge_warning(from : String, to : String) -> String {
+  "[jeeflow] WARNING 转移出边的目标节点不在模型里（该节点类型未建档，解析期已跳过），本次流转停在这条边: from=\{from}, to=\{to}"
+}
+
 ///|
 /// 记录类（`snaker:custom`）节点执行腿 —— issues/142 A 批，spec/02 §6.1 表第二行 + §6.2 三条硬要求。
 /// 现成对照＝python 本轮那条腿（`jeeflow-python/jeeflow/engine.py::_exec_custom_node`）。
@@ -478,7 +482,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
   for e in exec.process_model.get_output_edges(node.id) {
     match exec.process_model.get_target_node(e) {
       Some(next) => next_nodes.push(next)
-      None => ()
+      None => println(unknown_edge_warning(node.id, e.target_node_id))
     }
   }
   for next in next_nodes {
