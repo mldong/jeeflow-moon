@@ -148,6 +148,11 @@ pub impl @spi.ProcessRepository for I115SpyRepo with fn update_define_state(self
 }
 
 ///|
+pub impl @spi.ProcessRepository for I115SpyRepo with fn has_instances_by_define_id(self, define_id) {
+  self.base.has_instances_by_define_id(define_id)
+}
+
+///|
 pub impl @spi.ProcessRepository for I115SpyRepo with fn remove_define(self, id) {
   self.base.remove_define(id)
 }

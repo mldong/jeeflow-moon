@@ -74,6 +74,55 @@ test "args: dual string/number id (C2) + 非法id报错 (C3)" {
 }
 
 ///|
+async test "r110: define remove any instance guard" {
+  let repo = @mem.MemoryRepository::new()
+  let ctx = @spi.Ctx::new(repo, repo)
+  let gen = @id_gen.AtomicIdGenerator::new(1L)
+  let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
+  let facade = @facade.Facade::make(ctx2)
+  let content = $|{"name":"r110-guard","displayName":"R110","type":"approval",
+$| "nodes":[{"id":"start","type":"snaker:start","text":{"value":"Start"}},
+$| {"id":"apply","type":"snaker:task","text":{"value":"Apply"},"properties":{"assignee":"applicant"}},
+$| {"id":"end","type":"snaker:end","text":{"value":"End"}}],
+$| "edges":[{"id":"e1","sourceNodeId":"start","targetNodeId":"apply"},{"id":"e2","sourceNodeId":"apply","targetNodeId":"end"}]}
+  let define_info : @model.ProcessDefine = {
+    id: 0L, name: "r110-guard", display_name: "R110", define_type: "approval",
+    state: 1, content, version: 1, create_time: None, create_user: None,
+    update_time: None, update_user: None,
+  }
+  repo.save_define(define_info)
+  let env = facade.flow("processInstance/startAndExecute",
+    targs([("processDefineId", define_info.id.to_string()), ("operator", "applicant")]))
+  assert_eq(msg_of(env), "成功")
+
+  let env = facade.flow("processDefine/remove", targs([("id", define_info.id.to_string())]))
+  assert_eq(@json.get_i64(env, "code").unwrap(), 99999999L)
+  assert_eq(@json.get_str(env, "msg").unwrap(), "存在正在未完成的流程实例，不允许删除！")
+  assert_true(repo.find_define_by_id(define_info.id) is Some(_))
+
+  let clean_info : @model.ProcessDefine = {
+    id: 0L, name: "r110-clean", display_name: "R110Clean", define_type: "approval",
+    state: 1, content, version: 1, create_time: None, create_user: None,
+    update_time: None, update_user: None,
+  }
+  repo.save_define(clean_info)
+  let args : Map[String, Json] = Map([])
+  args["ids"] = @json.array_of([
+    @json.string_of(clean_info.id.to_string()),
+    @json.string_of(define_info.id.to_string()),
+  ])
+  let env = facade.flow("processDefine/remove", args)
+  assert_eq(@json.get_i64(env, "code").unwrap(), 99999999L)
+  assert_eq(@json.get_str(env, "msg").unwrap(), "存在正在未完成的流程实例，不允许删除！")
+  assert_true(repo.find_define_by_id(clean_info.id) is Some(_))
+  assert_true(repo.find_define_by_id(define_info.id) is Some(_))
+
+  let env = facade.flow("processDefine/remove", targs([("id", clean_info.id.to_string())]))
+  assert_eq(msg_of(env), "成功")
+  assert_true(repo.find_define_by_id(clean_info.id) is None)
+}
+
+///|
 test "args: ids/id dual + empty explicit error (C15)" {
   let args : Map[String, Json] = Map([])
   args["ids"] = @json.array_of([@json.string_of("1"), @json.number_of(2L)])

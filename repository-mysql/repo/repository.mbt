@@ -113,6 +113,17 @@ pub impl @spi.ProcessRepository for MysqlRepository with fn remove_define(self, 
 }
 
 ///|
+pub impl @spi.ProcessRepository for MysqlRepository with fn has_instances_by_define_id(self, define_id) {
+  let conn = self.open_or_tx()
+  let rows = q(conn, "SELECT COUNT(*) AS cnt FROM wf_process_instance WHERE process_define_id = ?", [@moondb.Int64(define_id)])
+  self.close_conn(conn)
+  if rows.is_empty() { false } else { row_i64(rows[0], "cnt") > 0L }
+}
+
+///|
+pub extend MysqlRepository with @spi.ProcessRepository::{has_instances_by_define_id}
+
+///|
 pub impl @spi.ProcessRepository for MysqlRepository with fn find_instance_by_id(self, instance_id) {
   let conn = self.open_or_tx()
   let rows = q(conn, 

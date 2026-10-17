@@ -28,6 +28,7 @@ pub(open) trait ProcessRepository {
   async fn update_define(Self, @model.ProcessDefine) -> Unit raise @error.JeeflowError
   async fn update_define_state(Self, Int64, Int) -> Unit raise @error.JeeflowError
   async fn remove_define(Self, Int64) -> Unit raise @error.JeeflowError
+  async fn has_instances_by_define_id(Self, Int64) -> Bool raise @error.JeeflowError
   async fn find_instance_by_id(Self, Int64) -> @model.ProcessInstance? raise @error.JeeflowError
   async fn save_instance(Self, @model.ProcessInstance) -> Unit raise @error.JeeflowError
   async fn update_instance(Self, @model.ProcessInstance) -> Unit raise @error.JeeflowError

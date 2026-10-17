@@ -134,7 +134,14 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::redeploy(self : Facade[R, E]
 
 ///|
 pub async fn[R : @spi.ProcessRepository, E] Facade::define_remove(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
-  for id in arg_ids(args) {
+  let ids = arg_ids(args)
+  // audit8 R110：先对整批做存在性校验再删，避免"前面的删了、后面的被拒"的半删。
+  for id in ids {
+    if (self.repo).has_instances_by_define_id(id) {
+      raise @error.Business("存在正在未完成的流程实例，不允许删除！")
+    }
+  }
+  for id in ids {
     (self.repo).remove_define(id)
   }
   @json.null_json()
