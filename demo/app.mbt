@@ -324,7 +324,28 @@ pub async fn App::handle(self : App, _meth : String, path : String, query_string
           Some(ctx) => {
             let r = ctx.repository().new_request()
             let f = @facade.Facade::make(ctx.for_request(r, @spi.NoExtRepository::new()))
-            f.flow(action, args)
+            // audit8 R111：动作级事务。f.flow 内部已把业务错误转信封 ⇒ 按 code 判回滚；
+            // 提交/开始错误不得被当成业务信封吞掉（用 rollback 标志区分）。
+            let original : Ref[Json] = Ref(@json.null_json())
+            let rollback = Ref(false)
+            try {
+              r.execute_in_tx(async fn(_rr) {
+                let out = f.flow(action, args)
+                original.val = out
+                if @json.get_i64(out, "code").unwrap_or(0L) != 0L {
+                  rollback.val = true
+                  raise @error.Business("rollback")
+                }
+              })
+              original.val
+            } catch {
+              _ =>
+                if rollback.val {
+                  original.val
+                } else {
+                  raise @error.Business("事务失败")
+                }
+            }
           }
           None => err_local("store 未初始化")
         }
