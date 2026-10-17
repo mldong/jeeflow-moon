@@ -57,6 +57,17 @@ jobs:
           moon update
           moon install
 
+      # 发版前置 T0（R118）：publish 与 demo-deploy 同 tag 并行，若无本段则
+      # 测试红也照样把包推进注册表。T1（repository-mysql/smoke + demo/cmd/t1_mysql）
+      # 需真 MySQL，CI 不备库，仍由 RELEASE.md 发版前门票（release-checklist --pre）人工把关。
+      - name: Check (wasm)
+        run: moon check --target wasm --no-render
+
+      - name: Test (wasm + native)
+        run: |
+          moon test --target wasm --no-render
+          moon test --target native --no-render
+
       - name: Validate channel only (build gate, no publish)
         if: ${{ inputs.validate_only }}
         run: |
