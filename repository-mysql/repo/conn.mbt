@@ -78,9 +78,12 @@ pub fn next_snowflake_id() -> Int64 {
 }
 
 ///|
+// R111 门禁扫到的重号病灶：旧形每次调用都 new 一个发号器
+// ⇒ 同一毫秒内两次调用返回同一枚 id（门禁 L2-18/29/36 报
+// wf_process_task_actor.PRIMARY 重号）。发号器必须进程单例。
+let snowflake_gen : @id_gen.DefaultIdGenerator = @id_gen.DefaultIdGenerator::new(1L)
 let snowflake_singleton : Ref[(() -> Int64)] = Ref(fn() -> Int64 {
-  let gen = @id_gen.DefaultIdGenerator::new(1L)
-  gen.next_id()
+  snowflake_gen.next_id()
 })
 
 ///|
