@@ -623,3 +623,28 @@ test "c22: handler registry built-ins + custom" {
   assert_true(by_type.length() >= 2)
   assert_eq(registry.all_handlers().length(), built_in_count + 2)
 }
+
+///
+/// R115 C3⑬：串行会签首位零参与者仍须建一行 DOING（spec/02 §6.1），不得静默 return。
+async test "c3-13: sequential countersign with empty actors still creates DOING row" {
+  let (engine, repo) = make_compliance_engine()
+  let json =
+    $|{"name": "cs-empty", "displayName": "CS Empty", "type": "approval",
+    $|"nodes": [
+    $|  {"id": "start", "type": "snaker:start", "text": {"value": "开始"}},
+    $|  {"id": "cs", "type": "snaker:task", "text": {"value": "会签"},
+    $|   "properties": {"performType": 1, "countersignType": "SEQUENTIAL"}},
+    $|  {"id": "end", "type": "snaker:end", "text": {"value": "结束"}}
+    $|],
+    $|"edges": [
+    $|  {"id": "e1", "sourceNodeId": "start", "targetNodeId": "cs"},
+    $|  {"id": "e2", "sourceNodeId": "cs", "targetNodeId": "end"}
+    $|]}
+  let did = save_flow_define(repo, "cs-empty-actors", json)
+  let iid = start_and_apply(engine, repo, did)
+  let inst = repo.find_instance_by_id(iid).unwrap()
+  assert_eq(inst.state, 10)
+  let tasks = repo.find_doing_tasks(iid, [])
+  assert_eq(tasks.length(), 1)
+  assert_true(tasks[0].actor_ids.is_empty())
+}

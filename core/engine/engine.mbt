@@ -326,6 +326,20 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
     if cs_upper == "SEQUENTIAL" || cs_upper == "SERIAL" {
       // 串行：只建第一人任务（issues/94）；名册簿记搬到任务变量（issues/131，见下方 seed）
       if actor_ids.is_empty() {
+        // R115 C3⑬：零参与者照样建一行 DOING（spec/02 §6.1 表第一行）——旧形状直接 return，
+        // 实例停在 state=10 却一条可办行都没有（死锁黑洞）。无首人 ⇒ 无会签名册可记。
+        let task = exec.process_instance.create_task(
+          node.id,
+          node.display_name,
+          actor_ids,
+          exec.operator,
+          task_type,
+          perform_type,
+          node.form_key(),
+          None,
+        )
+        apply_node_expire_time(exec, node, [task])
+        exec.new_tasks.push(task)
         return
       }
       let tasks = exec.process_instance.create_countersign_tasks(
