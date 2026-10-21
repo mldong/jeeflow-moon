@@ -52,10 +52,12 @@ jobs:
           {"token":"${{ secrets.MOON_TOKEN }}","username":"${{ secrets.MOON_USERNAME }}"}
           EOF
 
-      - name: Update registry index + install workspace dependencies
+      - name: Update registry index
         run: |
+          # 裸 `moon install` 在新 CLI 上已改成 `moon install <SOURCE> [PATH_IN_REPO]`（装 git 源用），
+          # 无参调用会 exit 2，在 Check/Test/Publish 之前拦死发版；工作区依赖由 check/test 自动解析
+          # （干净 clone 实测），这里刷索引即可。
           moon update
-          moon install
 
       # 发版前置 T0（R118）：publish 与 demo-deploy 同 tag 并行，若无本段则
       # 测试红也照样把包推进注册表。T1（repository-mysql/smoke + demo/cmd/t1_mysql）

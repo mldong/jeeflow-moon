@@ -5,6 +5,8 @@ target/
 *.wasm
 _build/
 moon_diag_sites.tsv
+# 新工具链 check/test 时在包目录生成；本仓不跟踪（上游 core 是跟踪的）
+pkg.generated.mbti
 
 # 施工期产物
 __pycache__/
