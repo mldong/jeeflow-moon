@@ -265,8 +265,12 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
     self.fire_post_interceptors(exec)
   } else if node.node_type is @parser.Join {
     self.fire_pre_interceptors(exec)
-    let doing_tasks = exec.process_instance.get_doing_tasks()
-    if doing_tasks.is_empty() || exec.is_merged {
+    // 「退回修改、重提直返」：判据搬进 `reapply.mbt::join_ready`（java MergeBranchHandler 的移植）。
+    // 两档：到达任务带本汇合点的 `_branchCtx` ⇒ 按 (fork,round) 分根判"该分支是否仍未完成"
+    // （含仍在申请人手里的那条申请待办）；不带 ⇒ 逐字回落本栈原判据（实例无 DOING 任务）。
+    // `exec.is_merged` 仍是"本次 execution 只放行一次"的闸门（会签合并/同 execution 重复到达）。
+    let merged = exec.is_merged || join_ready(exec.process_instance, exec.process_task, node.id)
+    if merged {
       exec.is_merged = true
       let next_nodes : Array[@parser.NodeModel] = []
       for e in exec.process_model.get_output_edges(node.id) {
@@ -339,6 +343,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
           None,
         )
         apply_node_expire_time(exec, node, [task])
+        attach_branch_scopes(exec, node, [task])
         exec.new_tasks.push(task)
         return
       }
@@ -360,6 +365,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
       }
       // issues/126 案 A 写点②：串行会签**首位成员**按节点表达式算到期时间
       apply_node_expire_time(exec, node, tasks)
+      attach_branch_scopes(exec, node, tasks)
 
       // TASK_START 不在此 fire（id 尚为 0，issues/13）——统一在 persist_tasks 落库后 fire
       for t in tasks {
@@ -378,6 +384,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
       )
       // issues/126 案 A 写点③：并行会签**全员**逐条按节点表达式算到期时间
       apply_node_expire_time(exec, node, tasks)
+      attach_branch_scopes(exec, node, tasks)
       for t in tasks {
         exec.new_tasks.push(t)
       }
@@ -396,6 +403,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::crea
     // issues/126 案 A 写点①：普通建单按节点表达式算到期时间；
     // 节点没配 ⇒ 这一列保持 NULL（不写 now()、不写 ''、不写 0）
     apply_node_expire_time(exec, node, [task])
+    attach_branch_scopes(exec, node, [task])
     exec.new_tasks.push(task)
   }
 }
@@ -974,6 +982,10 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::pers
     if task.task_id == 0L {
       task.task_id = self.next_id()
     }
+    // 「退回修改、重提直返」分支根回填：建单那一刻本任务 id 还是 0，`_branchCtx` 里那一档的
+    // root 只能留 0；id 落定后立刻补成"自己的 id"（java `ReapplySupport.fillRootSelf` 在建单收口
+    // 同一刀）。落在这里而不是建单处，是因为本函数是全引擎新任务**唯一**的 id 分配收口。
+    let _ = fill_root_self(task)
     task.process_instance_id = instance.instance_id
     // issues/121 P1 建单不变量：parent 与行级 isFirstTaskNode 必写。挂在这里是因为本函数
     // 是全引擎新任务落库唯一收口（7 处建任务路径都汇入 exec.new_tasks）——与下面 116 的委托

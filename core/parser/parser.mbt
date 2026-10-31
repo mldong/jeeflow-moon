@@ -257,6 +257,53 @@ pub fn NodeModel::prop_i64(self : NodeModel, key : String) -> Int64? {
 }
 
 ///|
+/// 节点属性键：退回发起人后的重提方式（「退回修改、重提直返」；java `ReapplySupport.PROP_REAPPLY_MODE` 同位）
+pub let reapply_mode_prop : String = "reapplyMode"
+
+///|
+/// `reapplyMode` 的缺省档：退回发起人后按申请节点的正常出边重提（既有行为）
+pub let reapply_mode_normal : String = "NORMAL"
+
+///|
+/// `reapplyMode` 的直返档：退回发起人后，重提直接回到本来源节点建待办
+pub let reapply_mode_return_to_source : String = "RETURN_TO_SOURCE"
+
+///|
+/// 解析并校验 `reapplyMode`（逐字对齐 java `ReapplyModeEnum.parse` / python `reapply.parse_mode`）：
+/// 缺键 / JSON null / 空串 / 纯空白 ⇒ `NORMAL`；两档合法值原样收；**其余一律报配置错误**，
+/// 不静默当缺省（配错档比"没配"危险：静默落回 NORMAL 会让直返定义按普通退回跑，
+/// 申请人以为能直返、实际重新走完整流程）。非字符串标量按 `stringify` 原文进错误文案
+/// （java `String.valueOf` 同形：`true` / `1` 这类值也属非法）。
+pub fn parse_reapply_mode(raw : Json?, node_id : String) -> String raise @error.JeeflowError {
+  let v = match raw {
+    None => ""
+    Some(Json::Null) => ""
+    Some(Json::String(s)) => s
+    Some(other) => other.stringify()
+  }
+  let t = v.trim(chars=" \t\r\n").to_owned()
+  if t.is_empty() || t == reapply_mode_normal {
+    reapply_mode_normal
+  } else if t == reapply_mode_return_to_source {
+    reapply_mode_return_to_source
+  } else {
+    raise @error.Business("节点[\{node_id}]的 reapplyMode 配置非法: \{t}")
+  }
+}
+
+///|
+/// 节点自己的 `reapplyMode`（解析期已由 `parse_model` 校验过；本方法重复校验是为了
+/// 手搓的 `NodeModel`（测试／第三方直喂）也走同一枚判据，不出现第二份 trim/比较）
+pub fn NodeModel::reapply_mode(self : NodeModel) -> String raise @error.JeeflowError {
+  parse_reapply_mode(self.properties.get(reapply_mode_prop), self.id)
+}
+
+///|
+/// 本节点配了 `RETURN_TO_SOURCE` 吗（缺省 NORMAL ⇒ false；非法值照旧抛配置错误）
+pub fn NodeModel::is_return_to_source(self : NodeModel) -> Bool raise @error.JeeflowError {
+  self.reapply_mode() == reapply_mode_return_to_source
+}
+
 /// 固定参与人
 pub fn NodeModel::assignee(self : NodeModel) -> String? {
   self.prop_str("assignee")
@@ -482,6 +529,12 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
                   _ => ()
                 }
               None => ()
+            }
+            // 「退回修改、重提直返」：审批任务节点的 `reapplyMode` 在**解析期**校验（配错档
+            // 不得静默当缺省）。基准＝java `TaskParser.parseNode` 尾段对 `ReapplyModeEnum.parse`
+            // 的调用；记录类/网关节点没有这一属性，不校验（写了也不读）。
+            if node_type is Task {
+              let _ = parse_reapply_mode(properties.get(reapply_mode_prop), id)
             }
             nodes.push({ id, node_type, display_name: display_name.unwrap_or(""), properties })
           }

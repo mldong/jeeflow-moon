@@ -120,21 +120,9 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
   if !task.is_allowed(operator) {
     raise @error.PermissionDenied("Operator \{operator} not allowed on task \{task_id}")
   }
-  // submitType 双收（数字/字符串，C3 同源）
-  let submit_type = match full_args.get_i64("submitType") {
-    Some(v) => Some(v)
-    None =>
-      match full_args.get_str("submitType") {
-        Some(s) =>
-          // parse_int64 是 `-> Int64 raise`：解析失败 ⇒ "没有数字档"（旧 Err ⇒ None）
-          try {
-            Some(@string.parse_int64(s))
-          } catch {
-            _ => None
-          }
-        None => None
-      }
-  }
+  // submitType 双收（数字/字符串，C3 同源）——判据单点 `submit_type_value`（reapply.mbt），
+  // 重提腿与本处共用一枚，不抄第二份
+  let submit_type = submit_type_value(full_args)
   if submit_type == Some(20L) {
     instance.variables.insert_str("countersignDisagreeFlag", "1")
     full_args.insert_str("countersignDisagreeFlag", "1")
@@ -251,6 +239,24 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   operator : String,
   args : @json.FlowData
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
+  // 「退回修改、重提直返」两条入口判据（java `executeProcessTask` 同位）：
+  // ⓪ 客户端传入的保留键先剥掉（`_branchCtx` / `_reapplyContext` 只许引擎写）；
+  // ① 带直返上下文的申请待办**整条换腿**——只接受 submitType=5 的重提腿，
+  //    不得掉进普通"按出边重放"的路径（那会把退回当成没发生）。
+  strip_reserved(args)
+  let mut has_reapply = false
+  match (self.repo()).find_task_by_id(task_id) {
+    Some(pre) => if pre.is_doing() {
+      match reapply_of(pre) {
+        Some(_) => has_reapply = true
+        None => ()
+      }
+    }
+    None => ()
+  }
+  if has_reapply {
+    return self.execute_reapply_async(task_id, operator, args)
+  }
   let (_task, _instance, _define, _model, exec, submit_type) = self.load_exec_for_task(task_id, operator, args)
   let node = exec.current_node
   // 10. 会签门控
@@ -431,6 +437,8 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   args : @json.FlowData,
   target_name : String?
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
+  // 客户端保留键入口剥离（与 execute_task_async 同一刀）
+  strip_reserved(args)
   // audit8 R86①：空串与"没带"同档＝血缘回退。基准＝java JeeflowEngineImpl.java:184 的
   // ``StringUtils.isEmpty(nodeName)``（go/py/node/php/csharp 五栈同判据，都在**引擎内**分这一档）；
   // 本栈此前只分 ``Option::None``，而门面把 "taskName 传了空串" 喂成 ``Some("")`` ⇒ 同一份请求
@@ -441,6 +449,18 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   }
   match named {
     Some(n) => {
+      // 「退回修改、重提直返」：带直返上下文的申请待办只许走重提腿，不得借"跳转"改道
+      // （java `executeAndJumpTask` 同款守卫，文案逐字取它）。
+      match (self.repo()).find_task_by_id(task_id) {
+        Some(pre) =>
+          if pre.is_doing() {
+            match reapply_of(pre) {
+              Some(_) => raise @error.Business("带重提直返标记的申请待办不允许跳转到其他节点")
+              None => ()
+            }
+          }
+        None => ()
+      }
       // audit8 R86②：跳转目标节点名在**任何状态变更前**校验。六栈的报错点在 prepare 之后，
       // 靠外层事务回滚兜住"任务未被动"那一腿；本栈的门面/仓储没有事务模板这一层 ⇒ 校验必须
       // 前置，否则报红的同时任务已 DONE、办结事件已发＝实例原地失联，还留下半截事实。
@@ -529,6 +549,8 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   operator : String,
   args : @json.FlowData
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
+  // 客户端保留键入口剥离（与 execute_task_async 同一刀）
+  strip_reserved(args)
   let (_task, instance, _define, _model, _exec, submit_type) = self.load_exec_for_task(task_id, operator, args)
   // 驳回：实例 REJECT(45) + 废弃全部 DOING 任务（任务 99）
   instance.reject()
@@ -556,7 +578,8 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
 }
 
 ///|
-/// 退回发起人（submitType=6）：首任务节点重执行给发起人
+/// 退回发起人（submitType=6）：来源节点配了 `RETURN_TO_SOURCE` ⇒ 直返腿（建申请待办、带上下文）；
+/// 没配 ⇒ 首任务节点重执行给发起人（既有行为）。
 pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::execute_and_jump_to_first_async(
   self : Engine[R, E],
   task_id : Int64,
@@ -564,7 +587,10 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   args : @json.FlowData
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
   // issues/121 P2：不再借道 execute_and_jump_async(None)——那条现在是血缘回退（3）
-  self.execute_jump_mode_async(task_id, operator, args, FirstNode)
+  // 「退回修改、重提直返」：两条腿的分派与准入校验都在 `execute_return_to_source_async`
+  // （reapply.mbt）里，本函数只留入口一处。
+  strip_reserved(args)
+  self.execute_return_to_source_async(task_id, operator, args)
 }
 
 /// 复活行该不该带这个键——控制类残留：上次提交的表单值（tf_）、会签计数簿记（csv_ /
