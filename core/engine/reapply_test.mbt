@@ -476,3 +476,77 @@ test "reapply-10 reapplyMode 解析与非法值报错" {
     }
   }
 }
+
+// ── 10.8 负向：带标记申请待办不得走其他办理/跳转入口 ────────────────────────
+
+///|
+/// java `test16` 同款：标记申请待办的 再次退回(6)／血缘回退(3)／命名跳转(4)／驳回(2)
+/// 四个入口都必须在**任何状态变更之前**被拒；原待办、原等待上下文与来源完成态全部保留，
+/// 正常重提(5)仍然可用。少了这道守卫，提交 6 会建出一条**无标记**新申请 ⇒ 本轮分支等待丢失。
+async test "reapply-12 带标记申请待办走其他入口必须失败且无写入" {
+  let (engine, repo) = make_compliance_engine()
+  let iid = rt_start(engine, repo, "14-return-to-source", new_args())
+  let a = rt_need(repo, iid, "taskA")
+  let _ = engine.execute_and_jump_to_first_async(a.task_id, "userA", rt_submit(6L))
+  let apply = rt_need(repo, iid, "apply")
+  let doing_before = repo.find_doing_tasks(iid, []).length()
+  let hist_before = repo.find_history_tasks(iid).length()
+  let rows_before = rt_rows(repo, iid, "taskA")
+  // ① 再次退回(6)
+  let e1 = try {
+    let _ = engine.execute_and_jump_to_first_async(apply.task_id, "applicant", rt_submit(6L))
+    None
+  } catch {
+    e => Some(e)
+  }
+  match e1 {
+    None => fail("标记申请待办不得被再次退回")
+    Some(e) => assert_true(e.message().contains("只接受重新提交"))
+  }
+  // ② 血缘回退(3)
+  let e2 = try {
+    let _ = engine.execute_and_jump_async(apply.task_id, "applicant", rt_submit(3L), None)
+    None
+  } catch {
+    e => Some(e)
+  }
+  match e2 {
+    None => fail("标记申请待办不得走血缘回退")
+    Some(e) => assert_true(e.message().contains("只接受重新提交"))
+  }
+  // ③ 命名跳转(4)
+  let e3 = try {
+    let _ = engine.execute_and_jump_async(apply.task_id, "applicant", rt_submit(4L), Some("taskB"))
+    None
+  } catch {
+    e => Some(e)
+  }
+  match e3 {
+    None => fail("标记申请待办不得被命名跳转改道")
+    Some(e) => assert_true(e.message().contains("只接受重新提交"))
+  }
+  // ④ 驳回(2)
+  let e4 = try {
+    let _ = engine.execute_and_jump_to_end_async(apply.task_id, "applicant", rt_submit(2L))
+    None
+  } catch {
+    e => Some(e)
+  }
+  match e4 {
+    None => fail("标记申请待办不得被驳回直接推到结束")
+    Some(e) => assert_true(e.message().contains("只接受重新提交"))
+  }
+  // 四个入口都没有写入
+  assert_eq(repo.find_doing_tasks(iid, []).length(), doing_before)
+  assert_eq(repo.find_history_tasks(iid).length(), hist_before)
+  assert_eq(rt_rows(repo, iid, "taskA"), rows_before)
+  let still = rt_need(repo, iid, "apply")
+  assert_eq(still.task_id, apply.task_id)
+  match @engine.reapply_of(repo.find_task_by_id(apply.task_id).unwrap()) {
+    Some(ctx) => assert_eq(ctx.source_task_id, a.task_id)
+    None => fail("原等待上下文必须保留")
+  }
+  // 正常重提仍然可用
+  let _ = engine.execute_task_async(apply.task_id, "applicant", rt_submit(5L))
+  assert_true(rt_doing(repo, iid, "taskA") is Some(_))
+}

@@ -497,6 +497,30 @@ pub fn require_source_task_id(ctx : ReapplyContext) -> Int64 raise @error.Jeeflo
 }
 
 ///|
+/// 带直返标记的进行中申请待办只接受重新提交（submitType=5）：跳转／血缘回退／驳回／
+/// 再次退回四个入口一律在**任何状态变更之前**拒绝（对齐 java `rejectMarkedApplicant`）。
+/// 少了这道守卫，对标记申请待办提交 6 会完成旧申请、建一条**无标记**新申请 ⇒
+/// 旧申请的分支等待随之消失，另一支汇合提前放行、重提还会重新分叉。
+pub fn reject_marked_applicant(
+  task : @model.ProcessTask?,
+  action : String
+) -> Unit raise @error.JeeflowError {
+  match task {
+    Some(t) =>
+      if t.is_doing() {
+        match reapply_of(t) {
+          Some(_) =>
+            raise @error.Business(
+              "带重提直返标记的申请待办不允许" + action + "，只接受重新提交(submitType=5)",
+            )
+          None => ()
+        }
+      }
+    None => ()
+  }
+}
+
+///|
 /// 在范围内找指定汇合点的那一档
 pub fn find_scope(scopes : Array[BranchScope], join_name : String) -> BranchScope? {
   for s in scopes {

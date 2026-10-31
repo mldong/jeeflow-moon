@@ -439,6 +439,10 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
   // 客户端保留键入口剥离（与 execute_task_async 同一刀）
   strip_reserved(args)
+  // 「退回修改、重提直返」：带标记的申请待办不得借跳转／血缘回退改道（java
+  // `executeAndJumpTask` 同款守卫，覆盖**整个入口**而不只命名支；文案逐字取它）。
+  let marked_snapshot = (self.repo()).find_task_by_id(task_id)
+  reject_marked_applicant(marked_snapshot, "跳转")
   // audit8 R86①：空串与"没带"同档＝血缘回退。基准＝java JeeflowEngineImpl.java:184 的
   // ``StringUtils.isEmpty(nodeName)``（go/py/node/php/csharp 五栈同判据，都在**引擎内**分这一档）；
   // 本栈此前只分 ``Option::None``，而门面把 "taskName 传了空串" 喂成 ``Some("")`` ⇒ 同一份请求
@@ -449,18 +453,6 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   }
   match named {
     Some(n) => {
-      // 「退回修改、重提直返」：带直返上下文的申请待办只许走重提腿，不得借"跳转"改道
-      // （java `executeAndJumpTask` 同款守卫，文案逐字取它）。
-      match (self.repo()).find_task_by_id(task_id) {
-        Some(pre) =>
-          if pre.is_doing() {
-            match reapply_of(pre) {
-              Some(_) => raise @error.Business("带重提直返标记的申请待办不允许跳转到其他节点")
-              None => ()
-            }
-          }
-        None => ()
-      }
       // audit8 R86②：跳转目标节点名在**任何状态变更前**校验。六栈的报错点在 prepare 之后，
       // 靠外层事务回滚兜住"任务未被动"那一腿；本栈的门面/仓储没有事务模板这一层 ⇒ 校验必须
       // 前置，否则报红的同时任务已 DONE、办结事件已发＝实例原地失联，还留下半截事实。
@@ -551,6 +543,9 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
   // 客户端保留键入口剥离（与 execute_task_async 同一刀）
   strip_reserved(args)
+  // 「退回修改、重提直返」：带标记的申请待办不得被"驳回"直接推到结束
+  // （java `executeAndJumpToEnd` 同款守卫）。
+  reject_marked_applicant((self.repo()).find_task_by_id(task_id), "拒绝")
   let (_task, instance, _define, _model, _exec, submit_type) = self.load_exec_for_task(task_id, operator, args)
   // 驳回：实例 REJECT(45) + 废弃全部 DOING 任务（任务 99）
   instance.reject()
@@ -590,6 +585,9 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   // 「退回修改、重提直返」：两条腿的分派与准入校验都在 `execute_return_to_source_async`
   // （reapply.mbt）里，本函数只留入口一处。
   strip_reserved(args)
+  // 「退回修改、重提直返」：带标记的申请待办不得被"再次退回"重建一条无标记申请
+  // （那会丢掉本轮分支等待；java `executeAndJumpToFirstTaskNode` 同款守卫）。
+  reject_marked_applicant((self.repo()).find_task_by_id(task_id), "再次退回")
   self.execute_return_to_source_async(task_id, operator, args)
 }
 
