@@ -29,16 +29,35 @@ pub fn define_row_to_json(r : @model.DefineRow) -> Json {
 ///|
 pub fn task_row_to_json(r : @model.TaskRow) -> Json {
   let instance_ext = parse_json_map(r.instance_variable)
-  let ext = parse_json_map(r.variable)
+  let task_vars = parse_json_map(r.variable)
   // issues/121 P1：引擎建单必写的控制键不算「任务变量非空」，否则新建任务的 ext 从此
-  // 永不再回退实例变量（82-3 既有契约）。
-  let control = match ext.get("isFirstTaskNode") {
-    Some(_) => 1
-    None => 0
+  // 永不再回退实例变量（82-3 既有契约）。控制键集合除行级首节点标记外，还含 spec 04 的两枚
+  // 直返保留键（建单时无条件写入、空分支也写 []）——不认它们，每条任务行都从此不再回退，
+  // 内部键还直接从公开出口透出（本轮八栈齐漏，php 的内容级用例才报红）。
+  // `_reapplyContext` 是前端「重新提交后返回：X」的唯一取数口（jeeflow-ui helpers.ts 读
+  // ext._reapplyContext）⇒ 回退后原样合回；合回落在**副本**上，不得污染同一响应里的
+  // instanceExt 出口。回退是**替换**而不是并入任务变量：留在 ext 上的控制键就是泄漏本身。
+  let has_user_key = {
+    let mut found = false
+    for k, _ in task_vars {
+      if k != "isFirstTaskNode" && k != @engine.var_branch_ctx && k != @engine.var_reapply_ctx {
+        found = true
+      }
+    }
+    found
   }
-  if ext.length() - control == 0 {
+  let ext : Map[String, Json] = Map([])
+  if has_user_key {
+    for k, v in task_vars {
+      ext[k] = v
+    }
+  } else {
     for k, v in instance_ext {
       ext[k] = v
+    }
+    match task_vars.get(@engine.var_reapply_ctx) {
+      Some(v) => ext[@engine.var_reapply_ctx] = v
+      None => ()
     }
   }
   let o = @json.empty_object()
