@@ -877,49 +877,118 @@ fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::collect_pa
   match node {
     Some(n) => {
       let is_decision = n.node_type is @parser.Decision
-      for tm in model.get_output_edges(n.id) {
-        // 决策节点的带表达式出边：求值 false ⇒ 这一支没实际执行，边名与目标节点都不收
-        let take = match tm.expr() {
-          Some(expr) =>
-            if !is_decision || expr.is_empty() {
-              true
-            } else {
-              let merged = decision_args(model, n, instance_vars, history_tasks)
-              let exec = @exec.Execution::make(inst, model, flow_define, inst.operator, merged)
-              try {
-                (self.engine).evaluate_expression(expr, exec)
-              } catch {
-                _ => false
-              }
-            }
-          None => true
+      let outputs = model.get_output_edges(n.id)
+      // issues/241：决策节点选边以任务行佐证为准（活跃目标 → 有任务行的目标），
+      // 一条佐证都没有才回落到按当前实例变量求值
+      let chosen = if is_decision {
+        self.select_decision_edges(model, n, outputs, active, instance_vars, history_tasks, inst, flow_define)
+      } else {
+        outputs
+      }
+      for tm in chosen {
+        // issues/159 读数 3：边名出口取**边 id**（参考实现 java `AbstractNodeParser`
+        // `tm.setName(edge.getId())`）；`text.value` 的 label 是画布文案，从不进出口——
+        // 修前 label 优先，带标签的边在出口里变成中文文案（157 轮探针实测读数）。
+        let edge_name : String? = if tm.id.is_empty() { None } else { Some(tm.id) }
+        match edge_name {
+          Some(en) => if !edges.contains(en) { edges.push(en) }
+          None => ()
         }
-        if take {
-          // issues/159 读数 3：边名出口取**边 id**（参考实现 java `AbstractNodeParser`
-          // `tm.setName(edge.getId())`）；`text.value` 的 label 是画布文案，从不进出口——
-          // 修前 label 优先，带标签的边在出口里变成中文文案（157 轮探针实测读数）。
-          let edge_name : String? = if tm.id.is_empty() { None } else { Some(tm.id) }
-          match edge_name {
-            Some(en) => if !edges.contains(en) { edges.push(en) }
-            None => ()
-          }
-          let next = model.get_target_node(tm)
-          match next {
-            Some(nx) => {
-              if !active.contains(nx.id) && !history.contains(nx.id) {
-                history.push(nx.id)
-              }
-              if !active.contains(nx.id) {
-                self.collect_path(
-                  model, Some(nx), active, history, edges, instance_vars, history_tasks, inst, flow_define
-                )
-              }
+        let next = model.get_target_node(tm)
+        match next {
+          Some(nx) => {
+            if !active.contains(nx.id) && !history.contains(nx.id) {
+              history.push(nx.id)
             }
-            None => ()
+            if !active.contains(nx.id) {
+              self.collect_path(
+                model, Some(nx), active, history, edges, instance_vars, history_tasks, inst, flow_define
+              )
+            }
           }
+          None => ()
         }
       }
     }
     None => ()
   }
+}
+
+///|
+/// 决策节点选边（issues/241）：先按表达式求值（issues/06/153 旧口径），
+/// **当表达式给出的非空结果与任务行佐证相矛盾时，以任务行为准**；求值失败/零命中时保持
+/// 既有降级面（issues/164/201 的口径不被本规则改写）。
+///
+/// 直返单（reapplyMode=RETURN_TO_SOURCE）重提后实例变量已按新值落库，而来源节点之前的
+/// 条件分支按契约不重算；按当前变量重放会选出没走过的分支，走过的分支在任务表里有行
+/// （活跃目标也算）——这是执行事实。
+fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::select_decision_edges(
+  self : Facade[R, E],
+  model : @parser.ProcessModel,
+  decision : @parser.NodeModel,
+  outs : Array[@parser.EdgeModel],
+  active : Array[String],
+  instance_vars : @json.FlowData,
+  history_tasks : Array[@model.ProcessTask],
+  inst : @model.ProcessInstance,
+  flow_define : @model.ProcessDefine
+) -> Array[@parser.EdgeModel] {
+  let selected : Array[@parser.EdgeModel] = []
+  for e in outs {
+    match e.expr() {
+      Some(expr) =>
+        if expr.is_empty() {
+          selected.push(e)
+        } else {
+          let merged = decision_args(model, decision, instance_vars, history_tasks)
+          let exec = @exec.Execution::make(inst, model, flow_define, inst.operator, merged)
+          let ok = try {
+            (self.engine).evaluate_expression(expr, exec)
+          } catch {
+            _ => false
+          }
+          if ok {
+            selected.push(e)
+          }
+        }
+      None => selected.push(e)
+    }
+  }
+  if selected.is_empty() {
+    return selected
+  }
+  for e in selected {
+    let mut has_row = false
+    for t in history_tasks {
+      if t.task_name == e.target_node_id {
+        has_row = true
+      }
+    }
+    if active.contains(e.target_node_id) || has_row {
+      return selected // 表达式与执行事实一致，维持原口径
+    }
+  }
+  let active_hits : Array[@parser.EdgeModel] = []
+  let evidenced : Array[@parser.EdgeModel] = []
+  for e in outs {
+    if active.contains(e.target_node_id) {
+      active_hits.push(e)
+    }
+    let mut has_row = false
+    for t in history_tasks {
+      if t.task_name == e.target_node_id {
+        has_row = true
+      }
+    }
+    if has_row {
+      evidenced.push(e)
+    }
+  }
+  if !active_hits.is_empty() {
+    return active_hits
+  }
+  if !evidenced.is_empty() {
+    return evidenced
+  }
+  selected
 }
