@@ -18,6 +18,12 @@ pub(all) struct Execution {
   mut instance_finished : Bool
   /// 会签门控表达式变量（nrOfInstances 等）
   mut gate_vars : @json.FlowData
+  /// 后加签：本次**请求**点名的本节点后继办理人（＝java `Execution#addSignOperators`）。
+  /// 为什么不从 `args` 读：`args` 是"实例变量 ← 任务变量 ← 本次参数"的合并结果，
+  /// 上一轮提交的 `tf_addSignOperators` 会随它复活，凭空多建一条本节点待办
+  /// （`tf_nextNodeOperator` 同病，直返腿为此在 `execute_reapply_async` 里显式剥键）。
+  /// 控制类参数一律只认当次请求，这里用字段承载而不是靠剥键。判据见 `core/engine/add_sign.mbt`。
+  mut add_sign_operators : Array[String]
 }
 
 ///|
@@ -41,5 +47,7 @@ pub fn Execution::make(
     new_tasks: [],
     instance_finished: false,
     gate_vars: @json.FlowData::new(),
+    // 后加签人一律由办理入口按**当次请求**显式带入（`load_exec_for_task`），缺省空表
+    add_sign_operators: [],
   }
 }

@@ -304,6 +304,158 @@ pub fn NodeModel::is_return_to_source(self : NodeModel) -> Bool raise @error.Jee
   self.reapply_mode() == reapply_mode_return_to_source
 }
 
+///|
+/// 节点属性键：后加签开关（规范 02 §4.3；缺省 false＝该节点行为与既有普通任务逐字一致）
+pub let allow_add_sign_prop : String = "allowAddSign"
+
+///|
+/// 节点属性键：后加签轮次上限（整数 >=0，0＝不限；缺省 0）
+pub let add_sign_max_rounds_prop : String = "addSignMaxRounds"
+
+///|
+/// 解析并校验 `allowAddSign`（逐字对齐 java `AddSignSupport.parseAllow`，与上面
+/// `parse_reapply_mode` 同一形状：缺省合法、非法 raise）：缺键 / JSON null / 空串 / 纯空白
+/// ⇒ false；`true`/`false` 两档（字符串档大小写不敏感）原样收；**其余一律报配置错误**，
+/// 不静默当缺省——静默落回 false 会让设计器里"勾了加签"的节点永远不认 `tf_addSignOperators`，
+/// 用户侧读起来像"功能没生效"（配错档比"没配"危险）。非字符串标量按 `stringify` 原文进文案
+/// （java `String.valueOf` 同形：`1` 这类值也属非法）。
+pub fn parse_allow_add_sign(raw : Json?, node_id : String) -> Bool raise @error.JeeflowError {
+  let v = match raw {
+    None => ""
+    Some(Json::Null) => ""
+    Some(Json::True) => "true"
+    Some(Json::False) => "false"
+    Some(Json::String(s)) => s
+    Some(other) => other.stringify()
+  }
+  let t = v.trim(chars=" \t\r\n").to_owned()
+  let lower = t.to_lower()
+  if lower == "true" {
+    true
+  } else if t.is_empty() || lower == "false" {
+    false
+  } else {
+    raise @error.Business("节点[\{node_id}]的 \{allow_add_sign_prop} 配置非法: \{t}")
+  }
+}
+
+///|
+/// 整数档判定（`addSignMaxRounds` 的两档文案单点）：`from_number` 为真时走 java 数字档尾注
+/// 「（必须是整数）」，否则走字符串档「（必须是整数，0 表示不限）」；负数两档同为
+/// 「（不得为负，0 表示不限）」。两条尾注分开是刻意的——跨栈逐字对齐要连档位名一起对。
+fn rounds_int(
+  text : String, node_id : String, from_number : Bool
+) -> Int64 raise @error.JeeflowError {
+  let parsed = try {
+    Some(@string.parse_int64(text))
+  } catch {
+    _ => None
+  } noraise {
+    v => v
+  }
+  match parsed {
+    Some(n) =>
+      if n < 0L {
+        raise @error.Business(
+          "节点[\{node_id}]的 \{add_sign_max_rounds_prop} 配置非法: \{n}（不得为负，0 表示不限）",
+        )
+      } else {
+        n
+      }
+    None =>
+      if from_number {
+        raise @error.Business(
+          "节点[\{node_id}]的 \{add_sign_max_rounds_prop} 配置非法: \{text}（必须是整数）",
+        )
+      } else {
+        raise @error.Business(
+          "节点[\{node_id}]的 \{add_sign_max_rounds_prop} 配置非法: \{text}（必须是整数，0 表示不限）",
+        )
+      }
+  }
+}
+
+///|
+/// 解析并校验 `addSignMaxRounds`（逐字对齐 java `AddSignSupport.parseMaxRounds`）：
+/// 缺键 / JSON null / 空串 / 纯空白 ⇒ 0＝不限；整数 >=0 原样收；非整数与负数各报一档。
+/// 数字档取词法器留在 `repr` 里的字面原文（`1.5` / `1e30` 由此判死，>2^53 的整数也不被
+/// double 取整——D-M5-3 同源）；本仓 `@json.number_of` 造的整数同样带 repr（它走 parse 原文）。
+pub fn parse_add_sign_max_rounds(raw : Json?, node_id : String) -> Int64 raise @error.JeeflowError {
+  match raw {
+    None => 0L
+    Some(Json::Null) => 0L
+    Some(v) =>
+      match v {
+        // 数字档：词法器只在**超过 2^53** 时才把字面原文留在 `repr` 里（现读实测：
+        // 1 / -1 / 1.5 的 repr 都是 None，2086772715431137280 才有原文）⇒ 有原文按原文判，
+        // 没有就按 `stringify` 的规范化文本判（1 ⇒ "1"、1.5 ⇒ "1.5"、1e30 ⇒ "1e30"），
+        // 整数判定与负数判定都收在 `rounds_int` 那一枚，尾注走 java 的数字档。
+        Json::Number(_, repr~) =>
+          match repr {
+            Some(s) => rounds_int(s.trim(chars=" \t\r\n").to_owned(), node_id, true)
+            None =>
+              rounds_int(v.stringify().trim(chars=" \t\r\n").to_owned(), node_id, true)
+          }
+        Json::String(s) => rounds_text(s, node_id, false)
+        // 布尔/对象/数组等标量：java 走 `String.valueOf(value)` 再 parseInt ⇒ 同字符串档
+        other => rounds_text(other.stringify(), node_id, false)
+      }
+  }
+}
+
+///|
+/// 字符串/其它标量档：裁空白后空 ⇒ 0＝不限，否则交整数判定（尾注走字符串档）
+fn rounds_text(s : String, node_id : String, from_number : Bool) -> Int64 raise @error.JeeflowError {
+  let t = s.trim(chars=" \t\r\n").to_owned()
+  if t.is_empty() {
+    0L
+  } else {
+    rounds_int(t, node_id, from_number)
+  }
+}
+
+///|
+/// 节点自己的 `allowAddSign`（解析期已由 `parse_model` 校验过；本方法重复校验是为了
+/// 手搓的 `NodeModel`（测试／第三方直喂）也走同一枚判据，不出现第二份 trim/比较）
+pub fn NodeModel::allow_add_sign(self : NodeModel) -> Bool raise @error.JeeflowError {
+  parse_allow_add_sign(self.properties.get(allow_add_sign_prop), self.id)
+}
+
+///|
+/// 节点自己的 `addSignMaxRounds`（判据同上，缺省 0＝不限）
+pub fn NodeModel::add_sign_max_rounds(self : NodeModel) -> Int64 raise @error.JeeflowError {
+  parse_add_sign_max_rounds(self.properties.get(add_sign_max_rounds_prop), self.id)
+}
+
+///|
+/// 后加签两条解析期硬校验（规范 02 §4.3，基准＝java `ModelParser` 引用构造之后那一轮 for）：
+/// 会签节点与首任务节点配了 `allowAddSign` 一律解析期报错，不做运行时降级——静默跑下去
+/// 会让配置者以为开关生效，实际两档推进闸各裁各的。
+/// ⚠️ 本栈「是不是首任务节点」取 `is_first_task_node`（nodes 序里第一个 `snaker:task`，
+/// 与建单腿写 `isFirstTaskNode` 同一枚判据）；java 那侧沿 start 出边看
+/// （`FlowUtil.isFirstTaskName`），两者只在"首任务节点不是 nodes 序第一个任务"的畸形图上
+/// 分叉——本栈刻意选与自己建单判据同源的那一枚。
+pub fn validate_add_sign_nodes(model : ProcessModel) -> Unit raise @error.JeeflowError {
+  for n in model.nodes {
+    if !(n.node_type is Task) {
+      continue
+    }
+    if !parse_allow_add_sign(n.properties.get(allow_add_sign_prop), n.id) {
+      continue
+    }
+    if n.is_countersign() {
+      raise @error.Business(
+        "会签节点[\{n.id}]不允许配置 allowAddSign：会签池内加人与会签之后加人是两种语义，推进闸会打架",
+      )
+    }
+    if model.is_first_task_node(n.id) {
+      raise @error.Business(
+        "首任务节点[\{n.id}]不允许配置 allowAddSign：申请节点的办理是发起/重提语义，与加签路由打架",
+      )
+    }
+  }
+}
+
 /// 固定参与人
 pub fn NodeModel::assignee(self : NodeModel) -> String? {
   self.prop_str("assignee")
@@ -535,6 +687,10 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
             // 的调用；记录类/网关节点没有这一属性，不校验（写了也不读）。
             if node_type is Task {
               let _ = parse_reapply_mode(properties.get(reapply_mode_prop), id)
+              // 后加签两开关（规范 02 §4.3）：同一形状挂在解析期——缺省合法、非法值不得
+              // 静默当缺省（基准＝java `TaskParser.parseNode` 尾段的 parseAllow/parseMaxRounds）。
+              let _ = parse_allow_add_sign(properties.get(allow_add_sign_prop), id)
+              let _ = parse_add_sign_max_rounds(properties.get(add_sign_max_rounds_prop), id)
             }
             nodes.push({ id, node_type, display_name: display_name.unwrap_or(""), properties })
           }
@@ -574,7 +730,11 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
       }
     None => ()
   }
-  { name, display_name, model_type, expire_time, persist_mode, pre_interceptors, post_interceptors, rel_table_name, nodes, edges }
+  let model : ProcessModel = { name, display_name, model_type, expire_time, persist_mode, pre_interceptors, post_interceptors, rel_table_name, nodes, edges }
+  // 后加签两条解析期硬校验（会签节点／首任务节点配 allowAddSign）排在模型建好之后：
+  // "是不是首任务节点"要拿整张 nodes 才能判（基准＝java ModelParser 尾段那一轮 for）。
+  validate_add_sign_nodes(model)
+  model
 }
 
 

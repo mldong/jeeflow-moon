@@ -114,7 +114,8 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
   // 与 java `JeeflowEngineImpl.java:264 args = FlowUtil.filterFieldByPerm(args, model, taskName)` 同位。
   // 少了这一层，只读/隐藏字段的值会留在实例变量里，被下一个"没声明该字段权限"的节点写进业务表；
   // 写侧 filter_editable 只挡当次提交，挡不住跨节点。
-  full_args.merge(@itl.filter_args_by_node_permission(args, model, task.task_name))
+  let submitted_args = @itl.filter_args_by_node_permission(args, model, task.task_name)
+  full_args.merge(submitted_args)
   self.add_user_info(full_args, operator)
   // 权限守卫
   if !task.is_allowed(operator) {
@@ -127,6 +128,11 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
     instance.variables.insert_str("countersignDisagreeFlag", "1")
     full_args.insert_str("countersignDisagreeFlag", "1")
   }
+  // 后加签写入口四判据（规范 04 · 后加签；基准＝java `prepareExecution` 里紧挨
+  // `instance.completeTask` 的那一刀）：**必须排在任何状态变更之前**——本栈的门面/仓储
+  // 没有事务模板可回滚，判据后置就留下"任务已办结、无人能改回"的半截事实（"报错且零写入"）。
+  // 读**本次请求**那份参数（已过节点字段权限过滤，与 java 同位），不读合并后的 full_args。
+  validate_add_sign_submission(model, task, submitted_args, operator)
   // 完成聚合内任务 + 合并 f_ 变量
   self.complete_task_in_aggregate(instance, task_id, operator, full_args)
   if submit_type == Some(20L) {
@@ -155,6 +161,10 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
   let node = model.get_node(task.task_name)
   let exec = @exec.Execution::make(instance, model, define_info, operator, full_args)
   exec.process_task = Some(task.clone())
+  // 加签人取"本次请求"的值显式带上（＝java `Execution#setAddSignOperators`）：full_args 里
+  // 混着实例变量与任务变量，从那里读会把上一轮的 tf_addSignOperators 复活、凭空多建一条
+  // 本节点待办（根因条款见 spec 04「流程变量约定」末注，守卫格见 add_sign_test.mbt）。
+  exec.add_sign_operators = add_sign_operators_of(submitted_args)
   // 9.5 完成节点自身的后置拦截器（1.8.0 SYNC 演进）
   match node {
     Some(cur) => {
@@ -381,21 +391,44 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
       }
     }
   }
-  // 10b. 下钻：普通任务恒走；会签 merged 后走（issues/94 fall-through）
-  match node {
-    Some(n) => {
-      let next_nodes : Array[@parser.NodeModel] = []
-      for e in exec.process_model.get_output_edges(n.id) {
-        match exec.process_model.get_target_node(e) {
-          Some(next) => next_nodes.push(next)
-          None => ()
+  // 10a. 后加签档（规范 04 · 后加签；＝java `TaskModel.exec` 三档闸的第二档）：
+  //      会签档在上面各自 return/merged，这里只管"普通任务且节点开了 allowAddSign"。
+  //      merged 判据顺序不可反（见 `add_sign_gate`）：点了人→同节点建单+停留；没点但本节点
+  //      还有未完成待办→停留；两者皆否→放行出边。停留时**只跳下钻**，抄送腿与落库腿照常
+  //      走（java `executeProcessTask` 同一次序：runOutTransition 被跳过，
+  //      handleCcActors / persistTasks 不受影响）。
+  let add_sign_hold = match node {
+    Some(n) =>
+      if is_countersign {
+        false
+      } else if !(n.node_type is @parser.Task) {
+        false
+      } else if n.allow_add_sign() {
+        self.add_sign_gate(exec, n)
+      } else {
+        false
+      }
+    None => false
+  }
+
+  // 10b. 下钻：普通任务恒走；会签 merged 后走（issues/94 fall-through）；
+  //      后加签令牌停留本节点时不走（规范 04 merged 判据）
+  if !add_sign_hold {
+    match node {
+      Some(n) => {
+        let next_nodes : Array[@parser.NodeModel] = []
+        for e in exec.process_model.get_output_edges(n.id) {
+          match exec.process_model.get_target_node(e) {
+            Some(next) => next_nodes.push(next)
+            None => ()
+          }
+        }
+        for next in next_nodes {
+          self.execute_node(exec, next)
         }
       }
-      for next in next_nodes {
-        self.execute_node(exec, next)
-      }
+      None => ()
     }
-    None => ()
   }
   // 11. 任务级抄送（tf_ccActors，issues/141 G6）
   // 与发起路径 f_ccActors（上面第 8 步）**同一个解析器** parse_cc_actors：
@@ -504,6 +537,15 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
   let (_task, _instance, _define, _model, exec, submit_type) = self.load_exec_for_task(task_id, operator, args)
   // 目标节点：命名跳转 / 6 退回发起人（首任务节点）/ 3 退回上一步（血缘版）
   let model = exec.process_model
+  // 退回发起人（6）：本节点未完成的加签任务一并废弃（规范 04 · 后加签语义边界）。
+  // 只在 FirstNode 这一档动手——命名跳转(4)与血缘回退(3)各有各的既有语义，不在此扩面。
+  let add_sign_node = match exec.process_task {
+    Some(t) => t.task_name
+    None => ""
+  }
+  if mode is FirstNode {
+    let _ = self.abandon_add_sign_remaining(exec, add_sign_node)
+  }
   match mode {
     Named(name) =>
       match model.get_node(name) {
@@ -546,7 +588,16 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   // 「退回修改、重提直返」：带标记的申请待办不得被"驳回"直接推到结束
   // （java `executeAndJumpToEnd` 同款守卫）。
   reject_marked_applicant((self.repo()).find_task_by_id(task_id), "拒绝")
-  let (_task, instance, _define, _model, _exec, submit_type) = self.load_exec_for_task(task_id, operator, args)
+  let (_task, instance, _define, _model, exec, submit_type) = self.load_exec_for_task(task_id, operator, args)
+  // 拒绝结束：本节点未完成的加签任务一并废弃，不留孤儿待办（规范 04 · 后加签语义边界）。
+  // ⚠️ 这条腿不能只靠下面那句 `abandon_all_doing`：本栈"逐条 update_task"只挑
+  //   task_state==DOING 的行，而那之前它们已被置 99 ⇒ 那一趟恒空、废弃根本落不了库
+  //   （既有缺口，不在本轮范围）。加签兄弟走 `abandon_add_sign_remaining` 自己逐条写库。
+  let add_sign_node = match exec.process_task {
+    Some(t) => t.task_name
+    None => ""
+  }
+  let _ = self.abandon_add_sign_remaining(exec, add_sign_node)
   // 驳回：实例 REJECT(45) + 废弃全部 DOING 任务（任务 99）
   instance.reject()
   instance.abandon_all_doing()
