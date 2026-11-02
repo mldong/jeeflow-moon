@@ -495,7 +495,14 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
     }
     // issues/121 P2：target 为空＝血缘版"退回上一步"（submitType=3）。
     // 此前这条与"退回发起人"（6）共用 get_first_task_node()，两语义塌成同值（issues/119）。
-    None => self.execute_jump_mode_async(task_id, operator, args, Rollback)
+    None => {
+      // issues/243 甲案：血缘守卫（20010007／20010008）排在 `load_exec_for_task` 之前——
+      // 那条腿内部 `complete_task_in_aggregate` + `update_task_by_id` 会把当前行办结，内存仓储无回滚，
+      // 守卫后置 ⇒ 报错那次待办凭空消失。用入口已读的 `marked_snapshot` 快照做纯读校验（＝java
+      // `checkRollbackPossible(snapshot)` 同位）；取不到/不在进行中一律放行交给 load_exec_for_task。
+      self.check_rollback_possible(marked_snapshot)
+      self.execute_jump_mode_async(task_id, operator, args, Rollback)
+    }
   }
 }
 
@@ -524,6 +531,40 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::requ
     Some(_) => ()
     None => raise @error.Business("根据节点名称[\{name}]无法找到节点模型")
   }
+}
+
+///|
+/// 退回上一步（`target_name` 空 ⇒ 血缘腿，submitType=3）的写前置守卫（issues/243 甲案）。
+///
+/// 只做一件事：把 `check_rejectable` 的两道血缘判据（20010007／20010008）提到
+/// `load_exec_for_task`（内部 `complete_task_in_aggregate` + `update_task_by_id` 会把当前行办结）
+/// **之前**——本栈无事务模板可回滚，判据后置就留下"当前行被办结、待办凭空消失、又没有复活行"的
+/// 半截事实。走**任务→实例→定义→模型→历史行**这条只读链；任一环节读不到、或任务不在进行中，
+/// **一律放行**，由 `load_exec_for_task` 报它本就有的固定错（TaskNotFound/InstanceNotFound/
+/// DefineNotFound／非 DOING／无权办理——那些错也在办结之前，天然零写入，此处不抢档、不发明第二套文案）。
+async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::check_rollback_possible(
+  self : Engine[R, E],
+  current : @model.ProcessTask?
+) -> Unit raise @error.JeeflowError {
+  let task = match current {
+    None => return
+    Some(t) => t
+  }
+  if !task.is_doing() {
+    return
+  }
+  let instance = match (self.repo()).find_instance_by_id(task.process_instance_id) {
+    Some(i) => i
+    None => return
+  }
+  let dfn = match (self.repo()).find_define_by_id(instance.define_id) {
+    Some(d) => d
+    None => return
+  }
+  let model = @parser.parse_model(dfn.content)
+  // 历史行从仓储取（含已办结行）——与 load_exec_for_task 水合聚合根用同一把尺子（find_history_tasks）。
+  let history_tasks = (self.repo()).find_history_tasks(instance.instance_id)
+  let _ = check_rejectable(model, history_tasks, task)
 }
 
 ///|
@@ -656,17 +697,23 @@ fn is_control_var_key(k : String) -> Bool {
   else { false }
 }
 
-/// 退回上一步（血缘版，规范 04 · 退回上一步）：上一步来源＝当前行的 parent_task_id，
-/// 复活那条历史行；不按模型入边拓扑推。本栈 JeeflowError::code() 恒 99999999，
-/// 对外 msg 用固定中文文案、不含引擎内部码（两格语义由文案区分，HTTP 出口仍 99999999）。
-fn[R, E] Engine::rollback_to_parent(
-  self : Engine[R, E], exec : @exec.Execution
-) -> Unit raise @error.JeeflowError {
-  let _ = self
-  let current = match exec.process_task {
-    None => raise @error.Business("上一步任务ID为空，无法驳回至上一步处理")
-    Some(t) => t
-  }
+/// 退回上一步的两道守卫（20010007／20010008）——**纯读判据，不碰任何状态**（不写任务行、
+/// 不写实例、不 fire 事件、不建历史行）。issues/243 甲案：这道守卫必须由引擎排在
+/// `load_exec_for_task`（内部 `complete_task_in_aggregate` + `update_task_by_id` 会把当前行办结）
+/// **之前**——本栈的门面/仓储无事务模板可回滚，判据后置时"报错"那一次调用结束后当前待办已消失、
+/// 又没有复活行（用户看到"点了退回、报错了、待办也没了"）。与后加签写入口四判据同一规矩：
+/// 判据一律排在任何状态变更之前，报错即零写入。
+///
+/// 判据**只有一份实现**：引擎前置位 `check_rollback_possible` 与复活腿 `rollback_to_parent` 共用它。
+///
+/// 返回血缘前驱那条历史行（`current.parent_task_id` 指向的行）。
+/// raise 20010007 无血缘（parent 为空/0，含 P1 之前落的老行、或 parent 指不到真实行）；
+///       20010008 `can_rejected` 不过（上一步是 fork/join/subprocess/会签）。
+fn check_rejectable(
+  model : @parser.ProcessModel,
+  history_tasks : Array[@model.ProcessTask],
+  current : @model.ProcessTask
+) -> @model.ProcessTask raise @error.JeeflowError {
   let parent_id = match current.parent_task_id {
     None => raise @error.Business("上一步任务ID为空，无法驳回至上一步处理")
     Some(p) => p
@@ -674,10 +721,9 @@ fn[R, E] Engine::rollback_to_parent(
   if parent_id == 0L {
     raise @error.Business("上一步任务ID为空，无法驳回至上一步处理")
   }
-  let instance = exec.process_instance
-  // 本版本 Array 没有 find：显式扫聚合根里的行（含已办结的历史行）
+  // 本版本 Array 没有 find：显式扫历史行（含已办结的行）
   let mut hist : @model.ProcessTask? = None
-  for t in instance.tasks {
+  for t in history_tasks {
     if t.task_id == parent_id {
       hist = Some(t)
     }
@@ -686,9 +732,30 @@ fn[R, E] Engine::rollback_to_parent(
     None => raise @error.Business("上一步任务ID为空，无法驳回至上一步处理")
     Some(t) => t
   }
-  if !exec.process_model.can_rejected(current.task_name, history.task_name) {
+  if !model.can_rejected(current.task_name, history.task_name) {
     raise @error.Business("无法驳回至上一步处理，请确认上一步骤并非fork、join、suprocess以及会签任务")
   }
+  history
+}
+
+///|
+/// 退回上一步（血缘版，规范 04 · 退回上一步）：上一步来源＝当前行的 parent_task_id，
+/// 复活那条历史行；不按模型入边拓扑推。本栈 JeeflowError::code() 恒 99999999，
+/// 对外 msg 用固定中文文案、不含引擎内部码（两格语义由文案区分，HTTP 出口仍 99999999）。
+///
+/// 两道血缘守卫（20010007／20010008）已抽到 `check_rejectable`——引擎前置位 `check_rollback_possible`
+/// 在任何状态变更前跑过它；本函数（复活腿）复用它只为拿到血缘前驱那条历史行，判据只有一份。
+fn[R, E] Engine::rollback_to_parent(
+  self : Engine[R, E], exec : @exec.Execution
+) -> Unit raise @error.JeeflowError {
+  let _ = self
+  let current = match exec.process_task {
+    None => raise @error.Business("上一步任务ID为空，无法驳回至上一步处理")
+    Some(t) => t
+  }
+  let instance = exec.process_instance
+  // 幂等纯读：守卫已在入口前置位过；这里再读一次只为取 history 供复活，不产生任何写入。
+  let history = check_rejectable(exec.process_model, instance.tasks, current)
   let src = history.variables
   let mut is_first = false
   match src.get("isFirstTaskNode") {

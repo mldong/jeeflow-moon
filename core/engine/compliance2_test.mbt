@@ -306,6 +306,7 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
   // 新效果系统下调用不再返回 Result：抛错与否用 None/Some 物化，
   // 两臂逐字对应旧 `Ok(_) => fail / Err(e) => 判文案`。
   // ⚠ 成功路径的 fail 必须在 try 外面，否则块内多出的 Failure 会把 catch 的 e 撑成 open Error。
+  let doing07 = repo.find_doing_tasks(inst.instance_id, []).length()
   let raised07 = try {
     let _ = engine.execute_and_jump_async(apply.task_id, "applicant", @json.FlowData::new(), None)
     None
@@ -316,11 +317,21 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
     None => fail("无血缘（parent=0L）必须报错，不得静默不建单")
     Some(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
   }
+  // issues/243 甲案：血缘守卫已前置 ⇒ 报错这一次零写入（当前行仍待办、行数与实例态不变）
+  assert_true(
+    repo.find_task_by_id(apply.task_id).unwrap().is_doing(),
+    msg="报错即零写入：当前行不得被办结，须仍是待办",
+  )
+  assert_eq(repo.find_instance_by_id(inst.instance_id).unwrap().state, 10, msg="实例状态不变")
+  assert_eq(
+    repo.find_doing_tasks(inst.instance_id, []).length(), doing07, msg="既不复活新行也不少行"
+  )
   // ①′ 老行形状 A：parent 为 None（P1 之前落的数据该列是 NULL）——本栈与 Some(0L) 是两个 match 分支
   let inst_b = engine.start_async(did, "applicant", @json.FlowData::new())
   let apply_b = repo.find_doing_tasks(inst_b.instance_id, [])[0]
   apply_b.parent_task_id = None
   repo.update_task(apply_b)
+  let doing07b = repo.find_doing_tasks(inst_b.instance_id, []).length()
   let raised07b = try {
     let _ = engine.execute_and_jump_async(apply_b.task_id, "applicant", @json.FlowData::new(), None)
     None
@@ -331,12 +342,20 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
     None => fail("parent=None 的老行必须报错，不得静默不建单")
     Some(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
   }
+  assert_true(
+    repo.find_task_by_id(apply_b.task_id).unwrap().is_doing(),
+    msg="报错即零写入：parent=None 老行报错后仍是待办",
+  )
+  assert_eq(
+    repo.find_doing_tasks(inst_b.instance_id, []).length(), doing07b, msg="行数不变"
+  )
   // ①″ 老行形状 B：parent 非 0 但仓储里查不到行（老数据被清过 / 跨库迁来的样子）
   //     ⇒ 走「取不到历史行」那条分支，同样必须 20010007
   let inst_c = engine.start_async(did, "applicant", @json.FlowData::new())
   let apply_c = repo.find_doing_tasks(inst_c.instance_id, [])[0]
   apply_c.parent_task_id = Some(9223372036854775807L)
   repo.update_task(apply_c)
+  let doing07c = repo.find_doing_tasks(inst_c.instance_id, []).length()
   let raised07c = try {
     let _ = engine.execute_and_jump_async(apply_c.task_id, "applicant", @json.FlowData::new(), None)
     None
@@ -347,6 +366,13 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
     None => fail("parent 指不到真实行时必须报错，不得静默不建单")
     Some(e) => assert_true(e.message() == "上一步任务ID为空，无法驳回至上一步处理")
   }
+  assert_true(
+    repo.find_task_by_id(apply_c.task_id).unwrap().is_doing(),
+    msg="报错即零写入：血缘行查不到时当前行仍是待办",
+  )
+  assert_eq(
+    repo.find_doing_tasks(inst_c.instance_id, []).length(), doing07c, msg="行数不变"
+  )
   // ② fork 分支行的血缘前驱在 fork 之前（apply）⇒ 守卫拦住
   let (engine2, repo2) = make_compliance_engine()
   let did2 = save_flow_define(repo2, "ln08", load_flow("04-fork-join"))
@@ -379,6 +405,7 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
     None => fail("前置条件：分支行 parent 应已由 P1 写入")
   }
   let who2 = if br.actor_ids.length() > 0 { br.actor_ids[0] } else { "applicant" }
+  let doing08 = repo2.find_doing_tasks(iid2, []).length()
   let raised08 = try {
     let _ = engine2.execute_and_jump_async(br.task_id, who2, @json.FlowData::new(), None)
     None
@@ -389,6 +416,13 @@ async test "i121-P2 rollback negatives: 两格文案逐字、不带内部码前�
     None => fail("血缘前驱跨不过 fork 时必须被守卫拦下")
     Some(e) => assert_true(e.message() == "无法驳回至上一步处理，请确认上一步骤并非fork、join、suprocess以及会签任务")
   }
+  // issues/243 甲案：20010008 那道守卫同样已前置 ⇒ 旁支血缘格报错即零写入
+  assert_true(
+    repo2.find_task_by_id(br.task_id).unwrap().is_doing(),
+    msg="报错即零写入：跨不过 fork 时当前行仍是待办",
+  )
+  assert_eq(repo2.find_instance_by_id(iid2).unwrap().state, 10, msg="实例状态不变")
+  assert_eq(repo2.find_doing_tasks(iid2, []).length(), doing08, msg="既不复活新行也不少行")
 }
 
 

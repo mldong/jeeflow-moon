@@ -645,14 +645,19 @@ async test "addsign-16 共享夹具 19-add-sign-after 真跑通（逗号串两�
 ///|
 /// 17 加签链上「退回上一步」(3) **禁**（规范 04 · 语义边界，照会签先例）：
 /// 当前行与其血缘 parent 同节点 ⇒ 既有 `can_rejected` 守卫不过 ⇒ 报固定文案。
-/// ⚠️ 本栈这条腿的报错点排在办结之后（无事务模板可回滚，与 R86 记的同一条已知形状），
-/// 故这一格只钉"报的是哪一条"＋"没把令牌推到下一节点"，不钉零写入。
-async test "addsign-17 加签链上退回上一步被禁（同节点血缘，canRejected 守卫不过）" {
+/// issues/243 甲案：那道血缘守卫（20010007／20010008）已上提到「办结当前任务」之前——
+/// 本栈的门面/仓储无事务模板可回滚，判据后置就留下"当前行被办结、待办凭空消失、又没有复活行"
+/// 的半截事实。故此格不止钉"报的是哪一条"，还钉**报错即零写入**：当前行仍是 DOING、待办还在、
+/// 行数不变、实例状态不变（旧形状下这一格必红，因为报错前当前行已被 completeTask 办结）。
+async test "addsign-17 加签链上退回上一步被禁（同节点血缘，canRejected 守卫不过）＋报错零写入" {
   let (engine, repo) = make_compliance_engine()
   let iid = as_start_to_review(engine, repo, "addsign-17", [allow_on])
   let a = as_need(repo, iid, "review")
   let _ = engine.execute_task_async(a.task_id, "userA", as_agree("userB"))
   let b = as_need(repo, iid, "review")
+  // 报错前把可观测面各读一笔基线（当前行 id、review 待办数、review 行数、实例状态）
+  let doing_before = as_doing_count(repo, iid, "review")
+  let rows_before = as_rows(repo, iid, "review")
   let msg = try {
     let _ = engine.execute_and_jump_async(b.task_id, "userB", as_submit(3L), None)
     "<未报错>"
@@ -660,6 +665,17 @@ async test "addsign-17 加签链上退回上一步被禁（同节点血缘，can
     e => e.message()
   }
   assert_eq(msg, "无法驳回至上一步处理，请确认上一步骤并非fork、join、suprocess以及会签任务")
+  // ── 零写入四判据（issues/243 甲案）──
+  assert_true(
+    repo.find_task_by_id(b.task_id).unwrap().is_doing(),
+    msg="报错即零写入：当前行不得被办结，须仍是待办",
+  )
+  assert_true(as_has_doing(repo, iid, "review"), msg="当前待办不得凭空消失")
+  assert_eq(
+    as_doing_count(repo, iid, "review"), doing_before, msg="既不复活新行也不少行（待办数不变）"
+  )
+  assert_eq(as_rows(repo, iid, "review"), rows_before, msg="任务行总数不变")
+  assert_eq(repo.find_instance_by_id(iid).unwrap().state, 10, msg="实例状态不变")
   assert_true(!as_has_doing(repo, iid, "final"), msg="被禁的那次不得把令牌推到下一节点")
 }
 
