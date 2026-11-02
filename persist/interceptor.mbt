@@ -1,7 +1,9 @@
 // PersistPostInterceptor —— 移植自 rust lib.rs PersistPostInterceptor（spec/09）
 // ARCHIVE（结束同意归档 INSERT，幂等键 process_instance_id）/
 // SYNC（发起 INSERT → 任务 UPDATE 按字段权限 → 结束定稿）。
-// 字段提取：实例变量 f_/tf_ 前缀键去前缀（L2-06/07：不是 exec.args）。
+// 字段提取两档读源**不同**（spec/04「实例变量只收数据类键」末注的连带条款）：
+// `f_` 读实例变量（表单数据全流程可读），`tf_` 读 `exec.args`（当次提交那一趟）——见
+// `extract_fields` 的注释，那里写了为什么不能两档都从实例变量取。
 
 ///|
 pub(all) struct PersistPostInterceptor {
@@ -174,7 +176,9 @@ async fn PersistPostInterceptor::intercept_archive(
   if (self.table_writer).exists_by_key(table, "process_instance_id", exec.process_instance.instance_id) {
     return
   }
-  let data = self.extract_fields(exec.process_instance.variables, None, false, true)
+  let data = self.extract_fields(
+    exec.process_instance.variables, exec.args, None, false, true
+  )
   self.fill_context(data, exec)
   let meta = self.load_meta(table)
   let filtered = self.filter_editable(meta, data)
@@ -222,7 +226,7 @@ async fn PersistPostInterceptor::intercept_sync(
   } else {
     field_perm
   }
-  let data = self.extract_fields(instance.variables, perm, include_fields, include_fields)
+  let data = self.extract_fields(instance.variables, exec.args, perm, include_fields, include_fields)
   // 状态字段：任务节点写 DOING(10)——execPost 在流转链之后触发，此刻实例 state 可能已是终态，
   // 不能拿 instance.state（java `:137` 同判据）；非任务节点写实例当前态，
   // 列不存在由 `put_state_field` 的列探测滤掉，不炸流程。
@@ -329,10 +333,22 @@ fn PersistPostInterceptor::filter_editable(
 }
 
 ///|
-/// 提取字段：f_/tf_ 去前缀（SYNC 任务节点按字段权限过滤 f_）
+/// 提取字段：两档读源**不一样，不是随手写的**（spec/04「实例变量只收数据类键」末注的连带条款）。
+///   · `f_` 档＝业务表单数据，随实例变量全流程可读 ⇒ 读 `variables`（实例变量），
+///     SYNC 任务节点按字段权限过滤；
+///   · `tf_` 档＝**当次提交**的控制类参数。引擎自根因收口后不再把 `tf_*` 并进实例变量
+///     （上一轮的 `tf_addSignOperators` 复活会凭空多建一条本节点待办，见
+///     `core/model/aggregate.mbt::complete_task` 只并 `f_`）⇒ 这一档只能读 `task_fields`。
+///     本栈传的是 `exec.args`＝「实例变量 ← 任务行变量 ← 本次提交参数」那份合并结果，与 java
+///     `JeeflowEngineImpl.prepareExecution` 里 `exec.setArgs(mergedArgs)` 那份同形；
+///     任务行留痕收的也是同一份，所以“业务表那一列写的是本次提交的值”这一条可观察契约成立。
+/// 先 `f_` 后 `tf_`：同键时 `tf_` 覆盖（java `extractFields` 同一个写入序）。
+/// 反面教材：这条腿原先读实例变量，根因收口后**静默断了**（业务表那列落空、不写断言就不响），
+/// 现由 `tf_tier_engine_test.mbt` 的引擎级用例钉住（＝java `testSyncModeFullCycle` 同位）。
 fn PersistPostInterceptor::extract_fields(
   self : PersistPostInterceptor,
   variables : @json.FlowData,
+  task_fields : @json.FlowData,
   field_perm : Map[String, Json]?,
   include_task_fields : Bool,
   include_form_fields : Bool
@@ -344,10 +360,15 @@ fn PersistPostInterceptor::extract_fields(
       if !name.is_empty() && include_form_fields && self.is_editable(field_perm, name) {
         data[name] = value
       }
-    } else if key.has_prefix("tf_") {
-      let name = key[3:].to_owned()
-      if !name.is_empty() && include_task_fields {
-        data[name] = value
+    }
+  }
+  if include_task_fields {
+    for key, value in task_fields.inner() {
+      if key.has_prefix("tf_") {
+        let name = key[3:].to_owned()
+        if !name.is_empty() {
+          data[name] = value
+        }
       }
     }
   }

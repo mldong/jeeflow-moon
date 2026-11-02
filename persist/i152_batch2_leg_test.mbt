@@ -13,8 +13,8 @@ fn b2_fixture() -> (@persist.InMemoryMetaProvider, @persist.InMemoryTableWriter,
   meta.add_field(@persist.FieldMeta::make("merchant_name", "VARCHAR(100)", "商户名"))
   meta.add_field(@persist.FieldMeta::make("amount", "DECIMAL", "金额"))
   meta.add_field(@persist.FieldMeta::make("remark", "VARCHAR(200)", "备注"))
-  // ⚠ `tf_` 那一档不是"多一张 tf_ 列"：java `extractFields:200-202` 把 `tf_xxx` 去前缀后
-  // 当业务列 `xxx` 写（与 `f_xxx` 同键，谁在变量表里靠后谁胜）。这里给一列只有 tf_ 能写到的
+  // ⚠ `tf_` 那一档不是"多一张 tf_ 列"：java `extractFields` 把 `tf_xxx` 去前缀后
+  // 当业务列 `xxx` 写（与 `f_xxx` 同键时 `tf_` 后写覆盖，写入序两栈一致）。这里给一列只有 tf_ 能写到的
   // `audit_note`，好把 X6 那一档（非任务节点连 tf_ 也不写）钉死。
   meta.add_field(@persist.FieldMeta::make("audit_note", "VARCHAR(200)", "任务档备注"))
   meta.add_field(@persist.FieldMeta::make("apply_10", "INT", "申请节点状态"))
@@ -38,11 +38,16 @@ let b2_sync_flow : String = $|{"name": "orders_flow", "displayName": "订单", "
   $|], "edges": []}
 
 ///|
+/// 夹具：`variables` 走实例变量（`f_` 那一档的读源），`task_args` 走 `exec.args`
+/// （＝引擎办理那一趟「实例变量 ← 任务行变量 ← 本次提交参数」的合并结果，`tf_` 那一档的读源，
+/// spec/04「实例变量只收数据类键」末注的连带条款）。两档分开给，别把 `tf_` 塞进实例变量——
+/// 引擎根本不会那么写，塞进去只是把断言喂给一条现实中不存在的腿。
 fn b2_exec(
   node_id : String,
   variables : Map[String, Json],
   state~ : Int = 10,
-  submit_type~ : Int? = None
+  submit_type~ : Int? = None,
+  task_args~ : Map[String, Json] = Map([])
 ) -> @exec.Execution raise {
   let define_info : @model.ProcessDefine = {
     id: 1L,
@@ -59,6 +64,9 @@ fn b2_exec(
   }
   let model = @parser.parse_model(b2_sync_flow)
   let args = @json.FlowData::new()
+  for k, v in task_args {
+    args.insert(k, v)
+  }
   match submit_type {
     Some(st) => args.insert_i64("submitType", st.to_int64())
     None => ()
@@ -194,8 +202,10 @@ async test "b2 X5/X6: 定稿腿只写状态+上下文，业务列（f_ 与 tf_ �
   let vars : Map[String, Json] = Map([])
   vars["f_amount"] = @json.number_of(88L)
   vars["f_remark"] = @json.string_of("第一版")
-  vars["tf_audit_note"] = @json.string_of("任务档第一版")
-  let exec = b2_exec("apply", vars)
+  // `tf_` 那一档走本次提交参数（exec.args），不走实例变量——引擎办结不会把 `tf_*` 并进实例变量
+  let tf1 : Map[String, Json] = Map([])
+  tf1["tf_audit_note"] = @json.string_of("任务档第一版")
+  let exec = b2_exec("apply", vars, task_args=tf1)
   itc.intercept(exec)
   let r1 = b2_row(writer, exec)
   assert_eq(@json.as_i64(r1.get("amount").unwrap()), Some(88L))
@@ -208,7 +218,7 @@ async test "b2 X5/X6: 定稿腿只写状态+上下文，业务列（f_ 与 tf_ �
   exec.process_instance.state = 20
   exec.process_instance.variables.insert("f_amount", @json.number_of(999L))
   exec.process_instance.variables.insert("f_remark", @json.string_of("不该覆盖"))
-  exec.process_instance.variables.insert("tf_audit_note", @json.string_of("不该覆盖"))
+  exec.args.insert_str("tf_audit_note", "不该覆盖")
   exec.args.insert_i64("submitType", 1L)
   itc.intercept(exec)
   let r2 = b2_row(writer, exec)
@@ -223,13 +233,15 @@ async test "b2 X8: custom 记录类不是任务节点（不写 f_／tf_，不写
   let (_p, writer, itc) = b2_fixture()
   let vars : Map[String, Json] = Map([])
   vars["f_amount"] = @json.number_of(88L)
-  vars["tf_audit_note"] = @json.string_of("任务档第一版")
-  let exec = b2_exec("apply", vars)
+  // `tf_` 那一档同样走本次提交参数（exec.args），不走实例变量（读源判据见 b2_exec 的注释）
+  let tf1 : Map[String, Json] = Map([])
+  tf1["tf_audit_note"] = @json.string_of("任务档第一版")
+  let exec = b2_exec("apply", vars, task_args=tf1)
   itc.intercept(exec)
   // 记录类节点触发（execPost 在这一档是"节点执行完"，不是"有人办理"）
   exec.current_node = exec.process_model.get_node("notice")
   exec.process_instance.variables.insert("f_amount", @json.number_of(777L))
-  exec.process_instance.variables.insert("tf_audit_note", @json.string_of("记录类不该写"))
+  exec.args.insert_str("tf_audit_note", "记录类不该写")
   itc.intercept(exec)
   let r = b2_row(writer, exec)
   assert_eq(@json.as_i64(r.get("amount").unwrap()), Some(88L)) // 按非任务节点处理 ⇒ 不覆盖
