@@ -9,5 +9,5 @@ import {
   "mldong/jeeflow-core@0.1.54",
   "mldong/jeeflow-persist@0.1.54",
   // 仅 async test 运行期需要（core 已依赖同版本，非新增外部依赖面）
-  "moonbitlang/async@0.22.4",
+  "moonbitlang/async@0.22.7",
 }

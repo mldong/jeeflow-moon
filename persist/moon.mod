@@ -6,6 +6,6 @@ readme = "README.md"
 repository = "https://github.com/mldong/jeeflow-moon"
 description = "jeeflow dynamic table persist (DynamicTableWriter + PersistPostInterceptor + Meta)"
 import {
-  "moonbitlang/async@0.22.4",
+  "moonbitlang/async@0.22.7",
   "mldong/jeeflow-core@0.1.54",
 }

@@ -20,6 +20,8 @@ PY="${PY:-$(command -v python || command -v python3)}"
 # 版本号从 core/moon.mod 读。**相对路径 + 子 shell 里 cd**：Windows 版 python 看不见
 # MSYS 的 /g/... 形状（会 FileNotFoundError），别把 $ROOT 拼进给 python 的参数。
 VER="${1:-$(cd "$ROOT" && "$PY" -c "import re;print(re.search(r'^version\\s*=\\s*\"([^\"]+)\"', open('core/moon.mod',encoding='utf-8').read(), re.M).group(1))")}"
+# 显式钉引擎同源的 async 代次：不钉会浮到注册表最新（10-31 曾浮到 0.22.7 而旧工具链无 core/async 直接崩）
+ASYNC_VER="$(cd "$ROOT" && "$PY" -c "import re;print(re.search(r'moonbitlang/async@([0-9.]+)', open('core/moon.mod',encoding='utf-8').read()).group(1))")"
 MODS="core persist repository-mysql facade"
 
 command -v moon >/dev/null 2>&1 || { echo "!! moon 不在 PATH（本机见 mldong-hub AGENTS.md：MOON_HOME + /g/dev-tools/moon/bin）"; exit 1; }
@@ -42,7 +44,7 @@ cd pv
 for m in $MODS; do
   moon add "mldong/jeeflow-$m@$VER" >/dev/null
 done
-moon add moonbitlang/async >/dev/null   # async main 需要模块级声明（否则包级 import 报"global environment"）
+moon add "moonbitlang/async@$ASYNC_VER" >/dev/null   # async main 需要模块级声明（否则包级 import 报"global environment"）
 
 mkdir -p cmd/main
 cat > cmd/main/moon.pkg <<'PKG'

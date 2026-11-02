@@ -7,5 +7,5 @@ repository = "https://github.com/mldong/jeeflow-moon"
 description = "jeeflow workflow engine core (MoonBit port, zero registry deps)"
 
 import {
-  "moonbitlang/async@0.22.4",
+  "moonbitlang/async@0.22.7",
 }
