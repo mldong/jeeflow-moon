@@ -1,14 +1,14 @@
 name = "mldong/jeeflow-repository-mysql"
-version = "0.1.55"
+version = "0.1.56"
 license = "Apache-2.0"
 preferred_target = "wasm"
 readme = "README.md"
 repository = "https://github.com/mldong/jeeflow-moon"
 description = "jeeflow MySQL repository (moondb Driver trait + moonmysql async conn)"
 import {
-  "mldong/jeeflow-core@0.1.55",
+  "mldong/jeeflow-core@0.1.56",
   // issues/149：persist 的真库写侧（MysqlTableWriter implements DynamicTableWriter）
-  "mldong/jeeflow-persist@0.1.55",
+  "mldong/jeeflow-persist@0.1.56",
   "moonbitstack/moondb@0.2.3",
   "moonbitstack/moonmysql@0.7.5",
   "moonbitlang/async@0.22.7",
