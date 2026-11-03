@@ -145,17 +145,17 @@ pub fn number_of(n : Int64) -> Json {
 
 ///|
 pub fn number_f_of(n : Double) -> Json {
-  n.to_json()
+  @cjson.ToJson::to_json(n)
 }
 
 ///|
 pub fn string_of(s : String) -> Json {
-  s.to_json()
+  @cjson.ToJson::to_json(s)
 }
 
 ///|
 pub fn bool_of(b : Bool) -> Json {
-  b.to_json()
+  @cjson.ToJson::to_json(b)
 }
 
 ///|
