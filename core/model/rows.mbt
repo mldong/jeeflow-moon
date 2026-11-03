@@ -1,6 +1,7 @@
 // 分页/行模型/用户信息 —— 移植自 rust model.rs L548-L771
 
 ///|
+#derive(Eq)
 pub(all) struct ProcessDesign {
   mut id : Int64
   mut name : String
@@ -13,7 +14,7 @@ pub(all) struct ProcessDesign {
   mut create_user : String?
   mut update_time : String?
   mut update_user : String?
-} derive(Eq)
+}
 
 ///|
 pub fn ProcessDesign::clone(self : ProcessDesign) -> ProcessDesign {
@@ -21,13 +22,14 @@ pub fn ProcessDesign::clone(self : ProcessDesign) -> ProcessDesign {
 }
 
 ///|
+#derive(Eq)
 pub(all) struct ProcessDesignHis {
   mut id : Int64
   mut process_design_id : Int64
   mut content : String
   mut create_time : String?
   mut create_user : String?
-} derive(Eq)
+}
 
 ///|
 pub fn ProcessDesignHis::clone(self : ProcessDesignHis) -> ProcessDesignHis {
@@ -35,6 +37,7 @@ pub fn ProcessDesignHis::clone(self : ProcessDesignHis) -> ProcessDesignHis {
 }
 
 ///|
+#derive(Eq)
 pub(all) struct ProcessSurrogate {
   mut id : Int64
   mut process_name : String
@@ -47,7 +50,7 @@ pub(all) struct ProcessSurrogate {
   mut create_user : String?
   mut update_time : String?
   mut update_user : String?
-} derive(Eq)
+}
 
 ///|
 pub fn ProcessSurrogate::clone(self : ProcessSurrogate) -> ProcessSurrogate {
@@ -123,6 +126,7 @@ pub fn surrogate_scope_hit(sg : ProcessSurrogate?, operator : String, time : Str
 }
 
 ///|
+#derive(Eq)
 pub(all) struct CcInstance {
   mut id : Int64
   mut process_instance_id : Int64
@@ -132,25 +136,27 @@ pub(all) struct CcInstance {
   mut create_user : String?
   mut update_time : String?
   mut update_user : String?
-} derive(Eq)
+}
 
 ///|
+#derive(Eq)
 pub(all) struct TaskActor {
   mut id : Int64
   mut process_task_id : Int64
   mut actor_id : String
   mut create_time : String?
   mut create_user : String?
-} derive(Eq)
+}
 
 ///|
 /// m_ 过滤条件（spec/06 §2.2）
+#derive(Eq)
 pub(all) struct QueryFilter {
   table_alias : String // "t" 主表 / "pd" 流程定义 等
   op : FilterOp
   column : String // snake_case 列名
   value : String
-} derive(Eq)
+}
 
 ///|
 pub fn QueryFilter::table_alias(self : QueryFilter) -> String {
@@ -316,6 +322,7 @@ pub fn[T] PageResult::rows(self : PageResult[T]) -> Array[T] {
 
 ///|
 /// 待办/已办任务行
+#derive(Eq)
 pub(all) struct TaskRow {
   mut id : Int64
   mut process_instance_id : Int64
@@ -346,7 +353,7 @@ pub(all) struct TaskRow {
   mut define_name : String?
   mut define_display_name : String?
   mut define_version : Int?
-} derive(Eq)
+}
 
 ///|
 pub fn TaskRow::new_empty() -> TaskRow {
@@ -383,6 +390,7 @@ pub fn TaskRow::new_empty() -> TaskRow {
 
 ///|
 /// 实例行
+#derive(Eq)
 pub(all) struct InstanceRow {
   mut id : Int64
   mut parent_id : Int64?
@@ -400,7 +408,7 @@ pub(all) struct InstanceRow {
   mut define_name : String?
   mut define_display_name : String?
   mut define_version : Int?
-} derive(Eq)
+}
 
 ///|
 pub fn InstanceRow::new_empty() -> InstanceRow {
@@ -426,6 +434,7 @@ pub fn InstanceRow::new_empty() -> InstanceRow {
 
 ///|
 /// 定义行
+#derive(Eq)
 pub(all) struct DefineRow {
   mut id : Int64
   mut name : String
@@ -437,7 +446,7 @@ pub(all) struct DefineRow {
   mut create_user : String?
   mut update_time : String?
   mut update_user : String?
-} derive(Eq)
+}
 
 ///|
 pub fn DefineRow::new_empty() -> DefineRow {
@@ -457,6 +466,7 @@ pub fn DefineRow::new_empty() -> DefineRow {
 
 ///|
 /// 用户信息（IUserProvider 返回）
+#derive(Eq)
 pub(all) struct UserInfo {
   user_id : String
   real_name : String
@@ -464,7 +474,7 @@ pub(all) struct UserInfo {
   dept_name : String
   post_id : String
   post_name : String
-} derive(Eq)
+}
 
 ///|
 pub fn UserInfo::make(

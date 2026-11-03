@@ -34,7 +34,7 @@ fn sql_check(cond : Bool, label : String) -> Unit {
 ///|
 /// 子串出现次数（守"恒拼一次、不多不少"）
 fn occurrences(hay : String, needle : String) -> Int {
-  hay.split(needle).length() - 1
+  hay.split(needle).count() - 1
 }
 
 ///|

@@ -3,6 +3,7 @@
 // content 用 String（JSON 文本）承载（rust 为 Vec<u8>，DB BLOB 边界在仓储层处理）。
 
 ///|
+#derive(Eq)
 pub(all) struct ProcessDefine {
   mut id : Int64
   name : String
@@ -15,7 +16,7 @@ pub(all) struct ProcessDefine {
   mut create_user : String?
   mut update_time : String?
   mut update_user : String?
-} derive(Eq)
+}
 
 ///|
 pub fn ProcessDefine::clone(self : ProcessDefine) -> ProcessDefine {

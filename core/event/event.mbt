@@ -7,6 +7,7 @@
 /// 规范名 ↔ 构造子映射（构造子为本栈实际命名，name() 透出 spec §11.3 权威 SCREAMING 名）：
 /// 1 PROCESS_INSTANCE_START / 2 PROCESS_INSTANCE_END / 3 PROCESS_TASK_START / 4 CC_CREATE
 /// 5 TASK_COMPLETE / 6 TASK_REJECT / 7 TASK_TRANSFER / 8 TASK_WITHDRAW / 9 INSTANCE_TERMINATED
+#derive(Eq, Debug)
 pub(all) enum ProcessEventType {
   ProcessInstanceStart
   ProcessInstanceEnd
@@ -18,7 +19,7 @@ pub(all) enum ProcessEventType {
   TaskWithdraw
   InstanceTerminated
   // 10+ 预留：超时催办 / 超时自动通过 …（spec §11.4「明确不发」——八栈无时钟扫描器，发了无触发源）
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn ProcessEventType::code(self : ProcessEventType) -> Int {

@@ -58,21 +58,23 @@ pub let submit_type_re_apply : Int64 = 5L
 
 ///|
 /// 一个分支范围（java `List<Map>` 里的一档；字段名与 JSON 键同形）
+#derive(Eq)
 pub(all) struct BranchScope {
   fork : String
   join : String
   round : Int64
   root : Int64
-} derive(Eq)
+}
 
 ///|
 /// 直返上下文（只挂在申请待办的任务变量 `_reapplyContext` 上）
+#derive(Eq)
 pub(all) struct ReapplyContext {
   mode : String
   source_task_id : Int64
   source_node : String
   branch : Array[BranchScope]
-} derive(Eq)
+}
 
 // ── 模型静态分析 ────────────────────────────────────────────────────────────
 

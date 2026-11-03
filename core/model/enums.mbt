@@ -2,10 +2,11 @@
 // 口径（C4/C5）：入口容错数字/字符串，出口一律数字 code
 
 ///|
+#derive(Eq, Debug)
 pub(all) enum DefineState {
   Disable
   Enable
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn DefineState::code(self : DefineState) -> Int {
@@ -25,6 +26,7 @@ pub fn DefineState::from_code(code : Int) -> DefineState {
 }
 
 ///|
+#derive(Eq, Debug)
 pub(all) enum InstanceState {
   Doing
   Finished
@@ -33,7 +35,7 @@ pub(all) enum InstanceState {
   Reject
   Pending
   Abandon
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn InstanceState::code(self : InstanceState) -> Int {
@@ -63,6 +65,7 @@ pub fn InstanceState::from_code(code : Int) -> InstanceState? {
 }
 
 ///|
+#derive(Eq, Debug)
 pub(all) enum TaskState {
   Doing
   Finished
@@ -70,7 +73,7 @@ pub(all) enum TaskState {
   Interrupt
   Pending
   Abandon
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn TaskState::code(self : TaskState) -> Int {
@@ -98,11 +101,12 @@ pub fn TaskState::from_code(code : Int) -> TaskState? {
 }
 
 ///|
+#derive(Eq, Debug)
 pub(all) enum TaskType {
   Major
   Assistant
   Record
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn TaskType::code(self : TaskType) -> Int {
@@ -123,10 +127,11 @@ pub fn TaskType::from_code(code : Int) -> TaskType {
 }
 
 ///|
+#derive(Eq, Debug)
 pub(all) enum PerformType {
   Normal
   Countersign
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn PerformType::code(self : PerformType) -> Int {
@@ -146,10 +151,11 @@ pub fn PerformType::from_code(code : Int) -> PerformType {
 }
 
 ///|
+#derive(Eq, Debug)
 pub(all) enum CountersignType {
   Parallel
   Sequential
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn CountersignType::from_str_name(s : String) -> CountersignType {
@@ -162,6 +168,7 @@ pub fn CountersignType::from_str_name(s : String) -> CountersignType {
 }
 
 ///|
+#derive(Eq, Debug)
 pub(all) enum SubmitType {
   Apply
   Agree
@@ -172,7 +179,7 @@ pub(all) enum SubmitType {
   RollbackToOperator
   Transfer
   CountersignDisagree
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn SubmitType::code(self : SubmitType) -> Int64 {
@@ -223,6 +230,7 @@ pub fn SubmitType::from_code(code : Int64) -> SubmitType? {
 
 ///|
 /// m_ 三段式过滤操作符（spec/06 §2.2）
+#derive(Eq, Debug)
 pub(all) enum FilterOp {
   Eq
   Ne
@@ -234,7 +242,7 @@ pub(all) enum FilterOp {
   In
   Nin
   Bt
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn FilterOp::from_str(s : String) -> FilterOp? {

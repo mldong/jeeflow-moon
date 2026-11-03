@@ -118,7 +118,7 @@ async test "i141-G2 手动腿 首轮正向对照：两新人两行两码4" {
   assert_eq(msg_of(env), "成功")
   assert_eq(repo.cc_instances.length(), 2)
   let fired = cc_created_actors(events)
-  g1f_check(fired == ["userB", "userC"], "首轮逐人 fire 码 4（实际 \{fired}）")
+  g1f_check(fired == ["userB", "userC"], "首轮逐人 fire 码 4（实际 " + i153_join(fired) + "）")
   for e in events {
     if e.event_type() is @event.CcCreate {
       assert_eq(e.source_id(), iid)
@@ -130,7 +130,6 @@ async test "i141-G2 手动腿 首轮正向对照：两新人两行两码4" {
 /// ⑤ G2 手动腿重复抄 ⇒ ①不新增行 ②不重置未读 ④不 fire 码 4
 async test "i141-G2 手动腿 重复抄同一人⇒不新增行不重置未读不fire" {
   let (facade, repo, iid, events) = listening_setup(linear_flow_json())
-  let base = targs([("processInstanceId", iid.to_string())])
   let _ = facade.flow(
     "processInstance/createCCInstance",
     targs([("processInstanceId", iid.to_string()), ("operator", "applicant"), ("actorIds", "userB")]),
@@ -174,7 +173,7 @@ async test "i141-G2 手动腿 第二次混新老⇒事件只出现新人" {
   // 改前此格红：第二支会把 C、D 全量再 fire 一遍 ⇒ [B,C,C,D]
   g1f_check(
     cc_created_actors(events) == ["userB", "userC", "userD"],
-    "只 fire 实际新建子集（实际 \{cc_created_actors(events)}）",
+    "只 fire 实际新建子集（实际 " + i153_join(cc_created_actors(events)) + "）",
   )
 }
 
@@ -216,7 +215,7 @@ async test "i141-G2 手动腿×办理腿 共用判据（跨入口重复不发）
   // 改前此格红：办理腿把 B、C 全量 fire ⇒ [B,B,C]
   g1f_check(
     cc_created_actors(events) == ["userB", "userC"],
-    "跨入口判重：只 fire 新人（实际 \{cc_created_actors(events)}）",
+    "跨入口判重：只 fire 新人（实际 " + i153_join(cc_created_actors(events)) + "）",
   )
 }
 

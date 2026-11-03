@@ -2,6 +2,7 @@
 // 移植自 rust parser.rs；spec/01、spec/02
 
 ///|
+#derive(Eq)
 pub(all) struct ProcessModel {
   name : String
   display_name : String
@@ -13,7 +14,7 @@ pub(all) struct ProcessModel {
   rel_table_name : String?
   nodes : Array[NodeModel]
   edges : Array[EdgeModel]
-} derive(Eq)
+}
 
 ///|
 pub fn ProcessModel::get_start(self : ProcessModel) -> NodeModel? {
@@ -179,6 +180,7 @@ pub fn ProcessModel::interceptor_decl(
 ///   逐字照 java `ModelParser.java:79-90`（WARNING 后 continue）＋ spec/02 类型键义务 2。
 /// 注：大小写归一与 `subProcess`/无前缀别名是 issues/141 G4 的 C 方案（先立法后补实现），
 /// 本档**不做归一化** ⇒ 照 spec 写无前缀 `task` 的定义会落进这里，那是义务 1 未落地的已知后果。
+#derive(Eq, Debug)
 pub(all) enum NodeType {
   Start
   Task
@@ -189,7 +191,7 @@ pub(all) enum NodeType {
   Custom
   SubProcess
   Unknown
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn NodeType::from_snaker_type(t : String) -> NodeType {
@@ -233,12 +235,13 @@ pub fn unknown_node_warning(node_id : String, raw_type : String) -> String {
 }
 
 ///|
+#derive(Eq)
 pub(all) struct NodeModel {
   id : String
   node_type : NodeType
   display_name : String
   properties : Map[String, Json]
-} derive(Eq)
+}
 
 ///|
 pub fn NodeModel::prop_str(self : NodeModel, key : String) -> String? {
@@ -599,13 +602,14 @@ pub fn NodeModel::is_countersign(self : NodeModel) -> Bool {
 }
 
 ///|
+#derive(Eq)
 pub(all) struct EdgeModel {
   id : String
   source_node_id : String
   target_node_id : String
   label : String?
   properties : Map[String, Json]
-} derive(Eq)
+}
 
 ///|
 pub fn EdgeModel::expr(self : EdgeModel) -> String? {

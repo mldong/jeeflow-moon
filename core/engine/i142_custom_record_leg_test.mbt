@@ -45,7 +45,7 @@ fn custom_route_flow(var_key : String) -> String {
   // 表达式要的是字面 `${键} == vip`（本栈 simple_eval 的变量引用是 `${var}` / `#var` 两形）
   let ref_key = if key.is_empty() { "custom_return_val" } else { key }
   let expr = "$" + "{" + ref_key + "}" + " == vip"
-  $|{"name": "i142-custom-route", "displayName": "i142 返回值路由", "type": "approval",
+  let flow = $|{"name": "i142-custom-route", "displayName": "i142 返回值路由", "type": "approval",
   $|"nodes": [
   $|  {"id": "start", "type": "snaker:start", "text": {"value": "S"}},
   $|  {"id": "apply", "type": "snaker:task", "text": {"value": "发起申请"},
@@ -69,6 +69,7 @@ fn custom_route_flow(var_key : String) -> String {
   $|  {"id": "e6", "sourceNodeId": "taskVip", "targetNodeId": "end"},
   $|  {"id": "e7", "sourceNodeId": "taskOther", "targetNodeId": "end"}
   $|]}
+  flow
 }
 
 ///|
@@ -366,7 +367,7 @@ async test "i142: 处理器自身执行失败 ⇒ 外抛原错，不被记日志
     [
       (
         CLAZZ,
-        fn(_e) {
+        fn(_e) raise @error.JeeflowError {
           raise @error.Business("外部系统调用失败")
         },
       ),

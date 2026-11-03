@@ -964,7 +964,7 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::task_remove_actor(
   //    看不出是传错了类型。旧形状是空串也一起落进"非法id"（arg_i64 里 parse_int64 直接 raise），
   //    与本 action 的跨栈逐字文案冲突，故在调用 arg_i64 **之前**先把空值档截出来判。
   let pk_blank = match args.get("processTaskId") {
-    Some(Json::String(s)) => @model.normalize_actor(s).is_none()
+    Some(Json::String(s)) => @model.normalize_actor(s) is None
     _ => false
   }
   if pk_blank {

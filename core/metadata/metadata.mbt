@@ -1,10 +1,11 @@
 // 元数据注册表 —— 移植自 rust metadata.rs（7 字典 + HandlerRegistry，spec/07 v1.4.0）
 
 ///|
+#derive(Eq, Debug)
 pub(all) struct DictItem {
   value : String
   label : String
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn DictItem::value(self : DictItem) -> String {
@@ -91,13 +92,14 @@ pub fn EnumDictRegistry::get_dict(self : EnumDictRegistry, key : String) -> Arra
 }
 
 ///|
+#derive(Eq, Debug)
 pub(all) struct HandlerMeta {
   handler_type : String // 如 "AssignmentHandler"
   class_name : String // Java FQCN
   display_name : String
   order : Int
   group : String
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn HandlerMeta::make(

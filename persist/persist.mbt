@@ -4,13 +4,14 @@
 ///|
 /// 存储类型（issues/151 X10／spec/10 §2.1）：**名称/数字双解析**，对齐 mldong
 /// `dev_schema_field` 的 1-5 与 java `StorageType.fromValue`。
+#derive(Eq, Debug)
 pub(all) enum StorageType {
   Normal
   Json
   Expand
   One2One
   One2Many
-} derive(Eq, Debug)
+}
 
 ///|
 /// 双解析（spec/10 §2.1「string | number，缺省 NORMAL」）：
@@ -295,10 +296,11 @@ pub fn match_column(real_cols : Array[String], candidate : String, strict~ : Boo
 
 ///|
 /// 持久化模式
+#derive(Eq, Debug)
 pub enum PersistMode {
   Archive
   Sync
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn PersistMode::from_str(s : String) -> PersistMode? {

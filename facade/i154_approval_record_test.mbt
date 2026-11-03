@@ -262,7 +262,7 @@ async test "i154-③ ext＝该行任务变量，不回落实例变量" {
   // 阳性对照：f_note 落在 task1 行（下标 1）
   let ext1 = @json.get(rows[1], "ext").unwrap_or(@json.null_json())
   i154_check(
-    @json.get(ext1, "f_note").is_some() && @json.get_str(ext1, "f_note").unwrap_or("") == "同意",
+    (@json.get(ext1, "f_note") is Some(_)) && @json.get_str(ext1, "f_note").unwrap_or("") == "同意",
     "阳性对照：task1 行的 ext 透出本次提交变量 f_note=同意",
   )
   // 阴性对照：apply 行（下标 0）不得带上后来那次提交的变量

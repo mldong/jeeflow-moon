@@ -80,9 +80,9 @@ async test "i182 正向：ext 取 field 内容且不读诱饵 ext 键" {
   let ext = i182_ext(data)
   match ext {
     Json::Object(m) => {
-      i153_check(m.get("PERMISSION_f_note").is_some(), "ext 必须含 field 的 PERMISSION_f_note（修前读错键 ⇒ 恒 {}）")
-      i153_check(m.get("f_tag").is_some(), "field 内容必须原样透传（缺 f_tag）")
-      i153_check(m.get("WRONG_KEY_DECOY").is_none(), "诱饵 properties.ext 键不得被读取")
+      i153_check(m.get("PERMISSION_f_note") is Some(_), "ext 必须含 field 的 PERMISSION_f_note（修前读错键 ⇒ 恒 {}）")
+      i153_check(m.get("f_tag") is Some(_), "field 内容必须原样透传（缺 f_tag）")
+      i153_check(m.get("WRONG_KEY_DECOY") is None, "诱饵 properties.ext 键不得被读取")
       i153_check(@json.get_i64(ext, "PERMISSION_f_note") == Some(1L), "PERMISSION_f_note 值应为 1")
     }
     _ => abort("ext 必须是对象（修前恒 {} 也是对象；本格靠键内容判，实得非对象）")
@@ -110,7 +110,7 @@ async test "i182 回归：taskModel 兄弟键与行级出口不受影响" {
   i153_check(@json.get_str(tm, "name") == Some("t1"), "taskModel.name 应为 t1")
   i153_check(@json.get_str(tm, "displayName") == Some("T1"), "taskModel.displayName 应为 T1")
   i153_check(@json.get_str(tm, "type") == Some("task"), "taskModel.type 应为 task")
-  i153_check(@json.get(tm, "form").is_some(), "taskModel.form 键仍在（无值档为 null）")
+  i153_check(@json.get(tm, "form") is Some(_), "taskModel.form 键仍在（无值档为 null）")
   let exec_ok = match @json.get(data, "executable") {
     Some(Json::True) => true
     _ => false
