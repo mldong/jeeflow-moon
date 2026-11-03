@@ -9,3 +9,5 @@ import {
   "moonbitlang/core/env" @env,
 }
 pkgtype(kind: "executable")
+
+supported_targets = "+native+wasm"

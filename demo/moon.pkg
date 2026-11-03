@@ -10,3 +10,5 @@ import {
   "moonbitlang/async/fs" @fs,
   "moonbitlang/core/env" @env,
 }
+
+supported_targets = "+native+wasm"

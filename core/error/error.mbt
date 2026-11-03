@@ -10,6 +10,7 @@ pub const ERR_BUSINESS : Int64 = 99999999L
 pub const INTERNAL_FAILURE_MSG : String = "流程处理失败"
 
 ///|
+#derive(Eq)
 pub(all) suberror JeeflowError {
   Business(String)
   UnknownAction(String)
@@ -27,7 +28,7 @@ pub(all) suberror JeeflowError {
   /// 的通用档，动它就是改既有测试期望值。rust 同一条决定（`ParseErrorWithCause(msg, Box<..>)`）。
   ParseErrorWithCause(String, String)
   Internal(String)
-} derive(Eq)
+}
 
 ///|
 pub fn JeeflowError::code(self : JeeflowError) -> Int64 {
@@ -96,6 +97,7 @@ impl Show for JeeflowError with fn output(self, logger) {
 /// - 只想传播错误 ⇒ 直接调用（外层函数标 `raise` 即可），**不要**套本函数；
 /// - 需要看成功值与失败值两态（断言、回退、转成本域错误）⇒ `attempt(fn() { ... })`。
 /// 本函数存在的意义：让"我要一个 Result"这件事在代码里显式出现，而不是靠 `?` 猜。
+#warnings("-result_error_return")
 pub fn [A, E : Error] attempt(f : () -> A raise E) -> Result[A, E] {
   try f() catch { e => Err(e) } noraise { v => Ok(v) }
 }
