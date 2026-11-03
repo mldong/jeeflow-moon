@@ -9,7 +9,7 @@ import {
   "mldong/jeeflow-core@0.1.58",
   // issues/149：persist 的真库写侧（MysqlTableWriter implements DynamicTableWriter）
   "mldong/jeeflow-persist@0.1.58",
-  "moonbitstack/moondb@0.2.3",
-  "moonbitstack/moonmysql@0.7.5",
+  "moonbitstack/moondb@0.2.5",
+  "moonbitstack/moonmysql@0.7.8",
   "moonbitlang/async@0.22.7",
 }

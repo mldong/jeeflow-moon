@@ -12,5 +12,5 @@ import {
   "mldong/jeeflow-core@0.1.58",
   "moonbitlang/async@0.22.7",
   // cmd/t1_mysql 直连真机 MySQL 做断言读回（本模块不发布，不影响发布拓扑与依赖面）
-  "moonbitstack/moondb@0.2.3",
+  "moonbitstack/moondb@0.2.5",
 }
