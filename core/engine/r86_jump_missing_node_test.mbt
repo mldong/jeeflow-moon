@@ -42,6 +42,11 @@ async test "r86 ① 跳转目标节点不存在要显式报错，且不落半截
   let inst = engine.start_async(did, "applicant", @json.FlowData::new())
   let ta = r91_task_of(repo, inst.instance_id, "apply")
 
+  // issues/243 §8-2：零写入要**前后对照**才立得住——先取报错前的两把读数（待办 id 集、任务行总数），
+  // 再打那一发失败的 JUMP，报错后逐条比回去（只取报错后的绝对值会把"本来就多一行"读成绿）。
+  let doing_ids_before = repo.find_doing_tasks(inst.instance_id, []).map(t => t.task_id)
+  let rows_before = repo.find_history_tasks(inst.instance_id).length()
+
   // 摘掉前置校验 ⇒ 这里拿到的是 Internal 兜底档「内部错误: 跳转目标节点在入口校验后消失…」，
   // 整串不等 ⇒ 本断言照红（判据有牙，不是"报了个错就算过"）
   assert_eq(
@@ -49,12 +54,27 @@ async test "r86 ① 跳转目标节点不存在要显式报错，且不落半截
     "根据节点名称[nope]无法找到节点模型",
   )
 
-  // 「任务未被动」三条读数：任务行仍 DOING、实例仍 10、待办行数没变
+  // 「任务未被动」读数（R86 原有三条，钉法不变）：任务行仍 DOING、实例仍 10、待办行数没变
   let row = repo.find_task_by_id(ta.task_id).unwrap()
   assert_eq(row.task_state, @model.TaskState::Doing.code())
   let inst_row = repo.find_instance_by_id(inst.instance_id).unwrap()
   assert_eq(inst_row.state, 10)
   assert_eq(repo.find_doing_tasks(inst.instance_id, []).length(), 1)
+  // issues/243 §8-2 补的两条＝java 那笔的「原任务仍是那条待办」＋「行数不变」在本栈的等位：
+  // ① 那条待办的**身份**就是报错前那一条（id 逐字相同，不是"又冒出别的 DOING 行"顶上的数）；
+  // ② 任务行**总数**不变（``find_history_tasks`` 不按状态过滤 ⇒ 任何"多出来的一行"——
+  //    新建后继、废弃兄弟——都会红；把当前行办结那一笔落在既有行上、不改行数，由上面
+  //    那条 DOING 断言抓）。
+  // 本栈的节点存在性判据本来就排在任何写之前（`execute_and_jump_async` 的命名支里
+  // `require_jump_node` 早于 `execute_jump_mode_async`，后者才走 `load_exec_for_task` →
+  // `complete_task_in_aggregate` + `update_task_by_id` 那一刀），且门面/仓储无事务模板可回滚。
+  // 牙＝tmp 副本里把守卫挪回写之后（原样抛「根据节点名称[x]无法找到节点模型」那句，
+  // 于是文案断言照绿、写入照发生）：本行上方第一条先红（当前行被办结 ⇒ 20 ≠ 10）；
+  // 再把旧三条注掉，本条 ① 独立红（`[] != [2]`＝待办已凭空消失）。读数见交接卡汇报。
+  assert_eq(
+    repo.find_doing_tasks(inst.instance_id, []).map(t => t.task_id), doing_ids_before
+  )
+  assert_eq(repo.find_history_tasks(inst.instance_id).length(), rows_before)
 }
 
 ///|
