@@ -515,6 +515,15 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::done_list(self : Facade[R, E
 
 ///|
 /// 提交任务（submitType 分发，java execute 同款）
+///
+/// issues/247 动态会签（征询模式）在这一跳分两次截流，**判据全部排在状态变更之前**：
+/// ① `try_dynamic_countersign_async`——征询节点带 `tf_addSignOperators` 的提交＝只建成员行、
+///    **不办结主办行**，返回响应 marker `{dynamicCountersign:{round,total,submitted}}` 直接出信封
+///    （＝java `execute` 里 `if (collect != null) return ok(collect)` 那一刀）；
+/// ② `gate_dynamic_countersign_async`——主办行未收齐成员意见 ⇒ 逐字文案报错，**挡全部 submitType
+///    （含驳回 2）**，唯一出口＝`processTask/revokeDynamicCountersign`（owner 拍「全部置灰＋撤回接口」）；
+///    成员行携带拉人参数同样在这里报它的逐字文案。
+/// 两刀都在分发之前 ⇒ 被拦下的那一次一行状态都没动（报错即零写入）。
 pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::execute(self : Facade[R, E], args : Map[String, Json]) -> Json raise @error.JeeflowError {
   let task_id = match arg_i64(args, "processTaskId") {
     Some(v) => v
@@ -524,28 +533,36 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   let submit_type = arg_i64_or(args, "submitType", 1L)
   let flow_args = args_to_flow_data(args, ["processTaskId", "operator"])
   flow_args.insert_i64("submitType", submit_type)
-  if submit_type == 2L {
-    // REJECT → 跳转结束（办结语义合并派）
-    let _ = (self.engine).execute_and_jump_to_end_async(task_id, operator, flow_args)
-  } else if submit_type == 3L {
-    // ROLLBACK → 沿首入边回退（首任务节点）
-    let _ = (self.engine).execute_and_jump_async(task_id, operator, flow_args, None)
-  } else if submit_type == 4L {
-    // JUMP → 指定节点（非法名 → "无法找到节点模型"）
-    let task_name = arg_str_or(args, "taskName", "")
-    let _ = (self.engine).execute_and_jump_async(task_id, operator, flow_args, Some(task_name))
-  } else if submit_type == 6L {
-    // ROLLBACK_TO_OPERATOR → 首任务节点重执行给发起人
-    let _ = (self.engine).execute_and_jump_to_first_async(task_id, operator, flow_args)
-  } else if submit_type == 20L {
-    // 会签不同意 → 注入 flag 普通执行（20 软拒绝，C8）
-    flow_args.insert_str("countersignDisagreeFlag", "1")
-    let _ = (self.engine).execute_task_async(task_id, operator, flow_args)
-  } else {
-    // 0 APPLY / 1 AGREE / 5 重新提交 → 普通执行
-    let _ = (self.engine).execute_task_async(task_id, operator, flow_args)
+  // ① 征询发起腿：非征询提交返回 None，走下面的普通流转
+  match (self.engine).try_dynamic_countersign_async(task_id, operator, flow_args) {
+    Some(marker) => marker
+    None => {
+      // ② 征询闸门（成员行禁拉人／主办未收齐一律挡下）
+      (self.engine).gate_dynamic_countersign_async(task_id, flow_args)
+      if submit_type == 2L {
+        // REJECT → 跳转结束（办结语义合并派）
+        let _ = (self.engine).execute_and_jump_to_end_async(task_id, operator, flow_args)
+      } else if submit_type == 3L {
+        // ROLLBACK → 沿首入边回退（首任务节点）
+        let _ = (self.engine).execute_and_jump_async(task_id, operator, flow_args, None)
+      } else if submit_type == 4L {
+        // JUMP → 指定节点（非法名 → "无法找到节点模型"）
+        let task_name = arg_str_or(args, "taskName", "")
+        let _ = (self.engine).execute_and_jump_async(task_id, operator, flow_args, Some(task_name))
+      } else if submit_type == 6L {
+        // ROLLBACK_TO_OPERATOR → 首任务节点重执行给发起人
+        let _ = (self.engine).execute_and_jump_to_first_async(task_id, operator, flow_args)
+      } else if submit_type == 20L {
+        // 会签不同意 → 注入 flag 普通执行（20 软拒绝，C8）
+        flow_args.insert_str("countersignDisagreeFlag", "1")
+        let _ = (self.engine).execute_task_async(task_id, operator, flow_args)
+      } else {
+        // 0 APPLY / 1 AGREE / 5 重新提交 → 普通执行
+        let _ = (self.engine).execute_task_async(task_id, operator, flow_args)
+      }
+      @json.null_json()
+    }
   }
-  @json.null_json()
 }
 
 ///|
@@ -619,6 +636,21 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::task_detail(self : Facade[R,
                 None => ()
               }
               @json.obj_set(tm, "ext", ext_obj)
+              // 动态会签投影（issues/247，spec 06 §2.7＝java taskDetail 尾段那一刀）：征询主办行
+              // `ext.dynamicCountersign`＝{active, round, total, submitted, actors[]} **从成员行现算**、
+              // 不落新存储；无成员行 ⇒ 不写这一格（前端据此不置灰）。
+              // ⚠️ 必须在上面那句 `obj_set(vo,"ext",obj_json(t_ext))` 之后**重发一次 ext**：
+              //   `obj_json` 是快照式序列化（java 那边 tExt 是活 Map、改了就可见），只改 t_ext 不重发
+              //   就等于这一格从没写过。
+              if node.node_type is @parser.Task && node.dynamic_countersign() {
+                match @engine.collect_build_projection(instance.tasks, doing_task) {
+                  Some(p) => {
+                    t_ext["dynamicCountersign"] = p
+                    @json.obj_set(vo, "ext", obj_json(t_ext))
+                  }
+                  None => ()
+                }
+              }
               @json.obj_set(vo, "taskModel", tm)
               break
             }

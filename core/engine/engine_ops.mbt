@@ -397,13 +397,18 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   //      还有未完成待办→停留；两者皆否→放行出边。停留时**只跳下钻**，抄送腿与落库腿照常
   //      走（java `executeProcessTask` 同一次序：runOutTransition 被跳过，
   //      handleCcActors / persistTasks 不受影响）。
+  //      issues/247 征询档＝java `TaskModel.exec` 的第三档，**复用同一枚推进闸**：发起腿在门面
+  //      （带 tf_addSignOperators 的提交不办结主办行，到不了这里），能走到这里的只有成员行办结
+  //      与主办行收齐后的拍板——主办仍 DOING ⇒ has_doing_on_node=true 节点不动；主办办结且成员
+  //      清零 ⇒ 放行出边。两档共用 `add_sign_gate` 是因为 `exec.add_sign_operators` 在征询路径
+  //      恒空（非空那一次已被门面 `try_dynamic_countersign_async` 截走并返回），闸只会走第二判据。
   let add_sign_hold = match node {
     Some(n) =>
       if is_countersign {
         false
       } else if !(n.node_type is @parser.Task) {
         false
-      } else if n.allow_add_sign() {
+      } else if n.allow_add_sign() || n.dynamic_countersign() {
         self.add_sign_gate(exec, n)
       } else {
         false

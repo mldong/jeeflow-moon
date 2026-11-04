@@ -1,4 +1,4 @@
-// 事件 fire 助手 —— issues/132「事件代码腿」九支码的构造与广播集中于此，便于逐键审计。
+// 事件 fire 助手 —— issues/132「事件代码腿」各支码的构造与广播集中于此，便于逐键审计。
 // 与 notify_cc_create（engine.mbt）同型：组装 spec §11.3 直传载荷键（camelCase），
 // 走 @event.notify（逐监听器兜底 + 列表广播）。**只在落库之后由调用方触发**。
 // 码 1/2/3 是既有支（issues/132 第二轮补的直传键——sourceId 不足以让集成层按实例归堆事件流水）；
@@ -128,5 +128,23 @@ pub async fn[R, E] Engine::notify_instance_terminated(
   data.insert_str("operator", operator)
   data.insert_str("reason", reason)
   let event = @event.ProcessEvent::make(@event.InstanceTerminated, instance_id).with_data(data)
+  @event.notify(event, self.ctx.event_listeners())
+}
+
+///|
+/// 已办撤回事件（spec §11.3 code 10 TASK_RECALL，issues/246）。
+/// sourceId=**被撤回的旧行** taskId，载荷 instanceId/taskId/operator。
+/// 调用方义务：撤回动作落库之后 fire **一次**，且**只发 10、不补发 5/6**——撤回既不是办结也不是
+/// 拒绝（理由同码 8 不补发 2，spec §11.2 原则 1「码=事实」）。复活行自己的待办另走码 3
+/// （由建单收口 `persist_tasks` 那一腿 fire，见 `core/engine/recall.mbt`；java 在 `14674d7`
+/// 之前漏了这一支，go/python 早已按 spec 走码 3，本栈与它们同形）。
+pub async fn[R, E] Engine::notify_task_recall(
+  self : Engine[R, E], instance_id : Int64, task_id : Int64, operator : String
+) -> Unit raise @error.JeeflowError {
+  let data = @json.FlowData::new()
+  data.insert_i64("instanceId", instance_id)
+  data.insert_i64("taskId", task_id)
+  data.insert_str("operator", operator)
+  let event = @event.ProcessEvent::make(@event.TaskRecall, task_id).with_data(data)
   @event.notify(event, self.ctx.event_listeners())
 }

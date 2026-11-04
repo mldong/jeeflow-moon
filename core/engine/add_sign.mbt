@@ -29,6 +29,12 @@ pub let add_sign_operators_key : String = "tf_addSignOperators"
 pub let add_sign_history_key : String = "tf_addSignHistory"
 
 ///|
+/// 协议键：发起该轮征询的原因说明（选填，字符串；issues/247）——随账本条目落库并盖到每条成员行
+/// （单行出证自足，不回查主办行）。键名与 java `FlowConst.ADD_SIGN_REASON` 逐字同。
+/// 与上面两枚 `tf_addSign*` 同族：动态会签（征询模式）复用后加签的协议键族，行为由节点属性分流。
+pub let add_sign_reason_key : String = "tf_addSignReason"
+
+///|
 /// 轮次键前缀（拼 `_{节点名}`）。刻意**不**复用会签簿记 `loopCounter`：后者是血缘复活血
 /// 要剔掉的会签计数，加签轮次要跨"已办过的人"继续计数（java `FlowConst.ADD_SIGN_ROUND` 同决定）
 pub let add_sign_round_prefix : String = "addSignRound"
@@ -295,8 +301,10 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::add_
 
 ///|
 /// 拒绝／退回发起人：废弃本节点未完成的加签任务，不留孤儿待办（规范 04 · 语义边界）。
-/// 只对开了 `allowAddSign` 的节点动手——会签节点的兄弟任务由既有会签腿管，不在此扩面
-/// （逐字对齐 java `abandonDoingOnNode` 开头那道开关守卫）。返回实际废弃的行数。
+/// 开关守卫＝`allowAddSign` **或** `dynamicCountersign`（issues/247 扩面，逐字照 java
+/// `AddSignSupport.abandonDoingOnNode` 的新守卫——征询成员行同属本节点 DOING，
+/// 实例撤回/退回路径一并清场）。会签节点的兄弟任务由既有会签腿管，不在此扩面。
+/// 返回实际废弃的行数。
 /// ⚠️ 与 `abandon_countersign_remaining` 同形：改聚合行之后必须逐条 `update_task` 落库。
 async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::abandon_add_sign_remaining(
   self : Engine[R, E], exec : @exec.Execution, node_id : String
@@ -307,7 +315,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::aban
   let allow = match exec.process_model.get_node(node_id) {
     Some(n) =>
       if n.node_type is @parser.Task {
-        n.allow_add_sign()
+        n.allow_add_sign() || n.dynamic_countersign()
       } else {
         false
       }

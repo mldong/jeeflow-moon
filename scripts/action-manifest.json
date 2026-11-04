@@ -2,13 +2,13 @@
   "_meta": {
     "version": "1.0",
     "created": "2026-09-05",
-    "purpose": "jeeflow MoonBit 引擎（第 7 语言）M0 契约固化 —— 47 action 清单（Java 实查 ↔ 规范 ↔ MoonBit 三方核对基准；issues/115 补 processTask/transfer + processTask/removeTaskActor）",
+    "purpose": "jeeflow MoonBit 引擎（第 7 语言）M0 契约固化 —— 49 action 清单（Java 实查 ↔ 规范 ↔ MoonBit 三方核对基准；issues/115 补 processTask/transfer + processTask/removeTaskActor；issues/246 补 processTask/recall；issues/247 补 processTask/revokeDynamicCountersign）",
     "sources": {
       "java": "jeeflow-java/jeeflow-core/src/main/java/com/mldong/jeeflow/facade/JeeflowFacade.java flow() switch（L100-L155）",
       "spec": "jeeflow-doc/docs/spec/06-facade.md",
       "plan": "jeeflow-hub/docs/moonbit-engine-implementation-plan.md §0.1/§3.3/§4"
     },
-    "count": 47,
+    "count": 49,
     "baseline": {
       "note": "spec 基线锚定（方案 §5 M0 通过条件）——每阶段收尾复核上游漂移",
       "java_head": "58fd0b3 fix(demo): Dockerfile.demo 先 install -N 装 parent pom",
@@ -295,6 +295,22 @@
           "resp": "ok(data=null)；失败 msg 逐字见 spec/06 §processTask/removeTaskActor：operator 必填 / processTaskId/actorIds 缺失 / 任务不存在 / 无权限摘除该任务参与人 / 任务非进行中，不可摘除参与人 / 至少需保留一名参与人；守卫次序同上节（不接受各栈自行排序）"
         },
         {
+          "action": "processTask/recall",
+          "method": "taskRecall",
+          "permission": "wf:processTask:recall",
+          "note": "issues/246 已办撤回（第 48 个 action）：办理人收回**自己刚办结的那一手**，同实例内复活重办。判据位序逐字照 java `JeeflowEngineImpl.recallTask`（行 FINISHED → 参与人按名册 → 实例 DOING → 节点开 allowRecall → 窗口宽口径「下游无任何 FINISHED」），五道全排在状态变更之前 ⇒ 报错即零写入。动作三件：下游 DOING 全废弃（后加签续建行/征询成员行/并行分支天然覆盖）＋原 FINISHED 行**不改写**只追加 tf_recallHistory{operator,time,recalledTaskId}＋同节点新建一行 DOING（名册＝原行名册、parent＝**原行的 parent**、expireTime 同尺重算、走建单收口 fire 码 3）。事件：码 10 TASK_RECALL（sourceId＝被撤回的旧行），**只发 10 不补发 5/6**。业务变量与业务表**不回滚**（承诺边界，spec 04）",
+          "req": "{processTaskId 必填(必须 FINISHED), operator 硬必填(arg_required_str，空/纯空白→operator 必填)}",
+          "resp": "ok(data={processTaskId=复活行 id 字符串化, taskState=10})；失败 msg 逐字见 spec/06 §processTask/recall：operator 必填 / processTaskId 缺失 / 任务非已完成状态，不可撤回 / 无权限撤回该任务 / 流程实例不存在 / 流程实例非进行中状态，不可撤回 / 节点[{节点名}]未开启 allowRecall，不能撤回 / 任务[{节点名}]的后续节点已办理，不能撤回；守卫次序同上节（不接受各栈自行排序）"
+        },
+        {
+          "action": "processTask/revokeDynamicCountersign",
+          "method": "taskRevokeCountersign",
+          "permission": "wf:processTask:revokeDynamicCountersign",
+          "note": "issues/247 撤回动态会签（第 49 个 action）：征询模式置灰态的**唯一恢复出口**（独立 action，不进 execute 参数空间——撤回不是办结动作，先例＝transfer/removeTaskActor）。废弃主办行下**全部未答**成员行（复用废弃腿→99）＋tf_addSignHistory 追加 revoked=true 条目；**已交意见行原样保留**（审计凭证不动）；闸门自然恢复（判据＝还有无 DOING 成员行）；轮次不消耗（round 沿用当前轮，再拉照常 +1）。参与人**按名册**判断（不能用只认 DOING 行的 is_allowed：主办办结后会把合法撤回判成无权），flow.auto/flow.admin 例外",
+          "req": "{processTaskId 必填(主办行), operator 硬必填(严禁回落 user1), reason 选填(进账本条目)}",
+          "resp": "ok(data={revoked=废弃条数, actors=[被撤人，空名册行出 null]})；失败 msg 逐字见 spec/06 §processTask/revokeDynamicCountersign：operator 必填 / processTaskId 缺失 / 任务不存在 / 无权限撤回该动态会签 / 节点[{节点名}]没有进行中的动态会签（未开开关与无待答成员同档，同 java）"
+        },
+        {
           "action": "processTask/latest",
           "method": "taskLatest",
           "permission": null,
@@ -425,11 +441,11 @@
     }
   },
   "summary": {
-    "total": 47,
+    "total": 49,
     "byGroup": {
       "processDefine": 8,
       "processInstance": 14,
-      "processTask": 11,
+      "processTask": 13,
       "processDesign": 9,
       "processSurrogate": 5
     },

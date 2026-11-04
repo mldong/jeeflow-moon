@@ -1,4 +1,7 @@
-// JeeflowFacade —— 47 action 统一入口（方案 §3.3；java JeeflowFacade 为契约源）
+// JeeflowFacade —— 门面 action 统一入口（方案 §3.3；java JeeflowFacade 为契约源）。
+// action 条数**不在这里写死**（AGENTS/仓规第 12 条：会变的数量只写"去哪读"）——
+// 权威清单＝下面 `dispatch` 的分派表本身，跨栈核对基准＝`scripts/action-manifest.json`
+// （`node scripts/check-action-manifest.mjs` 双向比对 java `JeeflowFacade` 的 case 标签）。
 // D-M3-1：页查询仅在有 m_ 过滤时做 facade 级后过滤+重分页（rust 无条件重分页会打折扣
 // 未过滤场景的 recordCount，与 java 五键语义冲突；此处对齐 java）。
 
@@ -89,7 +92,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::disp
     "processInstance/stats/overview" => self.stats_overview(args)
     "processInstance/stats/trend" => self.stats_trend(args)
     "processInstance/stats/group" => self.stats_group(args)
-    // ── 流程任务（11）──
+    // ── 流程任务（13，含 issues/246 recall 与 issues/247 revokeDynamicCountersign）──
     "processTask/todoList" => self.todo_list(args)
     "processTask/doneList" => self.done_list(args)
     "processTask/execute" => self.execute(args)
@@ -100,6 +103,8 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::disp
     "processTask/addCandidate" => self.task_surrogate(args)
     "processTask/transfer" => self.task_transfer(args) // issues/115：摘原人+换新人（非加签的只追加）
     "processTask/removeTaskActor" => self.task_remove_actor(args) // issues/115 第 47 个 action：只摘不加、零留痕、不发事件
+    "processTask/recall" => self.task_recall(args) // issues/246 已办撤回：收回自己刚办结的那一手
+    "processTask/revokeDynamicCountersign" => self.task_revoke_countersign(args) // issues/247 撤回动态会签
     "processTask/latest" => self.task_latest(args)
     // ── 流程设计（9，需扩展仓储）──
     "processDesign/page" => self.design_page(args)

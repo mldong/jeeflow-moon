@@ -1,12 +1,14 @@
 // 事件系统 —— 移植自 rust event.rs + 补齐 issues/127·132「事件代码腿」
-// 权威码表：jeeflow-doc/docs/spec/11-events.md §11.3（A 套整型 1..9，规范名逐字对齐）
+// 权威码表：jeeflow-doc/docs/spec/11-events.md §11.3（A 套整型 1..10，规范名逐字对齐）
 // 4 号位复用：原 ProcessTaskEnd 引擎从不 fire（全联邦死码），复用于 CcCreate（issues/102·104）
-// 5..9 为 issues/132 §5.2 定稿新增；10+ 预留（超时催办/自动通过，本轮不发，仅占号防分叉）
+// 5..9 为 issues/132 §5.2 定稿新增；10 TASK_RECALL 为 issues/246 新增（已办撤回）
+// 11+ 预留（超时催办/自动通过，不发，仅占号防分叉）
 
 ///|
 /// 规范名 ↔ 构造子映射（构造子为本栈实际命名，name() 透出 spec §11.3 权威 SCREAMING 名）：
 /// 1 PROCESS_INSTANCE_START / 2 PROCESS_INSTANCE_END / 3 PROCESS_TASK_START / 4 CC_CREATE
 /// 5 TASK_COMPLETE / 6 TASK_REJECT / 7 TASK_TRANSFER / 8 TASK_WITHDRAW / 9 INSTANCE_TERMINATED
+/// 10 TASK_RECALL（issues/246 已办撤回；复活行自己的待办另走码 3，只发 10 不补发 5/6）
 #derive(Eq, Debug)
 pub(all) enum ProcessEventType {
   ProcessInstanceStart
@@ -18,7 +20,8 @@ pub(all) enum ProcessEventType {
   TaskTransfer
   TaskWithdraw
   InstanceTerminated
-  // 10+ 预留：超时催办 / 超时自动通过 …（spec §11.4「明确不发」——八栈无时钟扫描器，发了无触发源）
+  TaskRecall
+  // 11+ 预留：超时催办 / 超时自动通过 …（spec §11.4「明确不发」——八栈无时钟扫描器，发了无触发源）
 }
 
 ///|
@@ -33,6 +36,7 @@ pub fn ProcessEventType::code(self : ProcessEventType) -> Int {
     TaskTransfer => 7
     TaskWithdraw => 8
     InstanceTerminated => 9
+    TaskRecall => 10
   }
 }
 
@@ -48,6 +52,7 @@ pub fn ProcessEventType::from_code(code : Int) -> ProcessEventType? {
     7 => Some(TaskTransfer)
     8 => Some(TaskWithdraw)
     9 => Some(InstanceTerminated)
+    10 => Some(TaskRecall)
     _ => None
   }
 }
@@ -65,6 +70,7 @@ pub fn ProcessEventType::name(self : ProcessEventType) -> String {
     TaskTransfer => "TASK_TRANSFER"
     TaskWithdraw => "TASK_WITHDRAW"
     InstanceTerminated => "INSTANCE_TERMINATED"
+    TaskRecall => "TASK_RECALL"
   }
 }
 
