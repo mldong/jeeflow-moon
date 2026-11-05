@@ -37,12 +37,6 @@ pub fn default_json_provider() -> JsonProviderFns {
 }
 
 ///|
-/// IActionPermissionProvider 默认实现：wf:{action /→:}（spec/06 §2.6）
-pub fn default_action_permission_provider(action : String) -> Array[String] {
-  ["wf:\{action.replace(old="/", new=":")}"]
-}
-
-///|
 /// FlowInterceptor 闭包形态（带 order）
 pub(all) struct InterceptorFn {
   order : Int
@@ -264,7 +258,7 @@ pub fn[R, E] Ctx::id_generator_or_default(
 }
 
 ///|
-/// IActionPermissionProvider：未注入用默认 wf:{action /→:}
+/// IActionPermissionProvider：未注入用引擎内置默认件（放行 → OR → 默认派生 wf:{action /→:}，两张表见 action_permission.mbt）
 pub fn[R, E] Ctx::permission_codes(self : Ctx[R, E], action : String) -> Array[String] {
   match self.action_permission_provider {
     Some(f) => (f)(action)
