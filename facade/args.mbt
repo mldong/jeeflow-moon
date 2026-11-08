@@ -82,6 +82,14 @@ pub fn task_row_to_json(r : @model.TaskRow) -> Json {
   @json.obj_set(o, "ext", obj_json(ext))
   @json.obj_set(o, "instance_ext", obj_json(instance_ext))
   @json.obj_set(o, "instance_create_time", opt_json(r.instance_create_time))
+  // issues/250：任务行带「所属流程实例的状态」，前端据此把实例已结束的已办行撤回按钮置灰。
+  // 值＝该行所属实例的 state（10 进行中 / 20 已完成 / 30 撤回 / 40 终止 / 45 拒绝 / 50 挂起 / 99 废弃），
+  // 来源＝列表查询**本来就有的** pi 关联（SQL 别名 `instance_state`，todo/done 两支同投影；
+  // 内存仓 `task_row_of` 取 `i.state`，两仓同源）⇒ 不新增关联、不解析流程定义、不改任何撤回判据。
+  // 键名按本仓 VO 既有风格写 snake_case，出口 `transform_output` 的 to_camel 落成契约要求的
+  // `instanceState`；`Int?` 缺值出 null（对齐 java 的 `Integer instanceState`），有值出整数
+  // （`instanceState` 不匹配 C1 的 `*Id`/`*_id` 后缀 ⇒ 不会被字符串化）。
+  @json.obj_set(o, "instance_state", opt_num_json(r.instance_state))
   @json.obj_set(o, "version", opt_num_json(r.define_version))
   @json.obj_set(o, "task_form_data", form_data_of_map(parse_json_map(r.variable), "tf_"))
   o
