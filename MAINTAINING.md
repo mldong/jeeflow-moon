@@ -352,6 +352,18 @@ raise 由标注承担、不再是"体内未用的效应类型"——`compliance_
 
 ## 2. 测试指南（T0/T1/T2 + 构建目标维度）
 
+> 总览（2026-11-08 自 README 收拢）：本机四档都跑 **wasm** 目标，**native** 目标由 CI 覆盖
+> （§1「构建目标纪律」）。
+
+| 档 | 命令 | 覆盖 |
+|---|---|---|
+| T0 | `moon test --target wasm` | 全量 T0：共享流程合规场景、submitType 矩阵、事件时机、出口契约、persist 幂等/字段权限（变异验证）+ 门面级 withdraw/transfer 三档（内存仓储） |
+| T1 | `JEFFLOW_DB_*=… moon run --target wasm repository-mysql/smoke` | 真 MySQL：分页五键、hydrate、`m_` 过滤走 SQL、事务回滚无半完成实例、并发办理幂等 |
+| T1-F | `JEFFLOW_DB_*=… moon run --target wasm demo/cmd/t1_mysql` | 真 MySQL 门面级：withdraw（归属判据 / state 30 / 列回写 / 已完成行不改）+ transfer（换人 / 三件留痕 / 账本只追加） |
+| T2 | `bash scripts/smoke_t2.sh` | demo HTTP：发起 → 待办 → 办理 → 办结 → 高亮 → `99999999` 负向 |
+
+条数以实跑读数为唯一口径，本文件与 CI 报告都不写死数字。
+
 ### T0 仓内快测（必绿门槛）
 
 ```bash

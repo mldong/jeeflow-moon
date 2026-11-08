@@ -2,7 +2,7 @@
 
 # jeeflow-moon
 
-**The jeeflow workflow engine in MoonBit — the federation's 7th language.**
+**jeeflow 工作流引擎的 MoonBit 实现**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--core-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-core)
@@ -11,17 +11,17 @@
 
 </div>
 
-`jeeflow-moon` is a full workflow (BPM) engine — process definitions, instances, tasks,
-countersign gates, CC notifications, stats — behind a **single 40+ action facade**:
-`flow(action, args) → {code, msg, data}`. It is the MoonBit port of the
-jeeflow federation (Java reference implementation), API-compatible with the Go / Python / Node /
-PHP / Rust builds: same 16 shared LogicFlow fixtures, same `99999999` error envelope, same
-five-key pagination, same state machine.
+jeeflow 是一个多语言联邦：Java 为参考实现，Go / Python / Node / PHP / Rust / C# / MoonBit 各语言
+**对齐同一行为契约**——同一套 LogicFlow 共享流程定义（本仓 `flows/` 即入库副本）、同一
+`99999999` 错误信封、同一分页五键、同一状态机。本引擎把全部能力收在
+**一个统一门面** `flow(action, args) → {code, msg, data}` 后面：流程定义与部署、发起与办理、
+跳转与撤回、会签闸门、抄送、委托、统计、业务数据入库（persist）。
+引擎核心**运行时零依赖**（只用 MoonBit 标准库），全链 `async fn`、单一事件循环。
 
 ```mermaid
 flowchart LR
   ui["jeeflow-ui (?lang=moon)"] -->|"/moon-api → POST /wf/{action}"| demo["demo :8092<br/>run_forever"]
-  demo --> f["**Facade** flow(action, args)<br/>40+ actions · outbound contract layer"]
+  demo --> f["**Facade** flow(action, args)<br/>统一门面 · 出口契约层"]
   f --> e["**Engine** (async)<br/>start · execute · jump · countersign gates"]
   e -->|"async fn SPI"| spi["ProcessRepository · SPI methods"]
   spi --> mem["Memory repo<br/>(T0)"]
@@ -29,50 +29,36 @@ flowchart LR
   f --> p["**Persist**<br/>ARCHIVE / SYNC · field permissions"]
 ```
 
-## Quickstart
+## 60 秒跑起来
+
+工具链安装与首次配置见 [docs/getting-started.md](./docs/getting-started.md)（含 `moon update` 刷索引等
+首跑细节）。
 
 ```bash
 git clone https://github.com/mldong/jeeflow-moon.git && cd jeeflow-moon
 export MOON_HOME=<your-moon-home> PATH=$MOON_HOME/bin:$PATH
 
-moon test --target wasm                                   # T0: 全绿（条数以本机/CI 实跑读数为准）
-moon run --target wasm demo/cmd/main                      # demo on :8092 (memory store)
-bash scripts/smoke_t2.sh                                  # start → todo → approve → highlight
+moon test --target wasm                                   # T0 全量单测（条数以实跑读数为准）
+moon run --target wasm demo/cmd/main                      # 演示服务 :8092（默认 memory 仓储）
+bash scripts/smoke_t2.sh                                  # 发起 → 待办 → 办理 → 高亮 → 负向
 ```
 
-> Fresh toolchain? Run `moon update` once before the first `moon test` / `moon add` — the index
-> bundled with the compiler can be too old to resolve `moonbitlang/async` / moonmysql deps.
->
-> Every command above carries `--target wasm` on purpose: native can't compile against
-> `moonbitlang/async` on a MinGW/MSYS host (that C layer is MSVC-only on Windows) — it's the
-> toolchain, not this repo. Native is still gated, just in CI; the full policy lives in
-> [MAINTAINING.md](./MAINTAINING.md) §构建目标纪律.
->
-> Running the demo? One instance per port, and the MySQL store needs a pre-created schema and
-> ships no flows — both covered in [docs/demo.md](./docs/demo.md).
+> 命令里的 `--target wasm` 是刻意的：MoonBit 的 async 运行时在 MinGW/MSYS 宿主上编不了
+> native（工具链限制，不是本仓的问题）。native 档由 CI 覆盖，见 [MAINTAINING.md](./MAINTAINING.md)
+> 「构建目标纪律」。
 
-## Live demo
+### 在自己的模块里消费
 
-Already running against this exact facade (no setup needed):
-
-- [jeeflow demo site — MoonBit tab](https://jeeflow-demo.mldong.com/?lang=moon): the shared
-  [jeeflow-ui](https://github.com/mldong/jeeflow-ui) workspace, `?lang=moon` routes every
-  `POST /wf/{action}` to this engine's `:8092` backend (`/moon-api/` proxy).
-- API health: [moon-api/health](https://jeeflow-demo.mldong.com/moon-api/health)
-
-Consume from your own module — `moon add` pulls the latest release, no version pin:
+也可以不跑 demo，直接 `moon add` 从注册表装（不带版本 = 拉 latest，自动写精确版本进 `moon.mod`）：
 
 ```bash
 moon new my-flow && cd my-flow
-moon add mldong/jeeflow-core     # engine core — zero runtime registry deps
-moon add mldong/jeeflow-facade   # 40+ action unified facade
-moon add moonbitlang/async       # flow() is async; async main needs it
-# each add resolves the latest version and writes it into your moon.mod
+moon add mldong/jeeflow-core      # 引擎核心（运行时零依赖）
+moon add mldong/jeeflow-facade    # 统一门面 flow(action, args)
+moon add moonbitlang/async        # flow 是 async；async main 需要它
 ```
 
-`flow` is `async` and takes `Map[String, Json]`, and MoonBit resolves package aliases per
-`moon.pkg` — both of those belong in your module's files, not in `moon.mod`. This is the whole
-copy-paste module (verified `moon run cmd/main`, output below):
+下面是**完整可复制的模块**（两个文件，已验证 `moon run cmd/main`，输出见后）：
 
 ```moonbit
 // cmd/main/moon.pkg
@@ -88,10 +74,10 @@ pkgtype(kind: "executable")
 ```
 
 ```moonbit
-// cmd/main/main.mbt — repositories are generic parameters, small SPIs are closure fields
+// cmd/main/main.mbt — 仓储是泛型参数，小型 SPI 是闭包字段
 async fn main raise {
   let repo   = @memory.MemoryRepository::new()
-  let ctx    = @spi.Ctx::new(repo, repo)          // no ext repo here; NoExtRepository for MySQL
+  let ctx    = @spi.Ctx::new(repo, repo)          // 无扩展仓储；MySQL 侧配 NoExtRepository
   let facade = @facade.Facade::make(ctx)
   let args : Map[String, Json] = { "processDefineId": 1, "operator": "applicant" }
   println(@json.stringify(facade.flow("processDefine/startAndExecute", args)))
@@ -102,95 +88,76 @@ async fn main raise {
 {"code":99999999,"msg":"流程定义不存在: 1"}
 ```
 
-That envelope is the point: a bare `MemoryRepository` ships **empty** — the demo's 16 shared flows
-come from `seed_memory()` loading `flows/*.json` (`demo/app.mbt`), which is not part of any
-published module. Feed your own definition through `processDesign/save` → `processDesign/deploy`
-first, then `startAndExecute`. Add `.with_user_provider(...)` / `.with_id_generator(...)` on the
-`Ctx` for real assignees and snowflakes (see [SPI guide](./docs/spi-guide.md)).
+这个信封就是设计要点：裸 `MemoryRepository` 出厂**是空的**——本仓 `flows/` 那套共享流程只由
+demo 的 `seed_memory()` 灌入（不随任何发布模块提供）。自己的接入路径是：
+`processDesign/save` → `processDesign/deploy` 部署一份自己的定义，再 `startAndExecute`。
+要真实审批人与雪花 id，在 `Ctx` 上补 `.with_user_provider(...)` / `.with_id_generator(...)`，
+SPI 全清单与写法见 [docs/spi-guide.md](./docs/spi-guide.md)。
 
-## What's here
+## 线上演示（无需安装）
 
-- **40+ action facade** — every engine capability routes through `flow(action, args)` with the
-  federation envelope: success `code=0`, business failure `99999999` (and nothing else), unknown
-  action rejected at the top level. Groups: `processDefine` (8), `processInstance` (14, incl. 3
-  stats), `processTask` (10), `processDesign` (9), `processSurrogate` (5). An outbound contract
-  layer runs on every response: snake→camel keys, recursive id stringification (including plural
-  id arrays — snowflakes exceed float64), `yyyy-MM-dd HH:mm:ss` times, five-key pagination
-  (`pageNum/pageSize/recordCount/totalPage/rows`).
-- **Fully async engine** — repository SPI, engine and facade are `async fn` end to end, one event
-  loop, zero nested runtimes (MoonBit has no `block_on`; the sync-SPI + bridge shape used
-  elsewhere is not portable here). Engine operations: `start`, `execute`, `jump`, `jump_to_end`,
-  `jump_to_first`, withdraw — with hydrate-from-repository as a first-class step.
-- **Countersign gates** — parallel (all-finish), sequential (one task at a time, full roster kept
-  in task variables), ratio expressions (`#nrOfCompletedInstances==2`), and one-vote veto
-  (`countersignCompletionCondition=ONE_VOTE_VETO`); soft reject via `submitType=20` sets
-  `countersignDisagreeFlag` and abandons merged leftovers.
-- **Events** — `TASK_CREATE` (fired after persistence, so listeners can resolve the task),
-  `INSTANCE_END` (both finish and reject paths), `CC_CREATE` (per actor, id passed in the event);
-  per-listener fault isolation — one bad listener never breaks the flow.
-- **Metadata & handlers** — 7 built-in assignment handlers registered under their Java FQCNs
-  (applicant / dept leaders / form-field / role), `EnumDictRegistry` with the 7 `wf_*` dicts,
-  `HandlerRegistry`.
-- **Persist** (separate module) — `PersistPostInterceptor` drives business-table writes off
-  `persistMode`: **ARCHIVE** (one idempotent INSERT at end+agree, keyed by `process_instance_id`)
-  or **SYNC** (INSERT at start → per-task UPDATE filtered by the target node's
-  `PERMISSION_*` field rights → final-state UPDATE), with table-name safety checks.
-- **MySQL repository** (separate module) — all SPI methods over the upstream pure-MoonBit
-  MySQL wire client (`moonbitstack/moonmysql/client`, native + wasm host), `m_` three-segment filters, NULL-safe row hydration,
-  DATETIME text normalization, and a real `BEGIN/COMMIT/ROLLBACK` transaction template
-  (connection-bound via ambient single-thread context).
-- **Memory repository** (in core) — the T0 store: same behavior, no I/O; row listing is
-  id-ordered for deterministic tests.
-- **Clock SPI** — core has no wall clock; time is injected (`set_clock`), so stats snapshots and
-  `autoGenTitle` are fully deterministic under test (fixed clock = byte-stable consistency runs).
-- **Zero-registry-dependency core** — `jeeflow-core` runs on the MoonBit standard library only;
-  JSON, expressions, users and transactions are all SPI. Demo wiring shows the full assembly
-  (`demo/app.mbt:15-42` is the minimal shape; entry `demo/cmd/main/main.mbt` is 70 lines).
+- [jeeflow 演示站 — MoonBit 档](https://jeeflow-demo.mldong.com/?lang=moon)：共享
+  [jeeflow-ui](https://github.com/mldong/jeeflow-ui) 工作台，`?lang=moon` 把每个
+  `POST /wf/{action}` 路由到本引擎 `:8092` 后端（`/moon-api/` 代理）。
+- API 健康检查：[moon-api/health](https://jeeflow-demo.mldong.com/moon-api/health)
 
-## Modules
+## 能力一览
 
-| module | mooncakes | role |
+| 能力 | 说明 | 详见 |
 |---|---|---|
-| [`core`](./core) | [`mldong/jeeflow-core`](https://mooncakes.io/docs/mldong/jeeflow-core) | model / async SPI / engine / parser / events / metadata / memory repo |
-| [`facade`](./facade) | [`mldong/jeeflow-facade`](https://mooncakes.io/docs/mldong/jeeflow-facade) | 40+ action `flow(action, args)` + outbound contract layer + stats |
-| [`persist`](./persist) | [`mldong/jeeflow-persist`](https://mooncakes.io/docs/mldong/jeeflow-persist) | business-table persist: ARCHIVE / SYNC + field permissions |
-| [`repository-mysql`](./repository-mysql) | [`mldong/jeeflow-repository-mysql`](https://mooncakes.io/docs/mldong/jeeflow-repository-mysql) | MySQL SPI over a pure-MoonBit wire client + tx template |
-| `demo` | not published | `:8092` HTTP demo + jeeflow-ui `?lang=moon` |
+| 统一门面 | 全部 action 经 `flow(action, args)`，联邦信封（成功 `code=0` / 业务失败 `99999999`，未知 action 顶层拒绝）；action 分五组（流程定义 / 实例 / 任务 / 设计 / 委托），**权威清单 = [`scripts/action-manifest.json`](./scripts/action-manifest.json)** | [docs/engine-api.md](./docs/engine-api.md) |
+| 出口契约层 | 每个响应统一过一遍：snake→camel 键、id 递归字符串化（含复数 id 数组，雪花超 float64）、时间 `yyyy-MM-dd HH:mm:ss`、分页五键（`pageNum/pageSize/recordCount/totalPage/rows`） | [docs/engine-api.md](./docs/engine-api.md) |
+| 全异步引擎 | 仓储 SPI / 引擎 / 门面全 `async fn`，单一事件循环零嵌套（MoonBit 无 `block_on`，其它语言的"同步 SPI + 桥"形态在此不可移植）；操作覆盖 start / execute / jump / 跳转首尾 / 撤回 | [docs/spi-guide.md](./docs/spi-guide.md) |
+| 会签闸门 | 并行全齐、串行逐个（全名册存任务变量）、比例表达式（`#nrOfCompletedInstances==2`）、一票否决（`ONE_VOTE_VETO`）；软否决 `submitType=20` | [docs/flow-definition.md](./docs/flow-definition.md) |
+| 事件 | `TASK_CREATE`（落库后 fire，监听器可解析任务）/ `INSTANCE_END`（办结与驳回两路）/ `CC_CREATE`（逐人）；per-listener 故障隔离，坏监听器不断流 | [docs/spi-guide.md](./docs/spi-guide.md) |
+| 元数据与处理器 | 7 个内置指派处理器按 Java FQCN 注册（申请人 / 部门负责人 / 表单字段 / 角色）、`EnumDictRegistry` 7 个 `wf_*` 字典、`HandlerRegistry` | [docs/spi-guide.md](./docs/spi-guide.md) |
+| 业务数据入库 | 独立模块 `persist`：`persistMode` 驱动 **ARCHIVE**（办结+同意时一条幂等 INSERT）或 **SYNC**（发起 INSERT → 按任务节点 `PERMISSION_*` 字段权逐次 UPDATE → 终态 UPDATE），含表名安全检查 | [docs/persist.md](./docs/persist.md) |
+| MySQL 仓储 | 独立模块，纯 MoonBit 线上协议客户端（`moonbitstack/moonmysql/client`，native + wasm）；`m_` 三段过滤、NULL 安全水合、DATETIME 文本归一、真 `BEGIN/COMMIT/ROLLBACK` 事务模板 | [docs/getting-started.md](./docs/getting-started.md)「MySQL 仓储」 |
+| 内存仓储 | 在 core 内：行为一致、无 I/O；行列表按 id 排序保证测试确定 | [docs/getting-started.md](./docs/getting-started.md) |
+| 时钟 SPI | core 不取墙钟，时间一律注入（`set_clock`）——统计快照与 `autoGenTitle` 在固定钟下字节稳定，一致性对拍靠它 | [docs/spi-guide.md](./docs/spi-guide.md) |
 
-## Test matrix
+## 模块地图
 
-| Tier | Command | Scope |
+| 模块 | mooncakes | 职责 |
 |---|---|---|
-| T0 | `moon test --target wasm` | 全部 T0 用例: 31 compliance scenarios (c01–c31) over the shared flows, submitType matrix, event timing, outbound contracts, persist idempotency/permissions (mutation-verified); + facade-level withdraw/transfer three-tier cases (memory repo) |
-| T1 | `JEFFLOW_DB_*=… moon run --target wasm repository-mysql/smoke` | real MySQL: five-key pages, hydrate, `m_` filters over SQL, tx rollback leaves no half instance, double-execute is rejected, `update_user` really in the UPDATE statement |
-| T1-F | `JEFFLOW_DB_*=… moon run --target wasm demo/cmd/t1_mysql` | real MySQL over `JeeflowFacade`: withdraw (operator 硬必填 / 三条归属判据 / state 30 / `update_user` 回写 / 已完成行不改) + transfer (摘原人·加新人·三件留痕·账本只追加·不覆写 `operator` 列·doneList 不污染) |
-| T2 | `bash scripts/smoke_t2.sh` | demo HTTP: start → todo → approve → state 20 → highlight → 99999999 negative |
+| [`core`](./core) | [`mldong/jeeflow-core`](https://mooncakes.io/docs/mldong/jeeflow-core) | 模型 / 全异步 SPI / 引擎 / 解析器 / 事件 / 元数据 / 内存仓储（运行时零依赖） |
+| [`facade`](./facade) | [`mldong/jeeflow-facade`](https://mooncakes.io/docs/mldong/jeeflow-facade) | 统一门面 `flow(action, args)` + 出口契约层 + 统计 |
+| [`persist`](./persist) | [`mldong/jeeflow-persist`](https://mooncakes.io/docs/mldong/jeeflow-persist) | 业务数据入库：ARCHIVE / SYNC + 字段权限 |
+| [`repository-mysql`](./repository-mysql) | [`mldong/jeeflow-repository-mysql`](https://mooncakes.io/docs/mldong/jeeflow-repository-mysql) | 纯 MoonBit 线上协议 MySQL 仓储 + 事务模板 |
+| `demo` | 不发布 | `:8092` HTTP 演示 + jeeflow-ui `?lang=moon`；`demo/app.mbt:15-42` 是最小装配形状 |
 
-> 上表四档在本机都跑 **wasm** 目标。**native** 目标由 CI 覆盖（见 Quickstart 那段说明）：
-> `demo-deploy.yml` 两个目标都 build＋test、`native-probe.yml` 跑 native demo 全链＋`moon test --target native`、
-> `publish.yml` 发版前要求 native 构建绿。条数以 CI 实跑读数为准，本表不写死数字。
+版本号独立 0.x 线（mooncakes 平台约束），以各模块 `moon.mod` 与 [docs/CHANGELOG.md](./docs/CHANGELOG.md) 为准。
 
-## Design notes
+## 测试分级
 
-Two MoonBit realities shaped the code, both documented in `MAINTAINING.md` (§4 decisions):
+T0（仓内全量单测）/ T1（真 MySQL 仓储级）/ T1-F（真 MySQL 门面级）/ T2（demo HTTP 冒烟）
+四档，本机都跑 **wasm** 目标，native 由 CI 覆盖；各档命令、前置与覆盖范围见
+[MAINTAINING.md](./MAINTAINING.md) §2。条数以实跑读数为唯一口径，文档与 CI 报告都不写死数字。
 
-- **JSON numbers are doubles.** Snowflake ids exceed 2⁵³, so row VOs stringify ids at
-  construction time and the outbound `stringify_ids` pass is a recursive safety net, not the
-  first line of defense.
-- **`Array::sort` on `String` mis-sorts on wasm** (calling `compare` directly is correct). The repo
-  ships its own insertion sorts (`sort_strings` / `sort_i64` / `sort_int`) and uses them everywhere;
-  when the toolchain is fixed the swaps are one-line.
+## 文档导航
 
-See also `docs/integration.md` (embedding guide) and `MAINTAINING.md`
-(maintainer guide: toolchain, T0–T2 testing, mooncakes release, design decisions, contract map).
+| 文档 | 内容 |
+|---|---|
+| [docs/getting-started.md](./docs/getting-started.md) | 工具链安装、本地起 demo、MySQL 仓储接法 |
+| [docs/engine-api.md](./docs/engine-api.md) | 门面 API、信封、出口/入口契约 |
+| [docs/spi-guide.md](./docs/spi-guide.md) | SPI 清单（仓储 / 用户 / 事件 / 时钟…）与实现指南 |
+| [docs/flow-definition.md](./docs/flow-definition.md) | LogicFlow JSON 流程定义格式 |
+| [docs/persist.md](./docs/persist.md) | 业务数据入库（ARCHIVE / SYNC） |
+| [docs/integration.md](./docs/integration.md) | mldong 系宿主集成指南 |
+| [docs/demo.md](./docs/demo.md) | 演示服务运行细节（含 mysql 档） |
+| [docs/CHANGELOG.md](./docs/CHANGELOG.md) | 版本历史（独立 0.x 线） |
 
-## Origin
+跨语言规范（spec / 状态机 / 契约）在 [jeeflow-doc 文档站](https://jeeflow-doc.mldong.com/)
+（MoonBit 语言指南：<https://jeeflow-doc.mldong.com/languages/moon/>）。
+维护者向内容（工具链口径、发版通道、设计决策、契约对照）在
+[MAINTAINING.md](./MAINTAINING.md)，不进 `docs/`、不上文档站。
 
-This engine is a MoonBit port. The workflow engine itself originated as the built-in
-workflow module of the [mldong rapid-development platform](https://gitee.com/mldong/mldong)
-(Apache-2.0, 10k+ stars on Gitee); the external contract follows the jeeflow federation's
-Java reference implementation [jeeflow-java](https://github.com/mldong/jeeflow-java)
-(Apache-2.0). Same fixtures, same envelope, same state machine — reimplemented in MoonBit.
+## 出处
+
+本引擎的工作流内核出自 [mldong 快速开发平台](https://gitee.com/mldong/mldong)
+（Apache-2.0，Gitee 上 10k+ stars）的内置工作流模块；对外契约对齐 jeeflow 联邦的 Java
+参考实现 [jeeflow-java](https://github.com/mldong/jeeflow-java)（Apache-2.0）。
+同一套流程定义、同一信封、同一状态机，MoonBit 重写。
 
 ## License
 
