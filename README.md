@@ -3,7 +3,6 @@
 - [mldong/jeeflow-core](https://mooncakes.io/docs/mldong/jeeflow-core)
 - [mldong/jeeflow-facade](https://mooncakes.io/docs/mldong/jeeflow-facade)
 - [在线演示](https://jeeflow-demo.mldong.com/?lang=moon)
-- [Apache-2.0](./LICENSE)
 
 jeeflow 是一个多语言联邦：Java 为参考实现，Go / Python / Node / PHP / Rust / C# / MoonBit 各语言
 **对齐同一行为契约**——同一套 LogicFlow 共享流程定义（本仓 `flows/` 即入库副本）、同一
