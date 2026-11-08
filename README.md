@@ -1,15 +1,14 @@
-<div align="center">
+<h1 align="center">jeeflow-moon</h1>
 
-# jeeflow-moon
-
-**jeeflow 工作流引擎的 MoonBit 实现**
-
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
-[![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--core-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-core)
-[![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--facade-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-facade)
-[![T0](https://img.shields.io/badge/T0-green-brightgreen)](./MAINTAINING.md)
-
-</div>
+<p align="center">
+  <a href="https://mooncakes.io/docs/mldong/jeeflow-core">mldong/jeeflow-core</a>
+  、
+  <a href="https://mooncakes.io/docs/mldong/jeeflow-facade">mldong/jeeflow-facade</a>
+  、
+  <a href="https://jeeflow-demo.mldong.com/?lang=moon">在线演示</a>
+  、
+  <a href="./LICENSE">Apache-2.0</a>
+</p>
 
 jeeflow 是一个多语言联邦：Java 为参考实现，Go / Python / Node / PHP / Rust / C# / MoonBit 各语言
 **对齐同一行为契约**——同一套 LogicFlow 共享流程定义（本仓 `flows/` 即入库副本）、同一
@@ -17,17 +16,6 @@ jeeflow 是一个多语言联邦：Java 为参考实现，Go / Python / Node / P
 **一个统一门面** `flow(action, args) → {code, msg, data}` 后面：流程定义与部署、发起与办理、
 跳转与撤回、会签闸门、抄送、委托、统计、业务数据入库（persist）。
 引擎核心**运行时零依赖**（只用 MoonBit 标准库），全链 `async fn`、单一事件循环。
-
-```mermaid
-flowchart LR
-  ui["jeeflow-ui (?lang=moon)"] -->|"/moon-api → POST /wf/{action}"| demo["demo :8092<br/>run_forever"]
-  demo --> f["**Facade** flow(action, args)<br/>统一门面 · 出口契约层"]
-  f --> e["**Engine** (async)<br/>start · execute · jump · countersign gates"]
-  e -->|"async fn SPI"| spi["ProcessRepository · SPI methods"]
-  spi --> mem["Memory repo<br/>(T0)"]
-  spi --> my[("MySQL<br/>tx template · m_ filters")]
-  f --> p["**Persist**<br/>ARCHIVE / SYNC · field permissions"]
-```
 
 ## 60 秒跑起来
 
