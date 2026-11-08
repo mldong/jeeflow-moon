@@ -142,6 +142,12 @@ T0（仓内全量单测）/ T1（真 MySQL 仓储级）/ T1-F（真 MySQL 门面
 参考实现 [jeeflow-java](https://github.com/mldong/jeeflow-java)（Apache-2.0）。
 同一套流程定义、同一信封、同一状态机，MoonBit 重写。
 
+## 集成方
+
+[mldong-moon](https://github.com/mldong/mldong-moon)（mldong 快速开发框架的 MoonBit 实现，
+家族第 14 栈）把本引擎以 `plugins/jeeflow` 插件接入——业务方在同一个 MoonBit 栈上
+同时拥有框架底座与 jeeflow 工作流。
+
 ## License
 
 Apache-2.0.
