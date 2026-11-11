@@ -305,7 +305,7 @@ D-M6-1 的"逐字节原样拷贝"改写为"仅允许这两类偏离"。之后 63
 | **try 块里出现 `fail`/`abort`** | 它把 `Failure` 并进同一 raise 集 ⇒ 绑定退化成 open `Error`，判文案的站点集体报 "Type Error has no method message"。"没抛错就该红"这条判据必须写在 try 外面 |
 | `impl Trait for T` 的方法**不再隐式提升**为常规方法 | 补 `pub extend T with Trait::{…}`；vendored 两文件要保逐字一致 ⇒ extend 落在同包的**本仓自有新文件** `vendored/moon_mysql_client/extend_driver.mbt` |
 | `substring` 的返回类型跟着接收者走（String→String、StringView→StringView） | 同一串文本两种改法 ⇒ 整批正则必翻车（W6b 37 站全报 "String has no method to_owned"）；替代写法是切片 `s[a:b]` |
-| 收尾型 `try { … } catch { e => { 收尾; raise e } }` | 换 `errdefer { 收尾 }`；工具链已声明 try/catch 将来不再捕获异步取消。事务模板 `execute_in_tx` 已换，T1 的回滚三格仍绿 |
+| 收尾型 `try { … } catch { e => { 收尾; raise e } }` | 换 `errdefer { 收尾 }`；工具链已声明 try/catch 将来不再捕获异步取消。事务模板 `execute_in_tx` 已换，T1 的回滚三格仍绿。**第二拍（0.1.64）**：errdefer 里只要有 async 调用，整块还要包进 `@async.protect_from_cancel`——否则取消照样在同一次取消里打断收尾（`E0098 cancellable_defer` 点的就是这格，本机 0.1.20261102 不发、CI 那代发，只能靠 CI 撞）|
 | `try? f()` 机械换形会留下 `try { f() } catch { e => raise e }` **空壳** | fragile_catch_all 点的就是它，删包装即可（本仓 5 处）；另 1 处是真正的收尾逻辑 |
 
 还有一条**编译器完全无声**的坑，值得单独记：把 `flow` 的成功臂从

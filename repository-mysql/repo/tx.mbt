@@ -95,13 +95,18 @@ pub async fn MysqlRepository::execute_in_tx(
   // 旧形状是 try{…}catch{ e => {收尾; raise e} }，语义相同，但工具链已声明
   // "try/catch 将来不再捕获异步取消" ⇒ 收尾类逻辑的正解是 errdefer。
   errdefer {
-    try {
-      conn.rollback()
-    } catch {
-      _ => ()
-    }
-    self.tx.val = None
-    conn.close()
+    // 取消也走这条腿，而块里的 rollback／close 是 async：不保护就会被同一次取消立刻打断
+    // （catch 抓不到取消信号），后果是事务悬在服务器上、连接漏出池——E0098 cancellable_defer
+    // 点名的正是这一格。保护区只收 async 收尾，顺序与语义一字不动：回滚→清事务态→关连接。
+    @async.protect_from_cancel(async fn() {
+      try {
+        conn.rollback()
+      } catch {
+        _ => ()
+      }
+      self.tx.val = None
+      conn.close()
+    })
   }
   try {
     conn.begin()

@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## 0.1.64（2026-11-11）
+
+**上一代的三条新闸第一轮就抓到一处真缺陷：事务模板的收尾在异步取消下会被同一次取消打断。**
+
+- **现象**：`verify.yml` 首跑红在 README 工作树面——`FAIL[repository-mysql]: 页面给的程序带告警`，
+  原文是 `[E0098] Warning (cancellable_defer)`，站点 `repository-mysql/repo/tx.mbt` 的 `execute_in_tx`。
+  本机那代（0.1.20261102／moonc v0.10.19）不发这条 lint，CI 那代发——换代把新 lint 打进零告警面，
+  正是这条 CI 立在那里要干的事。
+- **不是格式问题**：`catch` 抓不到取消信号，而 errdefer 里的 `rollback`／`close` 都是 async；取消发生时
+  这三步收尾会被同一次取消立刻打断 ⇒ 事务悬在服务器上、连接漏出池。
+- **改法**：三步整体收进 `@async.protect_from_cancel(async fn() { … })`，顺序与语义一字不动。
+  `repo/moon.pkg` 因此把 `moonbitlang/async` 从 `for "test"` 提到正式 import：模块 `moon.mod` 本就钉着它，
+  `core/engine`／`persist`／`facade` 的正式面包同样 import，不是新增外部依赖。
+- **判据（2026-11-11 本机现读；本机工具链当日换到与 CI 同代 0.1.20261104／moonc v0.10.20）**：
+  `moon clean` 后 `moon check --target wasm --no-render` 0 error／**0 警告**（0.1.63 记的那 3 条依赖侧
+  experimental 警告在这代不再出现）；native 档 check 同 0 警告，native 构建与测试本机缺 MSVC、权威在 CI。
+  阳性对照：把改前形状灌进一个只依赖 `moonbitlang/async` 的临时工程，同代编译器照样报 E0098，加上保护区即消失
+  ⇒ 这条绿是改出来的，不是换代改了口径。
+- **没加的判据**：取消路径的运行时对拍（真取消一个任务再读 `information_schema.INNODB_TRX` 看事务有没有回滚）
+  时序敏感、只能在真库上测，本轮不做；这一格的权威改成"那条 lint 不再响"（CI 每次 push 都跑）＋ T1 回滚三格。
+- **行为面复跑**：T0 wasm 605/605；T1 真库腿 151 PASS／0 FAIL；T1-F 门面腿 200 PASS／0 FAIL；
+  T2 demo 七步 ALL PASS；action 三向对账 49↔49↔49；README 门禁四件工作树面全绿（MySQL 腿连 160 真跑）。
+- **发版**：接力 pin 14 处同笔前进（5 模块 `version` ＋ 9 枚模块间 pin），tag `v0.1.64`。
+
 ## 0.1.63（2026-11-11）
 
 **发布包面收口：四件模块各自带上许可全文与可照抄的安装/上手页；会漂的数字撤出手写文案；三条新闸挂进 CI。**
@@ -29,7 +53,7 @@
   `moonbitlang/async` 的运行时 C 源在 Windows 只支持 MSVC ⇒ 本机 native + async 结构性编不了，这不是本仓的问题，
   也不是升依赖能修好的；本仓 native 档的真验证在 CI（Linux），四条腿的形状与"Windows/MSVC 不承诺"见
   `MAINTAINING.md`「构建目标纪律」。
-- **判据（2026-11-11 本机 Windows 现读，工具链代次以 `moon version --all` 为准）**：`moon clean` 后 `moon check --target wasm --no-render` 0 error，本仓包自身 0 警告——残留 3 条全在依赖侧（`moonbitlang/async` 依赖 experimental `moonbitlang/core/async`，本仓不可摘）；
+- **判据（2026-11-11 本机 Windows 现读，工具链 0.1.20261102／moonc v0.10.19；同日本机换到与 CI 同代后这条读数作废，见 0.1.64）**：`moon clean` 后 `moon check --target wasm --no-render` 0 error，本仓包自身 0 警告——残留 3 条全在依赖侧（`moonbitlang/async` 依赖 experimental `moonbitlang/core/async`，本仓不可摘）；
   `moon test --target wasm` 605 条全过；action 三向对账 49↔49↔49；README 门禁四件、两表面全绿（MySQL 腿本机真跑过）；
   T1 真库腿 151 PASS／0 FAIL，T1-F 门面腿 200 PASS／0 FAIL，T2 demo 冒烟七步 ALL PASS。坏样本三发——改坏 README
   表的一行、抬高测试条数下限、把示例里的调用改错——三闸各自报红，还原后复绿。

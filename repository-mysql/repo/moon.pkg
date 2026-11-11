@@ -11,10 +11,10 @@ import {
   "moonbitlang/core/string" @string,
   "moonbitlang/core/encoding/utf8" @utf8,
   "moonbitstack/moondb" @moondb,
+  "moonbitlang/async" @async,
 }
 
 import {
-  "moonbitlang/async",
   "moonbitlang/async/fs" @fs,
 } for "test"
 
