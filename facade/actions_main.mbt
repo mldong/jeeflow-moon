@@ -259,6 +259,18 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::instance_detail(self : Facad
     if ext.get("isFirstTaskNode") == None {
       ext["isFirstTaskNode"] = bool_of_bool(doing && t.task_name == first_task.unwrap_or(""))
     }
+    // issues/251: detail tasks list projects the same stamped snapshot (non-DOING rows only).
+    // 只加在 detail 的循环里——task_vo 被 task_detail/task_latest 共用，java taskVo 不投该键。
+    if !doing {
+      match t.variables.get(@engine.allow_recall_key) {
+        Some(v) =>
+          match @json.as_bool(v) {
+            Some(b) => @json.obj_set(vo, "allow_recall", @json.bool_of(b))
+            None => ()
+          }
+        None => ()
+      }
+    }
     @json.obj_set(vo, "ext", obj_json(ext))
     @json.arr_push(tasks, vo)
     if doing {

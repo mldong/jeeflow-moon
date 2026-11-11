@@ -29,6 +29,12 @@
 pub let recall_history_key : String = "tf_recallHistory"
 
 ///|
+/// 协议键：办理时盖章的节点 allowRecall 快照（issues/251）＝java `FlowConst.ALLOW_RECALL`。
+/// 落**执行 args**（⇒ 任务行变量）；`tf_` 前缀使实例合并自动剥键（不传播）。
+/// 已办行置灰的「节点开关」预判从行上读，查询出口只搬运不解析定义；撤回校验仍以现读定义为权威。
+pub let allow_recall_key : String = "tf_allowRecall"
+
+///|
 /// 逐字判据文案（跨栈统一，spec 04／spec 06 §processTask/recall 失败文案表同源）。
 /// 本栈 `JeeflowError` 只有 `Business` 档的 message 原样对外 ⇒ 五档全走 Business，
 /// 出口 code=99999999 ＋ 这句原文（不拼内部码、不加前缀）。

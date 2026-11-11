@@ -133,6 +133,17 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
   // 没有事务模板可回滚，判据后置就留下"任务已办结、无人能改回"的半截事实（"报错且零写入"）。
   // 读**本次请求**那份参数（已过节点字段权限过滤，与 java 同位），不读合并后的 full_args。
   validate_add_sign_submission(model, task, submitted_args, operator)
+  // issues/251: stamp node allowRecall snapshot into task vars (tf_ => excluded from instance merge).
+  // 守卫全过之后、complete_task_in_aggregate 之前＝java prepareExecution 里紧挨 instance.completeTask
+  // 的那一刀；五条办结腿（普通/跳转/驳回/退回发起人/重提直返）都收敛于此，一处盖键全路径覆盖。
+  // 盖进 full_args（args 优先级最高，覆盖上一手残留）；只有 Task 节点才盖，默认 false 也盖键。
+  match model.get_node(task.task_name) {
+    Some(n) =>
+      if n.node_type is @parser.Task {
+        full_args.insert(allow_recall_key, @json.bool_of(n.allow_recall()))
+      }
+    None => ()
+  }
   // 完成聚合内任务 + 合并 f_ 变量
   self.complete_task_in_aggregate(instance, task_id, operator, full_args)
   if submit_type == Some(20L) {

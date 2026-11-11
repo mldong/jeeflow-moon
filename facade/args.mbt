@@ -90,6 +90,19 @@ pub fn task_row_to_json(r : @model.TaskRow) -> Json {
   // `instanceState`；`Int?` 缺值出 null（对齐 java 的 `Integer instanceState`），有值出整数
   // （`instanceState` 不匹配 C1 的 `*Id`/`*_id` 后缀 ⇒ 不会被字符串化）。
   @json.obj_set(o, "instance_state", opt_num_json(r.instance_state))
+  // issues/251: project stamped allowRecall as top-level bool for non-DOING rows only.
+  // 缺键＝不出字段（存量行不猜）；DOING 永不投（待办撤回判据走实例级，不看节点开关）。
+  // snake 键 allow_recall 经出口 to_camel 落契约键 allowRecall（issues/250 instance_state 同款）。
+  if r.task_state != @model.TaskState::Doing.code() {
+    match task_vars.get(@engine.allow_recall_key) {
+      Some(v) =>
+        match @json.as_bool(v) {
+          Some(b) => @json.obj_set(o, "allow_recall", @json.bool_of(b))
+          None => ()
+        }
+      None => ()
+    }
+  }
   @json.obj_set(o, "version", opt_num_json(r.define_version))
   @json.obj_set(o, "task_form_data", form_data_of_map(parse_json_map(r.variable), "tf_"))
   o
