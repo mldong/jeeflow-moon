@@ -1,0 +1,39 @@
+name: pkg-face
+
+# 包面周检：按"只拿到注册表包的用户"那条路径，把四件已发布模块 README 里的
+# `moon add` 清单＋ cmd/main 围栏块真装真编译真跑，并守 LICENSE 进包。
+# 这就是季度验收里"包面冷启动"那条腿的机器侧复现——差别只在它不靠任何主会话上下文。
+#
+# 为什么不挂在 publish.yml 后面当发布后步骤：刚 push 上去的那一代可能还没过索引／CDN，
+# `moon add`（不带版本＝拉 latest）会解析到上一代，那条腿就会拿**新 README** 比**旧代码**
+# 报一条假红。发版当时的包面真凭据仍是 `scripts/pull_verify.sh <代次>`（按号取、不吃 latest）。
+# 本工作流按周跑＋可手动跑，跑的是"此刻注册表上latest那一带"的包面，红＝包面真的坏了。
+#
+# 工具链只装 latest（策略同 publish.yml，MAINTAINING §3）。
+
+on:
+  schedule:
+    - cron: "17 3 * * 2" # 每周二 03:17 UTC（错开整点，避免和别的仓的定时件抢 runner）
+  workflow_dispatch: {}
+
+jobs:
+  pkg-face:
+    name: README install face + fenced blocks (registry)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MoonBit toolchain (latest)
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Toolchain version + registry index
+        run: |
+          moon version --all
+          moon update
+
+      - name: Package-face README check
+        env:
+          README_CHECK_MODE: registry
+        run: bash scripts/readme-check.sh

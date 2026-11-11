@@ -25,8 +25,9 @@ moon run --target wasm demo/cmd/main                      # 演示服务 :8092�
 bash scripts/smoke_t2.sh                                  # 发起 → 待办 → 办理 → 高亮 → 负向
 ```
 
-> 命令里的 `--target wasm` 是刻意的：MoonBit 的 async 运行时在 MinGW/MSYS 宿主上编不了
-> native（工具链限制，不是本仓的问题）。native 档由 CI 覆盖，见 [MAINTAINING.md](./MAINTAINING.md)
+> 命令里的 `--target wasm` 是刻意的：Windows 上 native + async 结构性编不了——`moonbitlang/async`
+> 的运行时 C 源在 Windows 只支持 MSVC（工具链限制，不是本仓的问题，升依赖修不好）。本仓 native 档的
+> 真验证在 CI（Linux），各条腿的形状与"Windows/MSVC 不承诺"见 [MAINTAINING.md](./MAINTAINING.md)
 > 「构建目标纪律」。
 
 ### 在自己的模块里消费

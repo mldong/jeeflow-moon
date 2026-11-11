@@ -98,7 +98,7 @@ $ moon run --target wasm cmd/main
 内存仓储 `MemoryRepository::new()` 起来是**空库**——上面那句 `99999999 流程定义不存在: 1` 就是
 证据。流程定义要自己装入（见下）。
 
-流程定义从共享 JSON 装入（16 个流程，`flows/` 副本已入库；单独引入时把流程 JSON 塞进
+流程定义从共享 JSON 装入（`flows/` 副本已入库，份数现读 `ls flows/*.json`；单独引入时把流程 JSON 塞进
 `processDesign/save` → `processDesign/deploy`，或直接用 demo 仓的种子逻辑）。
 
 ## MySQL 仓储

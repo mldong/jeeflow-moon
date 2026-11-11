@@ -31,7 +31,7 @@
 >   `repository-mysql/smoke/smoke.mbt`）；改的是已发布模块的源码，所以随那次发版一起走，没单独改。
 >
 > 结论：这些引用**不是缺陷、也不影响跑通**（Quickstart / T0 / T2 全部仓内自洽）；需要跨语言契约细节时
-> 去上面两个公开仓，或直接读本仓 `scripts/action-manifest.json`（47 action 的权威清单）。
+> 去上面两个公开仓，或直接读本仓 `scripts/action-manifest.json`（action 的权威清单，计数现读它的 `summary`）。
 
 > **09-30 文档收尾批（`2cdfb40`）明确未做，登记给后续批次**：
 > ① ~~已发布模块里的历史注释仍指 `docs/decisions-log.md` / `docs/m1-progress.md`~~
@@ -98,7 +98,10 @@ export PATH="$HOME/.moon/bin:$PATH"
 > MinGW 侧另会撞 `FileRenameInfoEx`/`SO_REUSE_MULTICASTPORT` 等未声明符号），
 > Windows 本机一律 wasm；不得为绕过而改工具链 C 源。native 通道的真验证在 CI（Linux）。
 >
-> **native 的门禁具体在哪三条腿**（2026-10-02 自 README 挪进来——README 只留"本机照抄 wasm"一句）：
+> **native 的门禁具体在哪四条腿**（2026-10-02 自 README 挪进来——README 只留"本机照抄 wasm"一句；
+> 2026-11-11 补上第 ⓪ 条，它是唯一在"合并进 master"那一刻就执行的）：
+> ⓪ `.github/workflows/verify.yml`（push master / PR 触发）build＋test 两档，测试经
+>    `scripts/test-with-floor.sh` 断言 `Total tests` 条数（exit 0 只说明跑起来的没红，不说明该跑的都在跑）；
 > ① `.github/workflows/demo-deploy.yml` 的作业名就是 `Check / Build / Test (wasm + native)`，
 >    两个目标都 build 也都 test；② `native-probe.yml` 是 native 专档
 >    （build → 起 native 二进制跑 demo 健康检查 → `moon test --target native`）；
@@ -107,8 +110,8 @@ export PATH="$HOME/.moon/bin:$PATH"
 
 ### 依赖版本（registry 包，非工具链）
 
-registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）：
-`moonbitstack/moondb@0.2.0`、`moonbitstack/moonmysql@0.7.3`、`moonbitlang/async@0.22.4`。
+registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）；**当前钉到哪一代不写在这里**，
+现读五个成员各自的 import 块（全仓唯一声明处）：`for m in core persist repository-mysql facade demo; do sed -n '/^import/,/^}/p' $m/moon.mod; done`。
 这与「工具链 latest-only」是两回事——**依赖包钉版本、编译器不钉**。
 
 > **2026-09-26 依赖换代（随 0.1.14 发出）**：async `0.20.3→0.22.4`、moondb `0.1.8→0.2.0`、
@@ -145,8 +148,8 @@ registry 依赖在 `moon.mod` import 块钉精确版本（无 lockfile，R8.4）
 > client+codec 一起动，T1 仓储级与 T1-F 门面级必须在同一窗口跑，报告里写清消费的 moonmysql 代次
 > （本轮 0.7.3 实测：T1 111 格、T1-F 130 格、i137a 真库腿 ALL PASS，与摘前同窗对拍零差异）。
 >
-> 另记一条解析行为：moonmysql 声明自己要 `async@0.20.3`，本仓钉的是 `0.22.4`，
-> moon 取高版本、无冲突（所以本仓最终物化 0.22.4）。
+> 另记一条解析行为：上游包自己声明的 `async` 可以低于本仓钉的那一代（当轮读数：moonmysql 要
+> `async@0.20.3`、本仓钉 `0.22.4`），moon 取高版本、无冲突 ⇒ 最终物化本仓这一代。
 >
 > ⚠️ 判"某个 bump 是不是本机 native 的锅"的姿势：native 在 Windows 从来编不了（上面那条框），
 > 所以本机 native 失败**不构成回退证据**；要判 bump 好坏看 wasm 全门禁 + CI 的 native job。
@@ -434,7 +437,13 @@ jeeflow-ui 联调：`?lang=moon` 分段 / `/moon-api` 代理（apps/demo）。
 > 当前版本以各模块 `moon.mod` 与 [docs/CHANGELOG.md](./docs/CHANGELOG.md) 为准（活文档不手写版本号，防每次发版漂移，口径同 docs/index.md）。
 
 > 原则：**首次发版失败可重试、tag 可删重打，版本号严禁跳号**（0.1.0 起完整递增，不断号）。
-> CI 不跑测试——本地 T0/T1/T2 已验口径不变。
+> CI 覆盖哪几档（2026-11-11 现读四个工作流后更正，原文"CI 不跑测试"早已不成立）：
+> `publish.yml` 在 publish 之前跑 `moon check` ＋ `moon test`（wasm ＋ native，即 T0 全量单测，零外部依赖）；
+> `verify.yml` 在每次 push master / PR 上跑 check + build + test（两档，且 `scripts/test-with-floor.sh`
+> 断言 `Total tests` 不低于下限）＋ action 三向对账 ＋ README 围栏块（工作树表面）；
+> `pkg-face.yml` 每周按注册表表面重跑一遍 README 安装清单＋围栏块；
+> **T1 族仍不在 CI**（repository-mysql/smoke、demo/cmd/t1_mysql 要真 MySQL，CI 不备库）——
+> 那一档照旧由发版前门票在真机（160）把关，口径不变。
 
 ### 凭据（两种通道）
 
@@ -545,7 +554,7 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
    仅限无网开发机，发版机 fail）
 4. T1-F `moon run --target wasm demo/cmd/t1_mysql` ALL PASS（门面级真机对拍）
 5. `bash scripts/smoke_t2.sh` ALL PASS（demo 起着）
-6. `node scripts/check-action-manifest.mjs` PASS（47 action 双向无差集）
+6. `node scripts/check-action-manifest.mjs` PASS（manifest ↔ java 双向无差集；action 数现读 `summary.total`）
 7. `consistency/moon.json` 载荷逐字节等值（**按载荷比、不按文件字节比**：本工具链
    `moon run` 的 stdout 末尾多一个 `
 `，见 §1「依赖版本」）
@@ -913,14 +922,14 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
 |---|---|---|
 | processDefine | 8 | page / detail / startAndExecute / deploy / redeploy / remove / upAndDown / getLastByName |
 | processInstance | 14（含 stats 3） | page / detail / startAndExecute / withdraw / bizData / highLight / approvalRecord / getAssigneeTextData / createCCInstance / updateCCStatus / ccList / stats/overview / stats/trend / stats/group |
-| processTask | 11 | todoList / doneList / execute / detail / jumpAbleTaskNameList / candidatePage / surrogate / addCandidate / transfer / removeTaskActor / latest |
+| processTask | 13 | todoList / doneList / execute / detail / jumpAbleTaskNameList / candidatePage / surrogate / addCandidate / transfer / removeTaskActor / recall / revokeDynamicCountersign / latest |
 | processDesign | 9（需扩展仓储） | page / detail / save / update / updateDefine / remove / deploy / redeploy / listByType |
 | processSurrogate | 5（需扩展仓储） | page / save / update / detail / remove |
 
 > ⚠️ 本表只列 **wire 名**（HTTP 实参）。snake_case 一律 `99999999 未知 action`——实测
 > `start_and_execute` / `todo_list` / `task_detail` / `stats_overview` 全被打回。引擎内部方法名
 > （`definePage` / `taskTransfer` …）见 `scripts/action-manifest.json` 每条的 `method` 字段；
-> 该文件是 47 action 的权威清单，`summary.byGroup` 与本表计数同源（改一处必核对另一处）。
+> 该文件是 action 的权威清单（总数与分组计数都现读它的 `summary`），`summary.byGroup` 与本表计数同源（改一处必核对另一处）。
 
 ### 契约要点（方案 §4 C 条目 → moon 落点）
 

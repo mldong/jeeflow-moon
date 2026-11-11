@@ -8,7 +8,7 @@ license = "Apache-2.0"
 preferred_target = "wasm"
 readme = "README.md"
 repository = "https://github.com/mldong/jeeflow-moon"
-description = "jeeflow unified facade: flow(action, args) 46 actions + contract outlet layer"
+description = "jeeflow unified facade: flow(action, args) over the whole action surface + contract outlet layer"
 import {
   "mldong/jeeflow-core@0.1.62",
   "mldong/jeeflow-persist@0.1.62",

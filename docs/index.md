@@ -1,6 +1,6 @@
 # jeeflow-moon 文档
 
-> jeeflow 引擎的 **MoonBit 实现**——联邦第七个成员，对齐 Java 参考实现的行为语义：同一份 16 个 LogicFlow 共享流程、同一 `99999999` 错误信封、同一分页五键、同一状态机。
+> jeeflow 引擎的 **MoonBit 实现**——联邦第七个成员，对齐 Java 参考实现的行为语义：同一批 LogicFlow 共享流程（份数现读本仓 `flows/`）、同一 `99999999` 错误信封、同一分页五键、同一状态机。
 > 本目录（`docs/`）只放**用户文档**，并同步到 [jeeflow-doc 文档站语言指南](https://jeeflow-doc.mldong.com/languages/moon/)。
 
 ## 引擎定位
@@ -24,7 +24,7 @@
 
 ## 相关
 
-- **版本历史**：[CHANGELOG](./CHANGELOG.md)（0.1.0 起，独立 0.x 线完整递增）
+- **版本历史**：[CHANGELOG](./CHANGELOG.md)（独立 0.x 线；逐代条目自 0.1.63 起随发版落笔，0.1.47–0.1.62 是以 release/bump commit 转录的索引表，更早为逐代正文）
 - **引擎规范（契约唯一事实来源）**：[规范总览](https://jeeflow-doc.mldong.com/spec/)（01 数据模型 ~ 11 事件契约）
 - **设计原理 / 通用指南**：[jeeflow-doc 文档站](https://jeeflow-doc.mldong.com/)
 - **维护者向**（工具链口径 / T0–T2 测试 / 发版通道 / 设计决策 / 契约对照）：仓根 `MAINTAINING.md`（不入本目录、不上文档站）

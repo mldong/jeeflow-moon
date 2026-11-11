@@ -1,5 +1,66 @@
 # CHANGELOG
 
+## 0.1.63（2026-11-11）
+
+**发布包面收口：四件模块各自带上许可全文与可照抄的安装/上手页；会漂的数字撤出手写文案；三条新闸挂进 CI。**
+
+- **包内许可**：`LICENSE`（Apache-2.0 全文）进 `core/`、`persist/`、`repository-mysql/`、`facade/` 四个发布目录。
+  发布包根＝模块目录，此前只有仓根那一份，只装包的用户拿不到许可全文；四份 README 的许可链接同步改成包内可达的 `./LICENSE`。
+- **包内上手页**：每件 README 补「怎么装」（页面自己给出 `moon add` 清单）＋「跑起来」（逐字可编译、可运行的
+  Quickstart，程序块后紧跟的那段就是期望输出）。`core` 那份原示例编不过，本轮重写：内存仓储起引擎、走真实异步
+  办理路径、再读随包的 `wf_*` 字典。`repository-mysql` 那块要真 MySQL，页面标了
+  `// @readme-check: needs-env JEFFLOW_DB_HOST`——没有库的环境只编译不运行。
+- **计数撤出手写文案**：facade `moon.mod` 描述里写死的 action 数、文档里「共享流程 16 个」
+  （现读 `flows/*.json` 是 21 份）这类会漂的确切数字一律换成「去哪读」。action 条数的权威是
+  `facade/README.md` 的分组表，它由 `scripts/check-facade-actions.mjs` 与清单、`facade/facade.mbt`
+  的分派臂三向对账——页面自己就是一道闸；文档里「40+」那种下界写法保留，它不随代次失真。
+  `MAINTAINING.md` 的依赖钉版句同此口径，改为现读五个成员各自的 `import` 块。
+- **门禁三条**（每条都先挂进 CI 再复跑，并用坏样本验过它敢红）：
+  ① `verify.yml`——每次 push / PR 到 master 跑 `moon check` ＋ wasm/native 双档构建与测试 ＋ 测试条数下限
+  （`scripts/test-with-floor.sh`：只认 CI 打印的 `Total tests: N`，防 wasm-gc 静默丢弃 async 用例那种"跑过"假账）
+  ＋ action 三向对账（`scripts/check-facade-actions.mjs`：清单 ↔ `facade/facade.mbt` 分派臂 ↔ README 表）
+  ＋ README 工作树面（`README_CHECK_MODE=local bash scripts/readme-check.sh`，用 `moon.work` 把 `mldong/jeeflow-*`
+  指到本仓源码，测的是下一笔 commit 会不会写坏页面）；
+  ② `pkg-face.yml`——每周跑注册表面（`readme-check.sh` 默认档，`moon add` 装到的是发布物），刻意不挂发版链后置：
+  索引与 CDN 有滞后，那一步会拿新 README 比旧代码，出假红；发版当刻的包面回拉仍以 `scripts/pull_verify.sh <代次>` 为准；
+  ③ README 围栏块抽取器 `scripts/readme_extract.py`＋`scripts/readme-check.sh`——按页面给的清单装依赖（闸不自补
+  依赖，否则测不到安装面），把标了 `// cmd/main/<file>` 的块逐字灌进临时工程编译运行并比对输出。
+- **native 措辞更正**：仓根 README 原话是"MoonBit 的 async 运行时在 MinGW/MSYS 宿主上编不了"。实情更窄也更硬：
+  `moonbitlang/async` 的运行时 C 源在 Windows 只支持 MSVC ⇒ 本机 native + async 结构性编不了，这不是本仓的问题，
+  也不是升依赖能修好的；本仓 native 档的真验证在 CI（Linux），四条腿的形状与"Windows/MSVC 不承诺"见
+  `MAINTAINING.md`「构建目标纪律」。
+- **判据（2026-11-11 本机 Windows 现读，工具链代次以 `moon version --all` 为准）**：`moon clean` 后 `moon check --target wasm --no-render` 0 error，本仓包自身 0 警告——残留 3 条全在依赖侧（`moonbitlang/async` 依赖 experimental `moonbitlang/core/async`，本仓不可摘）；
+  `moon test --target wasm` 605 条全过；action 三向对账 49↔49↔49；README 门禁四件、两表面全绿（MySQL 腿本机真跑过）；
+  T1 真库腿 151 PASS／0 FAIL，T1-F 门面腿 200 PASS／0 FAIL，T2 demo 冒烟七步 ALL PASS。坏样本三发——改坏 README
+  表的一行、抬高测试条数下限、把示例里的调用改错——三闸各自报红，还原后复绿。
+- **发版**：接力 pin 14 处同笔前进（5 模块 `version` ＋ 9 枚模块间 pin），tag `v0.1.63`。
+
+## 0.1.47–0.1.62（2026-11-11 补记）
+
+这一段从 `git log` 转录，只回答"哪一代带了什么"；逐笔细节以表里那笔 release/bump commit 和它上面那些 feature
+commit 为准。此前 16 代没在这里落条目，而本文件一直被 README／`docs/index.md` 指成"版本历史"的权威，就地补上索引，
+并把文档站入口里「0.1.0 起完整递增」那句改成如实的分段描述——正文逐代条目到 0.1.46，47–62 是这张索引表，63 起回到正文。
+
+| 代次 | 主线 | 记录 commit |
+|------|------|-------------|
+| 0.1.62 | issues/251 已办撤回 `allowRecall` 快照投影（办理时盖章＋出口搬运） | `4c99c80` |
+| 0.1.61 | issues/250 taskRow 出口补 `instance_state` → `instanceState` | `3f5f0ce` |
+| 0.1.60 | issues/248 引擎内置权限码默认件＋修多段 action 只换首枚斜杠 | `7492ab5` |
+| 0.1.59 | issues/246 已办撤回＋issues/247 动态会签对齐 | `1b2157d` |
+| 0.1.58 | moon 0.1.20261102 换代适配（`to_json` 改显式 trait 分派）＋依赖跟版 | `ee466fc` |
+| 0.1.57 | issues/243 §8-2 命名跳转「报错零写入」前后对照两把读数（引擎零改动） | `ee42cb7` |
+| 0.1.56 | 后加签（可重复）对齐 Java 参考实现＋issues/243 甲案守卫前置 | `879f01c` |
+| 0.1.55 | issues/241 决策重放添任务行佐证优先＋async/moondb/moonmysql 跟版 | `c8ec595` |
+| 0.1.54 | 退回修改／重提直返对齐参考实现＋带标记申请待办四入口守卫＋spec04 保留键 | `1e0e321` |
+| 0.1.53 | 发版链去掉裸 `moon install`（新 CLI 适配）＋忽略 `pkg.generated.mbti` | `498886e` |
+| 0.1.52 | 雪花号生成器改单实例，修同毫秒连续取号重复 | `76a00cb` |
+| 0.1.51 | 串行会签零参与者仍建 DOING 行，不再静默 return | `3f3880a` |
+| 0.1.50 | audit8 一轮五修（R110 remove 守卫／R111 动作级事务／R112 落穿边告警／R118 publish 前 T0 闸门／R119 首任务节点取序） | `910d766` |
+| 0.1.49 | audit8 二轮：R91 节点级拦截器、R78 甲与甲′、R86 jump 目标缺失显式报错、R95 空转档第一腿 | `39cf841` |
+| 0.1.48 | issues/236 R68①② 委托缺键清空＋布尔 `Json::True/False` 两臂；228 R60 DDL 注释分发；217 R49 表集合断言 | `a7db51f` |
+| 0.1.47 | issues/212 R44 六枚分页 action 缺省 `pageSize` 20→10 | `c7b4401` |
+
+
 ## 0.1.46（2026-10-14）
 
 **issues/201 收口：SPI 求值抛错不再静默折 false（audit8 R79，owner 拍 C＝只统一留痕）。**

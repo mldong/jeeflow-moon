@@ -1,0 +1,69 @@
+name: verify
+
+# 每次 push master / 每个 PR 都跑——本仓此前只有 tag 触发的 demo-deploy 与 publish，
+# 所以"合并进 master 的一笔改动"在打 tag 之前拿不到任何机器读数（验收第 5 条只到"发版时"）。
+# 本文件覆盖的四格：检查（check）、构建（build）、测试（test，两档且带条数下限）、
+# 文档面（README 围栏块按工作树真编译真跑）＋ action 清单三向对账。
+#
+# 与 demo-deploy.yml 的 check-test 作业刻意有重叠：那条腿只在 tag 上跑，且它红＝部署没开始；
+# 这条腿红＝这笔 master 提交本身没通过。两边都调 scripts/test-with-floor.sh，闸只有一处定义。
+#
+# 工具链策略同 publish.yml：只装 latest、不钉版本（钉不了，见 MAINTAINING §3），
+# 换代带来的新 lint 由本文件先撞上，修语法进 master 而不是回退工具链。
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  verify:
+    name: Check / Build / Test (wasm + native) + docs face
+    runs-on: ubuntu-latest
+    env:
+      # 条数下限：拦"用例没被收集"（wasm-gc 静默丢 async 用例那类），不拦正常演进。
+      # 现值高于此，往下掉到这条线以下才算掉档；改动测试面后按 CI 那行读数抬。
+      MIN_TESTS: 500
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MoonBit toolchain (latest)
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Toolchain version + registry index
+        run: |
+          moon version --all
+          moon update
+
+      # --no-render：诊断走裸文本而非 ariadne 渲染（有告警时 0.1.20260920 那代会 panic，
+      # 见 native-probe.yml 同处注释）；本仓告警面见 MAINTAINING §1.3。
+      - name: Check (wasm)
+        run: moon check --target wasm --no-render
+
+      - name: Build (wasm + native)
+        run: |
+          moon build --target wasm --no-render
+          moon build --target native --no-render
+
+      - name: Test (wasm) with count floor
+        run: bash scripts/test-with-floor.sh wasm "$MIN_TESTS"
+
+      - name: Test (native) with count floor
+        run: bash scripts/test-with-floor.sh native "$MIN_TESTS"
+
+      # 门面 action 清单三向对账：manifest ↔ facade.mbt 派发臂 ↔ facade/README 表。
+      # 跨仓那条腿（对 Java 实查）需要兄弟目录 jeeflow-java，本仓 CI 拿不到，
+      # 仍由发版前门票跑 scripts/check-action-manifest.mjs。
+      - name: Action surface self-check
+        run: node scripts/check-facade-actions.mjs
+
+      # 文档面（工作树表面）：各模块 README 的安装清单＋ cmd/main 围栏块逐字抽出来真编译真跑。
+      # 注册表表面（包面用户抄得到什么）不能在这里验——此刻注册表还是上一代，拿新 README 比旧代码会出假红。
+      # 那条腿挂在 pkg-face.yml（每周一次）；发版当刻的包面回拉仍以 scripts/pull_verify.sh <代次> 为准。
+      - name: README fenced blocks (working tree)
+        env:
+          README_CHECK_MODE: local
+        run: bash scripts/readme-check.sh
