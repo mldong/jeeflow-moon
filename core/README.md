@@ -1,13 +1,6 @@
-<div align="center">
-
 # jeeflow-core
 
 **The zero-dependency workflow engine core of jeeflow — in MoonBit.**
-
-[![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--core-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-core)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
-
-</div>
 
 The engine heart of [jeeflow-moon](https://github.com/mldong/jeeflow-moon) (the federation's
 7th language): DDD aggregates, a fully `async` engine, the LogicFlow parser, countersign gates,

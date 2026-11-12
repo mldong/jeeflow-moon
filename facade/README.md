@@ -1,13 +1,6 @@
-<div align="center">
-
 # jeeflow-facade
 
 **Every jeeflow workflow capability behind one call — `flow(action, args)`.**
-
-[![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--facade-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-facade)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
-
-</div>
 
 The unified action facade of [jeeflow-moon](https://github.com/mldong/jeeflow-moon): one
 entry point, one federation envelope (`code=0` success / `99999999` failure), one outbound

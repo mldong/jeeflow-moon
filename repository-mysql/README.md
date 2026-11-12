@@ -1,13 +1,6 @@
-<div align="center">
-
 # jeeflow-repository-mysql
 
 **The MySQL repository of jeeflow-moon — pure-MoonBit wire client, real transactions.**
-
-[![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--repository--mysql-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-repository-mysql)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
-
-</div>
 
 Implements the full jeeflow SPI (process define / instance / task / actors / CC + design /
 surrogate) over the upstream pure-MoonBit MySQL wire client (`moonbitstack/moonmysql/client`) — **no C, runs on wasm** — for

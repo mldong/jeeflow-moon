@@ -1,13 +1,6 @@
-<div align="center">
-
 # jeeflow-persist
 
 **Workflow → business-table persistence for jeeflow — ARCHIVE / SYNC with field permissions.**
-
-[![mooncakes](https://img.shields.io/badge/mooncakes-mldong%2Fjeeflow--persist-brightgreen)](https://mooncakes.io/docs/mldong/jeeflow-persist)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
-
-</div>
 
 `PersistPostInterceptor` copies form data out of running workflow instances into your own
 business tables, driven entirely by the process definition — the role jeeflow-persist plays for
