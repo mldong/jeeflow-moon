@@ -77,6 +77,10 @@ demo 的 `seed_memory()` 灌入（不随任何发布模块提供）。自己的�
 要真实审批人与雪花 id，在 `Ctx` 上补 `.with_user_provider(...)` / `.with_id_generator(...)`，
 SPI 全清单与写法见 [docs/spi-guide.md](./docs/spi-guide.md)。
 
+上面是负向信封（空仓储必然如此）。一条**跑通的正向请假流**（部署 → 发起 → 待办 → 办理 → 结束）
+在同套内存装配上的完整可复制例子，见 [core/README.md 的 Quickstart](./core/README.md#quickstart)——
+它直驱引擎，`flow(action, args)` 正是把这几步包成单调用。
+
 ## 线上演示（无需安装）
 
 - [jeeflow 演示站 — MoonBit 档](https://jeeflow-demo.mldong.com/?lang=moon)：共享
