@@ -56,6 +56,10 @@ Run it with `moon run cmd/main --target wasm`. To drive a real flow, put a proce
 the store first (`processDefine/deploy`, or `processDefine/startAndExecute` against
 `mldong/jeeflow-repository-mysql` pointed at a database holding `schema/schema-mysql.sql`).
 
+For the positive counterpart — a full leave flow (start, todo, execute, end) on the same
+in-memory wiring — see the `mldong/jeeflow-core` page's Quickstart. It drives the engine
+directly; `flow(action, args)` wraps those same engine steps behind one call.
+
 The response of any action is the same three-key envelope, so `flow` can sit behind one
 HTTP route in your framework of choice — that is exactly how the mldong MoonBit stack
 (`github.com/mldong/mldong-moon`, `plugins/jeeflow`) wires it.
