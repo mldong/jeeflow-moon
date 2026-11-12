@@ -546,6 +546,30 @@ pub fn validate_dynamic_countersign_nodes(model : ProcessModel) -> Unit raise @e
   }
 }
 
+///|
+/// 节点级协办禁配（规范 02 §4.4，issues/252）：协办(1) 档只由运行期 `processTask/aidant`
+/// 派生（issues/253，尚未实现）；节点上配协办在 snaker 原义下是死路——协办任务办结不产生
+/// 执行对象、跳转吃同一道闸 ⇒ 实例仍运行中却零待办无后继（流程悬挂）。所以这一档在**解析期**
+/// 就拦，不做运行时降级。
+/// 折值单点在 `NodeModel::task_type`（`prop_i64` → `@json.as_i64`：JSON 数字 / 可解析为整数的串），
+/// 本函数不写第二份判据。
+/// ⚠️ 边界（issues/252 §5-3）：**只拦协办这一档**。本栈没有 codeOf 别名表，`"Aidant"`／
+///   `"SECONDARY"`／`"协办"` 这些串形 `as_i64` 解不出整数 ⇒ 仍静默回落主办(0)，
+///   不得顺手扩成 fail-fast（issues/245 口径：配置类错误优先静默降级）。
+///   RECORD(2) 与 custom 记录行不受影响（本校验只看 `Task` 节点）。
+pub fn validate_task_type_nodes(model : ProcessModel) -> Unit raise @error.JeeflowError {
+  for n in model.nodes {
+    if !(n.node_type is Task) {
+      continue
+    }
+    if n.task_type() == 1 {
+      // 1 ＝协办（@model.TaskType::Assistant.code()）；本包既有风格用字面量比档
+      // （perform_type 同形），不为此新增 parser → model 的包依赖边。
+      raise @error.Business("节点[\{n.id}]不允许配置协办任务类型（taskType=1）")
+    }
+  }
+}
+
 /// 固定参与人
 pub fn NodeModel::assignee(self : NodeModel) -> String? {
   self.prop_str("assignee")
@@ -834,6 +858,9 @@ pub fn parse_model(json_str : String) -> ProcessModel raise @error.JeeflowError 
   // "同时配置" 文案而不是前两轮的任一档，次序反了就报岔。
   validate_recall_nodes(model)
   validate_dynamic_countersign_nodes(model)
+  // 节点级协办禁配（规范 02 §4.4，issues/252）：协办档只由运行期 aidant 派生（253），
+  // 节点上配 1 ＝ snaker 原义的"流程悬挂"陷阱，解析期就拦；其余不可识别值仍静默回落主办。
+  validate_task_type_nodes(model)
   model
 }
 
