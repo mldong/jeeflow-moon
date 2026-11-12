@@ -70,7 +70,7 @@ HTTP route in your framework of choice — that is exactly how the mldong MoonBi
 |---|---|
 | `processDefine` | page · detail · startAndExecute · deploy · redeploy · remove · upAndDown · getLastByName |
 | `processInstance` | page · detail · startAndExecute · withdraw · bizData · highLight · approvalRecord · getAssigneeTextData · createCCInstance · updateCCStatus · ccList · stats/overview · stats/trend · stats/group |
-| `processTask` | todoList · doneList · execute · detail · jumpAbleTaskNameList · candidatePage · surrogate · addCandidate · transfer · removeTaskActor · recall · revokeDynamicCountersign · latest |
+| `processTask` | todoList · doneList · execute · detail · jumpAbleTaskNameList · candidatePage · surrogate · addCandidate · transfer · removeTaskActor · recall · revokeDynamicCountersign · aidant · latest |
 | `processDesign` (ext repository) | page · detail · save · update · updateDefine · remove · deploy · redeploy · listByType |
 | `processSurrogate` (ext repository) | page · save · update · detail · remove |
 

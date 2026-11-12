@@ -922,7 +922,7 @@ cd ../facade         && moon publish   # 4. mldong/jeeflow-facade
 |---|---|---|
 | processDefine | 8 | page / detail / startAndExecute / deploy / redeploy / remove / upAndDown / getLastByName |
 | processInstance | 14（含 stats 3） | page / detail / startAndExecute / withdraw / bizData / highLight / approvalRecord / getAssigneeTextData / createCCInstance / updateCCStatus / ccList / stats/overview / stats/trend / stats/group |
-| processTask | 13 | todoList / doneList / execute / detail / jumpAbleTaskNameList / candidatePage / surrogate / addCandidate / transfer / removeTaskActor / recall / revokeDynamicCountersign / latest |
+| processTask | 14 | todoList / doneList / execute / detail / jumpAbleTaskNameList / candidatePage / surrogate / addCandidate / transfer / removeTaskActor / recall / revokeDynamicCountersign / aidant / latest |
 | processDesign | 9（需扩展仓储） | page / detail / save / update / updateDefine / remove / deploy / redeploy / listByType |
 | processSurrogate | 5（需扩展仓储） | page / save / update / detail / remove |
 
