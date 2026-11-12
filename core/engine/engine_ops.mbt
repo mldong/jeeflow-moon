@@ -133,6 +133,11 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
   // 没有事务模板可回滚，判据后置就留下"任务已办结、无人能改回"的半截事实（"报错且零写入"）。
   // 读**本次请求**那份参数（已过节点字段权限过滤，与 java 同位），不读合并后的 full_args。
   validate_add_sign_submission(model, task, submitted_args, operator)
+  // issues/253 等待闸：waitCompletion=true 的主办行办结前判"不存在 DOING 协办行"，
+  // 未齐 ⇒ 逐字文案报错、零写入。同样必须排在 complete_task 之前（内存仓储无回滚）。
+  // 协办行自身不受本闸约束（它办结本来就不驱动流程）；缺省 false 原样放行。
+  // ＝java prepareExecution 里 AddSignSupport.validateSubmission 之后那一刀。
+  aidant_gate_wait(instance.tasks, task)
   // issues/251: stamp node allowRecall snapshot into task vars (tf_ => excluded from instance merge).
   // 守卫全过之后、complete_task_in_aggregate 之前＝java prepareExecution 里紧挨 instance.completeTask
   // 的那一刀；五条办结腿（普通/跳转/驳回/退回发起人/重提直返）都收敛于此，一处盖键全路径覆盖。
@@ -265,6 +270,15 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   // ① 带直返上下文的申请待办**整条换腿**——只接受 submitType=5 的重提腿，
   //    不得掉进普通"按出边重放"的路径（那会把退回当成没发生）。
   strip_reserved(args)
+  // issues/253 推进闸：协办行（task_type=1）办结不产生执行对象、不跑输出变迁
+  // （＝java executeProcessTask 入口那一刀，排在重提直返分流之前）。
+  match (self.repo()).find_task_by_id(task_id) {
+    Some(pre) =>
+      if pre.is_doing() && aidant_is_row(pre) {
+        return self.complete_aidant_without_drive(task_id, operator, args)
+      }
+    None => ()
+  }
   let mut has_reapply = false
   match (self.repo()).find_task_by_id(task_id) {
     Some(pre) => if pre.is_doing() {
@@ -289,9 +303,12 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
     let node_ref = node.unwrap()
     let node_id = node_ref.id
     // 同节点任务计数（预计算）
+    // issues/253：会签合并判据**显式排除协办行（task_type=1）**——按同节点同名行全算
+    // 会把协办行误当表决票挡住合并（spec 04「不计入会签合并计数」）。协办行不驱动流程、
+    // 无表决语义，票齐即推进；它的清场由 abandon_countersign_remaining 里的协办腿负责。
     let node_task_counts : Array[(Bool, Int)] = []
     for t in exec.process_instance.tasks {
-      if t.task_name == node_id {
+      if t.task_name == node_id && !aidant_is_row(t) {
         node_task_counts.push((t.is_finished(), t.task_state))
       }
     }
@@ -432,6 +449,13 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   if !add_sign_hold {
     match node {
       Some(n) => {
+        // issues/253：真要离开本节点（普通档放行出边／加签·征询 merged）⇒ 未办结协办行
+        // 随废弃腿清场（账本记废弃）。＝java TaskModel.exec 的 abandonAidantOnLeave：
+        // 停留本节点的分支（add_sign_hold）不调，否则会把还在办的协办行提前废弃。
+        // 会签 merged 档已在 abandon_countersign_remaining 先清过一遍，这里幂等不重复记账。
+        if n.node_type is @parser.Task {
+          let _ = self.abandon_aidant_on_node(exec.process_instance, n.id, operator)
+        }
         let next_nodes : Array[@parser.NodeModel] = []
         for e in exec.process_model.get_output_edges(n.id) {
           match exec.process_model.get_target_node(e) {
@@ -488,6 +512,15 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
   // 客户端保留键入口剥离（与 execute_task_async 同一刀）
   strip_reserved(args)
+  // issues/253 推进闸：两路同闸（照 snaker，别只堵 executeTask 一路）——协办行跳转/退回
+  // 同样不驱动流程，且必须排在血缘/目标守卫与重提直返守卫之前，免得协办行被守卫的文案误拦。
+  match (self.repo()).find_task_by_id(task_id) {
+    Some(pre) =>
+      if pre.is_doing() && aidant_is_row(pre) {
+        return self.complete_aidant_without_drive(task_id, operator, args)
+      }
+    None => ()
+  }
   // 「退回修改、重提直返」：带标记的申请待办不得借跳转／血缘回退改道（java
   // `executeAndJumpTask` 同款守卫，覆盖**整个入口**而不只命名支；文案逐字取它）。
   let marked_snapshot = (self.repo()).find_task_by_id(task_id)
@@ -600,6 +633,9 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
     Some(t) => t.task_name
     None => ""
   }
+  // issues/253：跳转/退回离开本节点 ⇒ 未办结协办行随废弃腿清场（账本记废弃）。
+  // ＝java executeAndJumpTask 里 prepareExecution 之后那一刀，三档（命名/血缘/首节点）同清。
+  let _ = self.abandon_aidant_on_node(exec.process_instance, add_sign_node, operator)
   if mode is FirstNode {
     let _ = self.abandon_add_sign_remaining(exec, add_sign_node)
   }
@@ -642,10 +678,25 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
   // 客户端保留键入口剥离（与 execute_task_async 同一刀）
   strip_reserved(args)
+  // issues/253 推进闸：协办行拒绝同样不驱动流程（任何 submitType 都只办结自己那一行）
+  match (self.repo()).find_task_by_id(task_id) {
+    Some(pre) =>
+      if pre.is_doing() && aidant_is_row(pre) {
+        return self.complete_aidant_without_drive(task_id, operator, args)
+      }
+    None => ()
+  }
   // 「退回修改、重提直返」：带标记的申请待办不得被"驳回"直接推到结束
   // （java `executeAndJumpToEnd` 同款守卫）。
   reject_marked_applicant((self.repo()).find_task_by_id(task_id), "拒绝")
   let (_task, instance, _define, _model, exec, submit_type) = self.load_exec_for_task(task_id, operator, args)
+  // issues/253：离开节点先清场未办结协办行（废弃＋账本记废弃），再走后加签/征询的既有废弃腿
+  // （＝java executeAndJumpToEnd 的位序；账本必须赶在下面 abandon_all_doing 置 99 之前记）。
+  let aidant_node = match exec.process_task {
+    Some(t) => t.task_name
+    None => ""
+  }
+  let _ = self.abandon_aidant_on_node(exec.process_instance, aidant_node, operator)
   // 拒绝结束：本节点未完成的加签任务一并废弃，不留孤儿待办（规范 04 · 后加签语义边界）。
   // ⚠️ 这条腿不能只靠下面那句 `abandon_all_doing`：本栈"逐条 update_task"只挑
   //   task_state==DOING 的行，而那之前它们已被置 99 ⇒ 那一趟恒空、废弃根本落不了库
@@ -693,6 +744,14 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   // 「退回修改、重提直返」：两条腿的分派与准入校验都在 `execute_return_to_source_async`
   // （reapply.mbt）里，本函数只留入口一处。
   strip_reserved(args)
+  // issues/253 推进闸：协办行退回发起人同样不驱动流程（排在重提直返守卫之前）
+  match (self.repo()).find_task_by_id(task_id) {
+    Some(pre) =>
+      if pre.is_doing() && aidant_is_row(pre) {
+        return self.complete_aidant_without_drive(task_id, operator, args)
+      }
+    None => ()
+  }
   // 「退回修改、重提直返」：带标记的申请待办不得被"再次退回"重建一条无标记申请
   // （那会丢掉本轮分支等待；java `executeAndJumpToFirstTaskNode` 同款守卫）。
   reject_marked_applicant((self.repo()).find_task_by_id(task_id), "再次退回")

@@ -701,6 +701,9 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   self.validate_return_to_source(direct_model.unwrap(), node)
   // 3. 完成来源任务（含落库与码 5/6 事件）
   let (src_task, instance, _define, _model, exec, _st) = self.load_exec_for_task(task_id, operator, args)
+  // issues/253：退回发起人离开本节点 ⇒ 未办结协办行随废弃腿清场（账本记废弃）。
+  // 直返腿与非直返腿（execute_jump_mode_async 的 FirstNode 档）各挂一次，两条入口同判据。
+  let _ = self.abandon_aidant_on_node(exec.process_instance, src_task.task_name, operator)
   // 后加签语义边界（规范 04）：退回发起人＝废弃来源节点未完成的加签待办，不留孤儿待办。
   // 直返腿与非直返腿（`execute_jump_mode_async` 的 FirstNode 档）各挂一次，两条入口同判据。
   let _ = self.abandon_add_sign_remaining(exec, src_task.task_name)

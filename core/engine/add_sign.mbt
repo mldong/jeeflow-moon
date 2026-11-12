@@ -158,10 +158,13 @@ pub fn validate_add_sign_submission(
 ///|
 /// 本节点是否还有未完成待办（刚办结那一条此刻已是 FINISHED ⇒ 不计入）。
 /// 读聚合根里的行：`load_exec_for_task` 已把仓储真相回填进 `instance.tasks`。
+/// issues/253：协办行（task_type=1）不算"兄弟待办"——它不驱动流程、不是接力链的一环，
+/// 算进来会让 waitCompletion=false 的主办在加签/征询节点上被协办行挡住推进（spec 04
+/// 「缺省 false 主办可随时推进」）。协办行的等待由 `aidant_gate_wait` 单独裁决。
 pub fn has_doing_on_node(instance : @model.ProcessInstance, node : String) -> Bool {
   let mut found = false
   for t in instance.tasks {
-    if t.task_name == node && t.is_doing() {
+    if t.task_name == node && t.is_doing() && !aidant_is_row(t) {
       found = true
     }
   }

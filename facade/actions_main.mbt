@@ -663,6 +663,17 @@ pub async fn[R : @spi.ProcessRepository, E] Facade::task_detail(self : Facade[R,
                   None => ()
                 }
               }
+              // 动态协办投影（issues/253，spec 06 §2.7＝java taskDetail 尾段那一刀）：主办行
+              // `ext.aidant`＝{active, round, total, submitted, actors[], wait} 从 task_parent_id＋
+              // task_type=1 现算、不落新存储。**无节点开关**——协办档只由运行期派生，任何任务节点
+              // 都可能有；无协办行 ⇒ 不写这一格。重发 ext 的理由同上（obj_json 是快照式序列化）。
+              match @engine.aidant_build_projection(instance.tasks, doing_task) {
+                Some(p) => {
+                  t_ext["aidant"] = p
+                  @json.obj_set(vo, "ext", obj_json(t_ext))
+                }
+                None => ()
+              }
               @json.obj_set(vo, "taskModel", tm)
               break
             }

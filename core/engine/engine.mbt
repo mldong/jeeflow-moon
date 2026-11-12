@@ -940,7 +940,11 @@ async fn[R, E] Engine::fire_post_interceptors(self : Engine[R, E], exec : @exec.
 
 ///|
 /// 废弃同节点残留 DOING 会签任务（issues/94：merged 后不残留）
+/// issues/253：协办行先走自己的清场腿（废弃＋往主办行账本记废弃），再清剩余会签行——
+/// 顺序不能反，先被下面循环置 99 的协办行就记不上账了（＝java CountersignHandler
+/// abandonRemainingCountersignTasks 的同一把尺子）。
 async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::abandon_countersign_remaining(self : Engine[R, E], exec : @exec.Execution, node_id : String) -> Unit raise @error.JeeflowError {
+  let _ = self.abandon_aidant_on_node(exec.process_instance, node_id, exec.operator)
   let abandoned : Array[@model.ProcessTask] = []
   for task in exec.process_instance.tasks {
     if task.task_name == node_id && task.task_state == @model.TaskState::Doing.code() {

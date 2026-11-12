@@ -67,7 +67,9 @@ pub fn collect_member_rows(
   for t in tasks {
     match t.parent_task_id {
       Some(p) =>
-        if p == host.task_id && t.task_name == host.task_name {
+        // issues/253：协办行（task_type=1）也满足 parent＋同节点同名，但它属另一族
+        // ——征询收齐闸只数征询成员行（task_type=0），两闸各数各的（spec 04「与征询并存」）。
+        if p == host.task_id && t.task_name == host.task_name && !aidant_is_row(t) {
           out.push(t)
         }
       None => ()
@@ -87,6 +89,10 @@ pub fn collect_is_member_row(
     Some(p) => p
   }
   if pid == 0L {
+    return false
+  }
+  // issues/253：协办行（task_type=1）不是征询成员行——两族靠 task_type 分辨。
+  if aidant_is_row(row) {
     return false
   }
   let mut found = false

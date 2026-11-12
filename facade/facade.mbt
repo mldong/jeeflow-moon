@@ -92,7 +92,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::disp
     "processInstance/stats/overview" => self.stats_overview(args)
     "processInstance/stats/trend" => self.stats_trend(args)
     "processInstance/stats/group" => self.stats_group(args)
-    // ── 流程任务（13，含 issues/246 recall 与 issues/247 revokeDynamicCountersign）──
+    // ── 流程任务（14，含 issues/246 recall、issues/247 revokeDynamicCountersign 与 issues/253 aidant）──
     "processTask/todoList" => self.todo_list(args)
     "processTask/doneList" => self.done_list(args)
     "processTask/execute" => self.execute(args)
@@ -105,6 +105,7 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::disp
     "processTask/removeTaskActor" => self.task_remove_actor(args) // issues/115 第 47 个 action：只摘不加、零留痕、不发事件
     "processTask/recall" => self.task_recall(args) // issues/246 已办撤回：收回自己刚办结的那一手
     "processTask/revokeDynamicCountersign" => self.task_revoke_countersign(args) // issues/247 撤回动态会签
+    "processTask/aidant" => self.task_aidant(args) // issues/253 动态协办：派生不驱动的协办行
     "processTask/latest" => self.task_latest(args)
     // ── 流程设计（9，需扩展仓储）──
     "processDesign/page" => self.design_page(args)

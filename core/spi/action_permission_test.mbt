@@ -100,6 +100,13 @@ test "spi-ap: 两枚新 action 恰一枚 wf:processTask:execute（issues/246／2
 }
 
 ///|
+test "spi-ap: issues/253 动态协办复用 wf:processTask:execute（照 246/247 B 案惯例）" {
+  assert_eq(@spi.default_action_permission_provider("processTask/aidant"), [
+    "wf:processTask:execute",
+  ])
+}
+
+///|
 test "spi-ap: 反向哨兵——transfer／removeTaskActor 仍走默认派生（不收进 OR 表）" {
   assert_eq(@spi.default_action_permission_provider("processTask/transfer"), [
     "wf:processTask:transfer",
@@ -111,9 +118,9 @@ test "spi-ap: 反向哨兵——transfer／removeTaskActor 仍走默认派生（
 }
 
 ///|
-test "spi-ap: 两张表条目数钉死 7 与 11（含名册逐条）" {
+test "spi-ap: 两张表条目数钉死 8 与 11（含名册逐条）" {
   let or_actions = @spi.action_permission_or_actions()
-  assert_eq(or_actions.length(), 7)
+  assert_eq(or_actions.length(), 8)
   assert_eq(or_actions.contains("processDefine/detail"), true)
   assert_eq(or_actions.contains("processDefine/startAndExecute"), true)
   assert_eq(or_actions.contains("processDefine/getLastByName"), true)
@@ -121,6 +128,7 @@ test "spi-ap: 两张表条目数钉死 7 与 11（含名册逐条）" {
   assert_eq(or_actions.contains("processTask/jumpAbleTaskNameList"), true)
   assert_eq(or_actions.contains("processTask/recall"), true)
   assert_eq(or_actions.contains("processTask/revokeDynamicCountersign"), true)
+  assert_eq(or_actions.contains("processTask/aidant"), true)
 
   let no_perm = @spi.action_permission_no_perm_actions()
   assert_eq(no_perm.length(), 11)

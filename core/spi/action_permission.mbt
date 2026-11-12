@@ -36,11 +36,12 @@ pub impl ActionPermissionProvider for DefaultActionPermissionProvider with fn pe
 }
 
 ///|
-/// OR 规则表（逐条对齐 java `DefaultActionPermissionProvider.OR_RULES`，**7 条**）。
+/// OR 规则表（逐条对齐 java `DefaultActionPermissionProvider.OR_RULES`，**8 条**）。
 /// issues/246／247 两枚新 action 定 B 案（owner 2026-11-04 拍）：**复用"办理"这枚码**，不另建菜单按钮种子。
 /// 判据是既有惯例——transfer／removeTaskActor／candidatePage／latest 都没有 `sys_menu` 按钮行，
 /// candidatePage／jumpAbleTaskNameList 就是走本表复用 execute；而撤回／撤会签的主体按引擎判据
 /// 本来就必然是该行参与者（＝有办理权的人），拆出独立码实际给不出去，只会多一处存量库补种子的迁移。
+/// issues/253 动态协办照同一惯例复用 execute（派生主体必然是主办行名册内的人）。
 let or_permission_rules : Map[String, Array[String]] = Map([
   (
     "processDefine/detail",
@@ -63,6 +64,7 @@ let or_permission_rules : Map[String, Array[String]] = Map([
   ("processTask/jumpAbleTaskNameList", ["wf:processTask:execute"]),
   ("processTask/recall", ["wf:processTask:execute"]),
   ("processTask/revokeDynamicCountersign", ["wf:processTask:execute"]),
+  ("processTask/aidant", ["wf:processTask:execute"]),
 ])
 
 ///|
@@ -91,7 +93,7 @@ pub fn default_action_permission_provider(action : String) -> Array[String] {
 }
 
 ///|
-/// 内置 OR 表的名册（排序副本，**7 条**）——给集成层自检与门禁用，交出的是副本而非内部表。
+/// 内置 OR 表的名册（排序副本，**8 条**）——给集成层自检与门禁用，交出的是副本而非内部表。
 pub fn action_permission_or_actions() -> Array[String] {
   let keys : Array[String] = []
   for k, _ in or_permission_rules {
