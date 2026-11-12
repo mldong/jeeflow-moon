@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## 0.1.66（2026-11-12）
+
+**包面导航：facade 页补指向 core 正向 Quickstart 的交叉链接。**
+
+- facade 包内 Quickstart 只演示负向信封（裸 `MemoryRepository` 出厂为空，首调必然 `code=99999999`），
+  正向请假流此前只在共装 core 的 README。facade README 在负向例后补一段显式指向 `mldong/jeeflow-core`
+  页的 Quickstart（部署→发起→待办→办理→结束），并说明 core 直驱引擎、`flow(action, args)` 是同几步的单调用包装。
+- 形状取舍：沿用 core 既有「见该模块页」的纯文本包名惯例，**不加相对超链**——包面 `.mooncakes` 与仓库面
+  目录布局不同，相对链会在一面成死链（包面冷启动腿逐条判死链）。
+- 判据（2026-11-12 本机现读）：注册表索引四件 latest=0.1.66；临时工程 `moon add` 无版本号四件全解析；
+  facade 发布 zip README 与 `.mooncakes` 内、与仓里那份字节全等（4519B），交叉链接句在位、
+  `<div`/`img.shields.io` 命中 0；包面冷启动腿照交叉链接读 core Quickstart 逐字跑通。
+- 发版：接力 pin 14 处同笔前进（5 version＋9 pin），tag `v0.1.66`。仓根 README 同轮补正向指针
+  （仓根不进发布包，不另升代次）。
+
+## 0.1.65（2026-11-12）
+
+**包面 README 头区对齐纯 markdown；D3 环境级红随 tag 重跑。**
+
+- 四个发布模块（core/facade/persist/repository-mysql）包内 README 头区撤 `<div align="center">`＋
+  shields.io badge，只留 `# 标题`＋一句话定位＋正文，底部 `## License` 节保留；与仓根 11-08 纯 markdown
+  口径对齐（居中交平台、license 页头自带不重复）。
+- D3 Demo Deploy 因 GitHub runner DNS（`archive.ubuntu.com` 解析失败、apt-get exit 100）红属**环境级**、
+  非判据缺口；随本 tag 的 Demo Deploy 重跑（DNS 已恢复），demo 镜像由 v0.1.62 抬到 0.1.65（越过 0.1.64）。
+- 判据（2026-11-12）：publish/Demo Deploy/verify/sync-cn 四 CI 全绿；注册表四件@0.1.65；发布 zip README
+  `<div`/badge 命中 0；公开 demo health 200（engine 身份核对）。
+- 发版：接力 pin 14 处同笔前进，tag `v0.1.65`。
+
 ## 0.1.64（2026-11-11）
 
 **上一代的三条新闸第一轮就抓到一处真缺陷：事务模板的收尾在异步取消下会被同一次取消打断。**
