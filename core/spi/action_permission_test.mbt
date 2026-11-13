@@ -1,5 +1,5 @@
 // action → 权限码映射（引擎内置默认件）测试 —— 语义权威＝java DefaultActionPermissionProvider。
-// 两张表逐条钉死：放行 11 条（含统计三条）／OR 7 条（含 issues/246／247 两枚新 action）／
+// 两张表逐条钉死：放行 11 条（含统计三条）／OR 8 条（246／247 两枚＋253 协办一枚，均复用办理码）／
 // 默认派生 wf:{action /→:} ＋ 反向哨兵（transfer／removeTaskActor 不许被顺手收进表）。
 // 纯同步代码 ⇒ 全部用普通 test（本栈 async 用例在 wasm-gc 档会被静默丢弃）。
 
