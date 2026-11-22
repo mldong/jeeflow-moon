@@ -16,7 +16,7 @@ into, and an async runtime for `async fn main`:
 moon new my-flow && cd my-flow
 moon add mldong/jeeflow-core      # engine heart + SPI (zero registry dependencies)
 moon add mldong/jeeflow-facade    # this module: flow(action, args)
-moon add moonbitlang/async        # flow is async; async main needs it
+moon add moonbitlang/async@0.22.7        # flow is async; async main needs it
 ```
 
 ## Quickstart
@@ -33,6 +33,10 @@ import {
   "mldong/jeeflow-facade" @facade,
   "moonbitlang/async",
 }
+
+// `async fn main` needs this package; moonc 0.10.22 unused_package does not
+// count the async-main use, so silence that one lint for this demo package.
+warnings = "-unused_package"
 
 pkgtype(kind: "executable")
 ```

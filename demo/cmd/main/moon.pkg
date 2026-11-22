@@ -8,6 +8,9 @@ import {
   "moonbitlang/core/encoding/utf8" @utf8,
   "moonbitlang/core/env" @env,
 }
+// `async fn main` 需要 import 本包；moonc 0.10.22 的 unused_package 不计这一用法，包级压掉。
+warnings = "-unused_package"
+
 pkgtype(kind: "executable")
 
 supported_targets = "+native+wasm"

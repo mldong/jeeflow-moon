@@ -15,7 +15,7 @@ the engine core's SPI, so both go in; `moonbitlang/async` is what an `async fn m
 moon new my-mysql && cd my-mysql
 moon add mldong/jeeflow-core             # engine + SPI this repository implements
 moon add mldong/jeeflow-repository-mysql # this module
-moon add moonbitlang/async
+moon add moonbitlang/async@0.22.7
 ```
 
 ## Quickstart
@@ -34,6 +34,10 @@ import {
   "mldong/jeeflow-repository-mysql/repo" @repo,
   "moonbitlang/async",
 }
+
+// `async fn main` needs this package; moonc 0.10.22 unused_package does not
+// count the async-main use, so silence that one lint for this demo package.
+warnings = "-unused_package"
 
 pkgtype(kind: "executable")
 

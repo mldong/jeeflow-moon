@@ -1,444 +1,444 @@
-// facade 行 VO + 参数助手 —— 对齐 java *RowToMap / arg 助手（C2/C3/C15）
-
-///|
-fn obj_json(m : Map[String, Json]) -> Json {
-  @json.empty_object() |> ignore
-  let o = @json.empty_object()
-  for k, v in m {
-    @json.obj_set(o, k, v)
-  }
-  o
-}
-
-///|
-pub fn define_row_to_json(r : @model.DefineRow) -> Json {
-  let o = @json.empty_object()
-  @json.obj_set(o, "id", i64_json(r.id))
-  @json.obj_set(o, "name", @json.string_of(r.name))
-  @json.obj_set(o, "display_name", @json.string_of(r.display_name))
-  @json.obj_set(o, "type", @json.string_of(r.define_type))
-  @json.obj_set(o, "state", num_json(r.state))
-  @json.obj_set(o, "version", num_json(r.version))
-  @json.obj_set(o, "create_time", opt_json(r.create_time))
-  @json.obj_set(o, "create_user", opt_json(r.create_user))
-  @json.obj_set(o, "update_time", opt_json(r.update_time))
-  @json.obj_set(o, "update_user", opt_json(r.update_user))
-  o
-}
-
-///|
-pub fn task_row_to_json(r : @model.TaskRow) -> Json {
-  let instance_ext = parse_json_map(r.instance_variable)
-  let task_vars = parse_json_map(r.variable)
-  // issues/121 P1：引擎建单必写的控制键不算「任务变量非空」，否则新建任务的 ext 从此
-  // 永不再回退实例变量（82-3 既有契约）。控制键集合除行级首节点标记外，还含 spec 04 的两枚
-  // 直返保留键（建单时无条件写入、空分支也写 []）——不认它们，每条任务行都从此不再回退，
-  // 内部键还直接从公开出口透出（本轮八栈齐漏，php 的内容级用例才报红）。
-  // `_reapplyContext` 是前端「重新提交后返回：X」的唯一取数口（jeeflow-ui helpers.ts 读
-  // ext._reapplyContext）⇒ 回退后原样合回；合回落在**副本**上，不得污染同一响应里的
-  // instanceExt 出口。回退是**替换**而不是并入任务变量：留在 ext 上的控制键就是泄漏本身。
-  let has_user_key = {
-    let mut found = false
-    for k, _ in task_vars {
-      if k != "isFirstTaskNode" && k != @engine.var_branch_ctx && k != @engine.var_reapply_ctx {
-        found = true
-      }
-    }
-    found
-  }
-  let ext : Map[String, Json] = Map([])
-  if has_user_key {
-    for k, v in task_vars {
-      ext[k] = v
-    }
-  } else {
-    for k, v in instance_ext {
-      ext[k] = v
-    }
-    match task_vars.get(@engine.var_reapply_ctx) {
-      Some(v) => ext[@engine.var_reapply_ctx] = v
-      None => ()
-    }
-  }
-  let o = @json.empty_object()
-  @json.obj_set(o, "id", i64_json(r.id))
-  @json.obj_set(o, "process_instance_id", i64_json(r.process_instance_id))
-  @json.obj_set(o, "task_name", @json.string_of(r.task_name))
-  @json.obj_set(o, "display_name", @json.string_of(r.display_name))
-  @json.obj_set(o, "task_type", num_json(r.task_type))
-  @json.obj_set(o, "perform_type", num_json(r.perform_type))
-  @json.obj_set(o, "task_state", num_json(r.task_state))
-  @json.obj_set(o, "operator", opt_json(r.operator))
-  @json.obj_set(o, "finish_time", opt_json(r.finish_time))
-  @json.obj_set(o, "expire_time", opt_json(r.expire_time))
-  @json.obj_set(o, "form_key", opt_json(r.form_key))
-  @json.obj_set(o, "task_parent_id", opt_i64_json(r.task_parent_id))
-  @json.obj_set(o, "create_time", opt_json(r.create_time))
-  @json.obj_set(o, "create_user", opt_json(r.create_user))
-  @json.obj_set(o, "update_time", opt_json(r.update_time))
-  @json.obj_set(o, "update_user", opt_json(r.update_user))
-  @json.obj_set(o, "process_define_name", opt_json(r.define_name))
-  @json.obj_set(o, "process_define_display_name", opt_json(r.define_display_name))
-  @json.obj_set(o, "ext", obj_json(ext))
-  @json.obj_set(o, "instance_ext", obj_json(instance_ext))
-  @json.obj_set(o, "instance_create_time", opt_json(r.instance_create_time))
-  // issues/250：任务行带「所属流程实例的状态」，前端据此把实例已结束的已办行撤回按钮置灰。
-  // 值＝该行所属实例的 state（10 进行中 / 20 已完成 / 30 撤回 / 40 终止 / 45 拒绝 / 50 挂起 / 99 废弃），
-  // 来源＝列表查询**本来就有的** pi 关联（SQL 别名 `instance_state`，todo/done 两支同投影；
-  // 内存仓 `task_row_of` 取 `i.state`，两仓同源）⇒ 不新增关联、不解析流程定义、不改任何撤回判据。
-  // 键名按本仓 VO 既有风格写 snake_case，出口 `transform_output` 的 to_camel 落成契约要求的
-  // `instanceState`；`Int?` 缺值出 null（对齐 java 的 `Integer instanceState`），有值出整数
-  // （`instanceState` 不匹配 C1 的 `*Id`/`*_id` 后缀 ⇒ 不会被字符串化）。
-  @json.obj_set(o, "instance_state", opt_num_json(r.instance_state))
-  // issues/251: project stamped allowRecall as top-level bool for non-DOING rows only.
-  // 缺键＝不出字段（存量行不猜）；DOING 永不投（待办撤回判据走实例级，不看节点开关）。
-  // snake 键 allow_recall 经出口 to_camel 落契约键 allowRecall（issues/250 instance_state 同款）。
-  if r.task_state != @model.TaskState::Doing.code() {
-    match task_vars.get(@engine.allow_recall_key) {
-      Some(v) =>
-        match @json.as_bool(v) {
-          Some(b) => @json.obj_set(o, "allow_recall", @json.bool_of(b))
-          None => ()
-        }
-      None => ()
-    }
-  }
-  @json.obj_set(o, "version", opt_num_json(r.define_version))
-  @json.obj_set(o, "task_form_data", form_data_of_map(parse_json_map(r.variable), "tf_"))
-  o
-}
-
-///|
-pub fn instance_row_to_json(r : @model.InstanceRow) -> Json {
-  let o = @json.empty_object()
-  @json.obj_set(o, "id", i64_json(r.id))
-  @json.obj_set(o, "parent_id", opt_i64_json(r.parent_id))
-  @json.obj_set(o, "process_define_id", i64_json(r.process_define_id))
-  @json.obj_set(o, "state", num_json(r.state))
-  @json.obj_set(o, "parent_node_name", opt_json(r.parent_node_name))
-  @json.obj_set(o, "business_no", opt_json(r.business_no))
-  @json.obj_set(o, "operator", @json.string_of(r.operator))
-  @json.obj_set(o, "expire_time", opt_json(r.expire_time))
-  @json.obj_set(o, "create_time", opt_json(r.create_time))
-  @json.obj_set(o, "create_user", opt_json(r.create_user))
-  @json.obj_set(o, "update_time", opt_json(r.update_time))
-  @json.obj_set(o, "update_user", opt_json(r.update_user))
-  @json.obj_set(o, "process_define_name", opt_json(r.define_name))
-  @json.obj_set(o, "process_define_display_name", opt_json(r.define_display_name))
-  @json.obj_set(o, "process_define_version", opt_num_json(r.define_version))
-  @json.obj_set(o, "ext", obj_json(parse_json_map(r.variable)))
-  @json.obj_set(o, "display_name", opt_json(r.define_display_name))
-  @json.obj_set(o, "version", opt_num_json(r.define_version))
-  o
-}
-
-///|
-pub fn design_to_json(d : @model.ProcessDesign) -> Json {
-  let o = @json.empty_object()
-  @json.obj_set(o, "id", i64_json(d.id))
-  @json.obj_set(o, "name", @json.string_of(d.name))
-  @json.obj_set(o, "display_name", @json.string_of(d.display_name))
-  @json.obj_set(o, "type", @json.string_of(d.design_type))
-  @json.obj_set(o, "icon", opt_json(d.icon))
-  @json.obj_set(o, "is_deployed", num_json(d.is_deployed))
-  @json.obj_set(o, "remark", opt_json(d.remark))
-  @json.obj_set(o, "create_time", opt_json(d.create_time))
-  @json.obj_set(o, "create_user", opt_json(d.create_user))
-  @json.obj_set(o, "update_time", opt_json(d.update_time))
-  @json.obj_set(o, "update_user", opt_json(d.update_user))
-  o
-}
-
-///|
-pub fn surrogate_to_json(s : @model.ProcessSurrogate) -> Json {
-  let o = @json.empty_object()
-  @json.obj_set(o, "id", i64_json(s.id))
-  @json.obj_set(o, "process_name", @json.string_of(s.process_name))
-  @json.obj_set(o, "operator", @json.string_of(s.operator))
-  @json.obj_set(o, "surrogate", @json.string_of(s.surrogate))
-  @json.obj_set(o, "start_time", opt_json(s.start_time))
-  @json.obj_set(o, "end_time", opt_json(s.end_time))
-  @json.obj_set(o, "enabled", num_json(s.enabled))
-  @json.obj_set(o, "create_time", opt_json(s.create_time))
-  @json.obj_set(o, "create_user", opt_json(s.create_user))
-  @json.obj_set(o, "update_time", opt_json(s.update_time))
-  @json.obj_set(o, "update_user", opt_json(s.update_user))
-  o
-}
-
-///|
-/// 对齐 java taskVo
-pub fn task_vo(t : @model.ProcessTask) -> Json {
-  let o = @json.empty_object()
-  @json.obj_set(o, "id", i64_json(t.task_id))
-  @json.obj_set(o, "process_instance_id", i64_json(t.process_instance_id))
-  @json.obj_set(o, "task_name", @json.string_of(t.task_name))
-  @json.obj_set(o, "display_name", @json.string_of(t.display_name))
-  @json.obj_set(o, "task_type", num_json(t.task_type))
-  @json.obj_set(o, "perform_type", num_json(t.perform_type))
-  @json.obj_set(o, "task_state", num_json(t.task_state))
-  @json.obj_set(o, "operator", opt_json(t.actor_id))
-  @json.obj_set(o, "form_key", opt_json(t.form_key))
-  @json.obj_set(o, "task_parent_id", opt_i64_json(t.parent_task_id))
-  let actor_ids = @json.empty_array()
-  for a in t.actor_ids {
-    @json.arr_push(actor_ids, @json.string_of(a))
-  }
-  @json.obj_set(o, "task_actor_id_list", actor_ids)
-  @json.obj_set(o, "task_form_data", form_data_of_flow(t.variables, "tf_"))
-  @json.obj_set(o, "finish_time", opt_json(t.finish_time))
-  @json.obj_set(o, "create_time", opt_json(t.create_time))
-  o
-}
-
-///|
-pub fn design_his_to_json(h : @model.ProcessDesignHis) -> Json {
-  let o = @json.empty_object()
-  @json.obj_set(o, "id", i64_json(h.id))
-  @json.obj_set(o, "process_design_id", i64_json(h.process_design_id))
-  @json.obj_set(o, "content", @json.string_of(h.content))
-  @json.obj_set(o, "create_time", opt_json(h.create_time))
-  @json.obj_set(o, "create_user", opt_json(h.create_user))
-  o
-}
-
-// ── 参数助手（C2/C3 双收；C15 ids/id 双收空显式报错）──
-
-///|
-pub fn arg_str(args : Map[String, Json], key : String) -> String? {
-  match args.get(key) {
-    Some(Json::String(s)) => Some(s)
-    _ => None
-  }
-}
-
-///|
-/// i64 双收：数字/字符串；存在但不可解析 → "非法id"
-pub fn arg_i64(args : Map[String, Json], key : String) -> Int64? raise @error.JeeflowError {
-  match args.get(key) {
-    None => None
-    Some(v) =>
-      match @json.as_i64(v) {
-        Some(n) => Some(n)
-        None =>
-          match v {
-            Json::String(s) =>
+// facade 行 VO + 参数助手 —— 对齐 java *RowToMap / arg 助手（C2/C3/C15）
+
+///|
+fn obj_json(m : Map[String, Json]) -> Json {
+  @json.empty_object() |> ignore
+  let o = @json.empty_object()
+  for k, v in m {
+    @json.obj_set(o, k, v)
+  }
+  o
+}
+
+///|
+pub fn define_row_to_json(r : @model.DefineRow) -> Json {
+  let o = @json.empty_object()
+  @json.obj_set(o, "id", i64_json(r.id))
+  @json.obj_set(o, "name", @json.string_of(r.name))
+  @json.obj_set(o, "display_name", @json.string_of(r.display_name))
+  @json.obj_set(o, "type", @json.string_of(r.define_type))
+  @json.obj_set(o, "state", num_json(r.state))
+  @json.obj_set(o, "version", num_json(r.version))
+  @json.obj_set(o, "create_time", opt_json(r.create_time))
+  @json.obj_set(o, "create_user", opt_json(r.create_user))
+  @json.obj_set(o, "update_time", opt_json(r.update_time))
+  @json.obj_set(o, "update_user", opt_json(r.update_user))
+  o
+}
+
+///|
+pub fn task_row_to_json(r : @model.TaskRow) -> Json {
+  let instance_ext = parse_json_map(r.instance_variable)
+  let task_vars = parse_json_map(r.variable)
+  // issues/121 P1：引擎建单必写的控制键不算「任务变量非空」，否则新建任务的 ext 从此
+  // 永不再回退实例变量（82-3 既有契约）。控制键集合除行级首节点标记外，还含 spec 04 的两枚
+  // 直返保留键（建单时无条件写入、空分支也写 []）——不认它们，每条任务行都从此不再回退，
+  // 内部键还直接从公开出口透出（本轮八栈齐漏，php 的内容级用例才报红）。
+  // `_reapplyContext` 是前端「重新提交后返回：X」的唯一取数口（jeeflow-ui helpers.ts 读
+  // ext._reapplyContext）⇒ 回退后原样合回；合回落在**副本**上，不得污染同一响应里的
+  // instanceExt 出口。回退是**替换**而不是并入任务变量：留在 ext 上的控制键就是泄漏本身。
+  let has_user_key = {
+    let mut found = false
+    for k, _ in task_vars {
+      if k != "isFirstTaskNode" && k != @engine.var_branch_ctx && k != @engine.var_reapply_ctx {
+        found = true
+      }
+    }
+    found
+  }
+  let ext : Map[String, Json] = Map([])
+  if has_user_key {
+    for k, v in task_vars {
+      ext[k] = v
+    }
+  } else {
+    for k, v in instance_ext {
+      ext[k] = v
+    }
+    match task_vars.get(@engine.var_reapply_ctx) {
+      Some(v) => ext[@engine.var_reapply_ctx] = v
+      None => ()
+    }
+  }
+  let o = @json.empty_object()
+  @json.obj_set(o, "id", i64_json(r.id))
+  @json.obj_set(o, "process_instance_id", i64_json(r.process_instance_id))
+  @json.obj_set(o, "task_name", @json.string_of(r.task_name))
+  @json.obj_set(o, "display_name", @json.string_of(r.display_name))
+  @json.obj_set(o, "task_type", num_json(r.task_type))
+  @json.obj_set(o, "perform_type", num_json(r.perform_type))
+  @json.obj_set(o, "task_state", num_json(r.task_state))
+  @json.obj_set(o, "operator", opt_json(r.operator))
+  @json.obj_set(o, "finish_time", opt_json(r.finish_time))
+  @json.obj_set(o, "expire_time", opt_json(r.expire_time))
+  @json.obj_set(o, "form_key", opt_json(r.form_key))
+  @json.obj_set(o, "task_parent_id", opt_i64_json(r.task_parent_id))
+  @json.obj_set(o, "create_time", opt_json(r.create_time))
+  @json.obj_set(o, "create_user", opt_json(r.create_user))
+  @json.obj_set(o, "update_time", opt_json(r.update_time))
+  @json.obj_set(o, "update_user", opt_json(r.update_user))
+  @json.obj_set(o, "process_define_name", opt_json(r.define_name))
+  @json.obj_set(o, "process_define_display_name", opt_json(r.define_display_name))
+  @json.obj_set(o, "ext", obj_json(ext))
+  @json.obj_set(o, "instance_ext", obj_json(instance_ext))
+  @json.obj_set(o, "instance_create_time", opt_json(r.instance_create_time))
+  // issues/250：任务行带「所属流程实例的状态」，前端据此把实例已结束的已办行撤回按钮置灰。
+  // 值＝该行所属实例的 state（10 进行中 / 20 已完成 / 30 撤回 / 40 终止 / 45 拒绝 / 50 挂起 / 99 废弃），
+  // 来源＝列表查询**本来就有的** pi 关联（SQL 别名 `instance_state`，todo/done 两支同投影；
+  // 内存仓 `task_row_of` 取 `i.state`，两仓同源）⇒ 不新增关联、不解析流程定义、不改任何撤回判据。
+  // 键名按本仓 VO 既有风格写 snake_case，出口 `transform_output` 的 to_camel 落成契约要求的
+  // `instanceState`；`Int?` 缺值出 null（对齐 java 的 `Integer instanceState`），有值出整数
+  // （`instanceState` 不匹配 C1 的 `*Id`/`*_id` 后缀 ⇒ 不会被字符串化）。
+  @json.obj_set(o, "instance_state", opt_num_json(r.instance_state))
+  // issues/251: project stamped allowRecall as top-level bool for non-DOING rows only.
+  // 缺键＝不出字段（存量行不猜）；DOING 永不投（待办撤回判据走实例级，不看节点开关）。
+  // snake 键 allow_recall 经出口 to_camel 落契约键 allowRecall（issues/250 instance_state 同款）。
+  if r.task_state != @model.TaskState::Doing.code() {
+    match task_vars.get(@engine.allow_recall_key) {
+      Some(v) =>
+        match @json.as_bool(v) {
+          Some(b) => @json.obj_set(o, "allow_recall", @json.bool_of(b))
+          None => ()
+        }
+      None => ()
+    }
+  }
+  @json.obj_set(o, "version", opt_num_json(r.define_version))
+  @json.obj_set(o, "task_form_data", form_data_of_map(parse_json_map(r.variable), "tf_"))
+  o
+}
+
+///|
+pub fn instance_row_to_json(r : @model.InstanceRow) -> Json {
+  let o = @json.empty_object()
+  @json.obj_set(o, "id", i64_json(r.id))
+  @json.obj_set(o, "parent_id", opt_i64_json(r.parent_id))
+  @json.obj_set(o, "process_define_id", i64_json(r.process_define_id))
+  @json.obj_set(o, "state", num_json(r.state))
+  @json.obj_set(o, "parent_node_name", opt_json(r.parent_node_name))
+  @json.obj_set(o, "business_no", opt_json(r.business_no))
+  @json.obj_set(o, "operator", @json.string_of(r.operator))
+  @json.obj_set(o, "expire_time", opt_json(r.expire_time))
+  @json.obj_set(o, "create_time", opt_json(r.create_time))
+  @json.obj_set(o, "create_user", opt_json(r.create_user))
+  @json.obj_set(o, "update_time", opt_json(r.update_time))
+  @json.obj_set(o, "update_user", opt_json(r.update_user))
+  @json.obj_set(o, "process_define_name", opt_json(r.define_name))
+  @json.obj_set(o, "process_define_display_name", opt_json(r.define_display_name))
+  @json.obj_set(o, "process_define_version", opt_num_json(r.define_version))
+  @json.obj_set(o, "ext", obj_json(parse_json_map(r.variable)))
+  @json.obj_set(o, "display_name", opt_json(r.define_display_name))
+  @json.obj_set(o, "version", opt_num_json(r.define_version))
+  o
+}
+
+///|
+pub fn design_to_json(d : @model.ProcessDesign) -> Json {
+  let o = @json.empty_object()
+  @json.obj_set(o, "id", i64_json(d.id))
+  @json.obj_set(o, "name", @json.string_of(d.name))
+  @json.obj_set(o, "display_name", @json.string_of(d.display_name))
+  @json.obj_set(o, "type", @json.string_of(d.design_type))
+  @json.obj_set(o, "icon", opt_json(d.icon))
+  @json.obj_set(o, "is_deployed", num_json(d.is_deployed))
+  @json.obj_set(o, "remark", opt_json(d.remark))
+  @json.obj_set(o, "create_time", opt_json(d.create_time))
+  @json.obj_set(o, "create_user", opt_json(d.create_user))
+  @json.obj_set(o, "update_time", opt_json(d.update_time))
+  @json.obj_set(o, "update_user", opt_json(d.update_user))
+  o
+}
+
+///|
+pub fn surrogate_to_json(s : @model.ProcessSurrogate) -> Json {
+  let o = @json.empty_object()
+  @json.obj_set(o, "id", i64_json(s.id))
+  @json.obj_set(o, "process_name", @json.string_of(s.process_name))
+  @json.obj_set(o, "operator", @json.string_of(s.operator))
+  @json.obj_set(o, "surrogate", @json.string_of(s.surrogate))
+  @json.obj_set(o, "start_time", opt_json(s.start_time))
+  @json.obj_set(o, "end_time", opt_json(s.end_time))
+  @json.obj_set(o, "enabled", num_json(s.enabled))
+  @json.obj_set(o, "create_time", opt_json(s.create_time))
+  @json.obj_set(o, "create_user", opt_json(s.create_user))
+  @json.obj_set(o, "update_time", opt_json(s.update_time))
+  @json.obj_set(o, "update_user", opt_json(s.update_user))
+  o
+}
+
+///|
+/// 对齐 java taskVo
+pub fn task_vo(t : @model.ProcessTask) -> Json {
+  let o = @json.empty_object()
+  @json.obj_set(o, "id", i64_json(t.task_id))
+  @json.obj_set(o, "process_instance_id", i64_json(t.process_instance_id))
+  @json.obj_set(o, "task_name", @json.string_of(t.task_name))
+  @json.obj_set(o, "display_name", @json.string_of(t.display_name))
+  @json.obj_set(o, "task_type", num_json(t.task_type))
+  @json.obj_set(o, "perform_type", num_json(t.perform_type))
+  @json.obj_set(o, "task_state", num_json(t.task_state))
+  @json.obj_set(o, "operator", opt_json(t.actor_id))
+  @json.obj_set(o, "form_key", opt_json(t.form_key))
+  @json.obj_set(o, "task_parent_id", opt_i64_json(t.parent_task_id))
+  let actor_ids = @json.empty_array()
+  for a in t.actor_ids {
+    @json.arr_push(actor_ids, @json.string_of(a))
+  }
+  @json.obj_set(o, "task_actor_id_list", actor_ids)
+  @json.obj_set(o, "task_form_data", form_data_of_flow(t.variables, "tf_"))
+  @json.obj_set(o, "finish_time", opt_json(t.finish_time))
+  @json.obj_set(o, "create_time", opt_json(t.create_time))
+  o
+}
+
+///|
+pub fn design_his_to_json(h : @model.ProcessDesignHis) -> Json {
+  let o = @json.empty_object()
+  @json.obj_set(o, "id", i64_json(h.id))
+  @json.obj_set(o, "process_design_id", i64_json(h.process_design_id))
+  @json.obj_set(o, "content", @json.string_of(h.content))
+  @json.obj_set(o, "create_time", opt_json(h.create_time))
+  @json.obj_set(o, "create_user", opt_json(h.create_user))
+  o
+}
+
+// ── 参数助手（C2/C3 双收；C15 ids/id 双收空显式报错）──
+
+///|
+pub fn arg_str(args : Map[String, Json], key : String) -> String? {
+  match args.get(key) {
+    Some(Json::String(s)) => Some(s)
+    _ => None
+  }
+}
+
+///|
+/// i64 双收：数字/字符串；存在但不可解析 → "非法id"
+pub fn arg_i64(args : Map[String, Json], key : String) -> Int64? raise @error.JeeflowError {
+  match args.get(key) {
+    None => None
+    Some(v) =>
+      match @json.as_i64(v) {
+        Some(n) => Some(n)
+        None =>
+          match v {
+            Json::String(s) =>
               // parse_int64 是 `-> Int64 raise`：解析失败 ⇒ 非法 id（文案逐字不变）
               try {
                 Some(@string.parse_int64(s))
               } catch {
                 _ => raise @error.Business("非法id: \{s}")
               }
-            _ => raise @error.Business("非法id: \{@json.stringify(v)}")
-          }
-      }
-  }
-}
-
-///|
-pub fn arg_str_or(args : Map[String, Json], key : String, default : String) -> String {
-  arg_str(args, key).unwrap_or(default)
-}
-
-///|
-/// operator 归一化（issues/129 案 A · spec 06-facade §2.5）：**空串与缺键同档**——
-/// `{"operator":""}`（含全空白串）视同未传，一并回落本栈 demo 缺省 `user1`。
-/// 缺这一层时空串会被下游当真实值比对 ⇒「我的列表」悄悄变空页（160 实测 moon 空串档 0 行）。
-/// ⚠️ 刻意不改通用取值函数 `arg_str_or`：那是各 key 共用的，「空串本身就是合法值」的 key 不许被吞。
-/// ⚠️ 非空白时返回**原串**（不 trim），与 java `JeeflowFacade.operatorArg` 逐字同形；
-///    issues/114 的 `arg_required_str`（operator 硬必填、缺失即报错、返回 trim 后值）是另一档语义，别混用。
-pub fn operator_arg(args : Map[String, Json]) -> String {
-  let s = arg_str(args, "operator").unwrap_or("")
-  if s.trim(chars=" \t\r\n").is_empty() {
-    "user1"
-  } else {
-    s
-  }
-}
-
-///|
-pub fn arg_i64_or(args : Map[String, Json], key : String, default : Int64) -> Int64 raise @error.JeeflowError {
-  match arg_i64(args, key) {
-    Some(v) => v
-    None => default
-  }
-}
-
-///|
-/// 首个存在的 i64（多候选键）
-pub fn arg_id(args : Map[String, Json], keys : Array[String]) -> Int64? raise @error.JeeflowError {
-  for k in keys {
-    match arg_i64(args, k) {
-      Some(v) => return Some(v)
-      None => ()
-    }
-  }
-  None
-}
-
-///|
-/// actorIds：JSON 数组 / 逗号串**两形同判据**（issues/142 B 批 · spec 06-facade §2.11
-/// 「归属值写侧归一」，owner 2026-09-30 拍「八栈一起收：两形同判据＋写侧兜底＋trim＋哨兵」）。
-///
-/// 改前本函数"一参两尺"：串臂 trim＋丢空，数组臂却只 `if !s.is_empty()` ⇒ 不 trim、不折叠，
-/// 于是 `[" a "]` 与 `["a"]` 判成两个人、`["  "]` 原样进写侧落一行 actor_id="  "；而同文件紧邻的
-/// `create_cc_instance` 还额外过 @model 归一，`task_surrogate`（addCandidate/surrogate 同体）却不过。
-///
-/// 现在形状适配复用 `@engine.parse_actors`（issues/141 G10 为抄送腿落地的那一枚，§2.11 逐字搬到
-/// 任务侧）：数组里的数字按 repr 原文收敛成字符串（>2^53 不取整，D-M5-3）、true/false 转串、
-/// Json null 丢弃（本栈无 undefined 档，不许串化成 "null"）；判据复用 `@model.normalize_actors`
-/// （逐元素 trim、空串/纯空白丢弃、同一次调用折叠）。反向哨兵：`"0"`、`"00"` 都是有效值且是两个人。
-/// 空入参档由调用方沿用各自既有的"缺参数"错误信封（§2.11 要求③：不新造错误码与文案）。
-pub fn arg_actor_ids(args : Map[String, Json]) -> Array[String] {
-  @engine.parse_actors(args.get("actorIds"))
-}
-
-///|
-/// 批量主键：{ids} 优先 {id} 兜底；空显式报错（issues/95）
-pub fn arg_ids(args : Map[String, Json]) -> Array[Int64] raise @error.JeeflowError {
-  let out : Array[Int64] = []
-  match args.get("ids") {
-    Some(Json::Array(arr)) =>
-      for v in arr {
-        match @json.as_i64(v) {
-          Some(n) => out.push(n)
-          None =>
-            match v {
-              Json::String(s) =>
+            _ => raise @error.Business("非法id: \{@json.stringify(v)}")
+          }
+      }
+  }
+}
+
+///|
+pub fn arg_str_or(args : Map[String, Json], key : String, default : String) -> String {
+  arg_str(args, key).unwrap_or(default)
+}
+
+///|
+/// operator 归一化（issues/129 案 A · spec 06-facade §2.5）：**空串与缺键同档**——
+/// `{"operator":""}`（含全空白串）视同未传，一并回落本栈 demo 缺省 `user1`。
+/// 缺这一层时空串会被下游当真实值比对 ⇒「我的列表」悄悄变空页（160 实测 moon 空串档 0 行）。
+/// ⚠️ 刻意不改通用取值函数 `arg_str_or`：那是各 key 共用的，「空串本身就是合法值」的 key 不许被吞。
+/// ⚠️ 非空白时返回**原串**（不 trim），与 java `JeeflowFacade.operatorArg` 逐字同形；
+///    issues/114 的 `arg_required_str`（operator 硬必填、缺失即报错、返回 trim 后值）是另一档语义，别混用。
+pub fn operator_arg(args : Map[String, Json]) -> String {
+  let s = arg_str(args, "operator").unwrap_or("")
+  if s.trim(chars=" \t\r\n").is_empty() {
+    "user1"
+  } else {
+    s
+  }
+}
+
+///|
+pub fn arg_i64_or(args : Map[String, Json], key : String, default : Int64) -> Int64 raise @error.JeeflowError {
+  match arg_i64(args, key) {
+    Some(v) => v
+    None => default
+  }
+}
+
+///|
+/// 首个存在的 i64（多候选键）
+pub fn arg_id(args : Map[String, Json], keys : Array[String]) -> Int64? raise @error.JeeflowError {
+  for k in keys {
+    match arg_i64(args, k) {
+      Some(v) => return Some(v)
+      None => ()
+    }
+  }
+  None
+}
+
+///|
+/// actorIds：JSON 数组 / 逗号串**两形同判据**（issues/142 B 批 · spec 06-facade §2.11
+/// 「归属值写侧归一」，owner 2026-09-30 拍「八栈一起收：两形同判据＋写侧兜底＋trim＋哨兵」）。
+///
+/// 改前本函数"一参两尺"：串臂 trim＋丢空，数组臂却只 `if !s.is_empty()` ⇒ 不 trim、不折叠，
+/// 于是 `[" a "]` 与 `["a"]` 判成两个人、`["  "]` 原样进写侧落一行 actor_id="  "；而同文件紧邻的
+/// `create_cc_instance` 还额外过 @model 归一，`task_surrogate`（addCandidate/surrogate 同体）却不过。
+///
+/// 现在形状适配复用 `@engine.parse_actors`（issues/141 G10 为抄送腿落地的那一枚，§2.11 逐字搬到
+/// 任务侧）：数组里的数字按 repr 原文收敛成字符串（>2^53 不取整，D-M5-3）、true/false 转串、
+/// Json null 丢弃（本栈无 undefined 档，不许串化成 "null"）；判据复用 `@model.normalize_actors`
+/// （逐元素 trim、空串/纯空白丢弃、同一次调用折叠）。反向哨兵：`"0"`、`"00"` 都是有效值且是两个人。
+/// 空入参档由调用方沿用各自既有的"缺参数"错误信封（§2.11 要求③：不新造错误码与文案）。
+pub fn arg_actor_ids(args : Map[String, Json]) -> Array[String] {
+  @engine.parse_actors(args.get("actorIds"))
+}
+
+///|
+/// 批量主键：{ids} 优先 {id} 兜底；空显式报错（issues/95）
+pub fn arg_ids(args : Map[String, Json]) -> Array[Int64] raise @error.JeeflowError {
+  let out : Array[Int64] = []
+  match args.get("ids") {
+    Some(Json::Array(arr)) =>
+      for v in arr {
+        match @json.as_i64(v) {
+          Some(n) => out.push(n)
+          None =>
+            match v {
+              Json::String(s) =>
                 // 同上（数组档）
                 try {
                   out.push(@string.parse_int64(s))
                 } catch {
                   _ => raise @error.Business("非法id: \{s}")
                 }
-              _ => raise @error.Business("非法id: \{@json.stringify(v)}")
-            }
-        }
-      }
-    _ => ()
-  }
-  if out.is_empty() {
-    match arg_i64(args, "id") {
-      Some(v) => out.push(v)
-      None => ()
-    }
-  }
-  if out.is_empty() {
-    raise @error.Business("id 缺失或非法")
-  }
-  out
-}
-
-///|
-/// submitType 双收（数字/字符串）
-pub fn arg_submit_type(args : Map[String, Json], key~ : String = "submitType") -> Int64? raise @error.JeeflowError {
-  arg_i64(args, key)
-}
-
-///|
-/// content：字符串/对象/顶层 JSON 兼容（issues/27）
-pub fn content_bytes(args : Map[String, Json]) -> String? {
-  match args.get("content") {
-    Some(Json::String(s)) => Some(s)
-    Some(Json::Object(_)) | Some(Json::Array(_)) => Some(@json.stringify(args.get("content").unwrap()))
-    Some(other) =>
-      match other {
-        Json::Null => None
-        _ => Some(@json.stringify(other))
-      }
-    None => {
-      let copy : Map[String, Json] = Map([])
-      for k, v in args {
-        if k == "processDesignId" || k == "processDefineId" || k == "operator" || k == "id" || k == "pageNum" || k == "pageSize" {
-          continue
-        }
-        copy[k] = v
-      }
-      if copy.length() == 0 {
-        None
-      } else {
-        Some(@json.stringify(obj_json(copy)))
-      }
-    }
-  }
-}
-
-///|
-/// candidate 行键归一（issues/80）
-pub fn candidate_row(actor_id : String, real_name : String, extra : Map[String, Json]?) -> Json {
-  // issues/178 R12（spec 06:722）：id 三级回落 src.id → src.userId（user_id）→ actorId，
-  // 一律字符串化；realName 缺省回落归一后 id。修前 id 恒 actor_id（provider 真主键被丢）。
-  let mut id = actor_id
-  match extra {
-    Some(src) => {
-      let pick : String? = match src.get("id") {
-        Some(v) => @json.as_str(v)
-        None =>
-          match src.get("userId") {
-            Some(v) => @json.as_str(v)
-            None =>
-              match src.get("user_id") {
-                Some(v) => @json.as_str(v)
-                None => None
-              }
-          }
-      }
-      match pick {
-        Some(s) => id = s
-        None => ()
-      }
-    }
-    None => ()
-  }
-  let row = @json.empty_object()
-  @json.obj_set(row, "id", @json.string_of(id))
-  @json.obj_set(row, "realName", @json.string_of(if real_name.is_empty() { id } else { real_name }))
-  match extra {
-    Some(src) => {
-      match src.get("userId") {
-        Some(v) => @json.obj_set(row, "userId", v)
-        None =>
-          match src.get("user_id") {
-            Some(v) => @json.obj_set(row, "userId", v)
-            None => ()
-          }
-      }
-      match src.get("userName") {
-        Some(v) => @json.obj_set(row, "userName", v)
-        None =>
-          match src.get("user_name") {
-            Some(v) => @json.obj_set(row, "userName", v)
-            None => ()
-          }
-      }
-      match src.get("deptName") {
-        Some(v) => @json.obj_set(row, "deptName", v)
-        None =>
-          match src.get("dept_name") {
-            Some(v) => @json.obj_set(row, "deptName", v)
-            None => ()
-          }
-      }
-    }
-    None => ()
-  }
-  row
-}
-
-///|
-/// args → FlowData（剔除 facade 控制键）
-pub fn args_to_flow_data(args : Map[String, Json], exclude : Array[String]) -> @json.FlowData {
-  let fd = @json.FlowData::new()
-  for k, v in args {
-    let mut skip = false
-    for e in exclude {
-      if k == e {
-        skip = true
-      }
-    }
-    if !skip {
-      fd.insert(k, v)
-    }
-  }
-  fd
-}
+              _ => raise @error.Business("非法id: \{@json.stringify(v)}")
+            }
+        }
+      }
+    _ => ()
+  }
+  if out.is_empty() {
+    match arg_i64(args, "id") {
+      Some(v) => out.push(v)
+      None => ()
+    }
+  }
+  if out.is_empty() {
+    raise @error.Business("id 缺失或非法")
+  }
+  out
+}
+
+///|
+/// submitType 双收（数字/字符串）
+pub fn arg_submit_type(args : Map[String, Json], key~ : String = "submitType") -> Int64? raise @error.JeeflowError {
+  arg_i64(args, key)
+}
+
+///|
+/// content：字符串/对象/顶层 JSON 兼容（issues/27）
+pub fn content_bytes(args : Map[String, Json]) -> String? {
+  match args.get("content") {
+    Some(Json::String(s)) => Some(s)
+    Some(Json::Object(_)) | Some(Json::Array(_)) => Some(@json.stringify(args.get("content").unwrap()))
+    Some(other) =>
+      match other {
+        Json::Null => None
+        _ => Some(@json.stringify(other))
+      }
+    None => {
+      let copy : Map[String, Json] = Map([])
+      for k, v in args {
+        if k == "processDesignId" || k == "processDefineId" || k == "operator" || k == "id" || k == "pageNum" || k == "pageSize" {
+          continue
+        }
+        copy[k] = v
+      }
+      if copy.length() == 0 {
+        None
+      } else {
+        Some(@json.stringify(obj_json(copy)))
+      }
+    }
+  }
+}
+
+///|
+/// candidate 行键归一（issues/80）
+pub fn candidate_row(actor_id : String, real_name : String, extra : Map[String, Json]?) -> Json {
+  // issues/178 R12（spec 06:722）：id 三级回落 src.id → src.userId（user_id）→ actorId，
+  // 一律字符串化；realName 缺省回落归一后 id。修前 id 恒 actor_id（provider 真主键被丢）。
+  let mut id = actor_id
+  match extra {
+    Some(src) => {
+      let pick : String? = match src.get("id") {
+        Some(v) => @json.as_str(v)
+        None =>
+          match src.get("userId") {
+            Some(v) => @json.as_str(v)
+            None =>
+              match src.get("user_id") {
+                Some(v) => @json.as_str(v)
+                None => None
+              }
+          }
+      }
+      match pick {
+        Some(s) => id = s
+        None => ()
+      }
+    }
+    None => ()
+  }
+  let row = @json.empty_object()
+  @json.obj_set(row, "id", @json.string_of(id))
+  @json.obj_set(row, "realName", @json.string_of(if real_name.is_empty() { id } else { real_name }))
+  match extra {
+    Some(src) => {
+      match src.get("userId") {
+        Some(v) => @json.obj_set(row, "userId", v)
+        None =>
+          match src.get("user_id") {
+            Some(v) => @json.obj_set(row, "userId", v)
+            None => ()
+          }
+      }
+      match src.get("userName") {
+        Some(v) => @json.obj_set(row, "userName", v)
+        None =>
+          match src.get("user_name") {
+            Some(v) => @json.obj_set(row, "userName", v)
+            None => ()
+          }
+      }
+      match src.get("deptName") {
+        Some(v) => @json.obj_set(row, "deptName", v)
+        None =>
+          match src.get("dept_name") {
+            Some(v) => @json.obj_set(row, "deptName", v)
+            None => ()
+          }
+      }
+    }
+    None => ()
+  }
+  row
+}
+
+///|
+/// args → FlowData（剔除 facade 控制键）
+pub fn args_to_flow_data(args : Map[String, Json], exclude : Array[String]) -> @json.FlowData {
+  let fd = @json.FlowData::new()
+  for k, v in args {
+    let mut skip = false
+    for e in exclude {
+      if k == e {
+        skip = true
+      }
+    }
+    if !skip {
+      fd.insert(k, v)
+    }
+  }
+  fd
+}

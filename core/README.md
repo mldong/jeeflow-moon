@@ -14,7 +14,7 @@ expressions / users / transactions are all SPI.
 ```bash
 moon new my-flow && cd my-flow
 moon add mldong/jeeflow-core      # this module: engine + SPI + memory repository
-moon add moonbitlang/async        # engine methods are async; async main needs it
+moon add moonbitlang/async@0.22.7        # engine methods are async; async main needs it
 ```
 
 If you want the one-call action surface (`flow(action, args)`) instead of driving the engine
@@ -37,6 +37,10 @@ import {
   "mldong/jeeflow-core/metadata" @metadata,
   "moonbitlang/async",
 }
+
+// `async fn main` needs this package; moonc 0.10.22 unused_package does not
+// count the async-main use, so silence that one lint for this demo package.
+warnings = "-unused_package"
 
 pkgtype(kind: "executable")
 ```

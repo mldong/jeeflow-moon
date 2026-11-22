@@ -1,292 +1,292 @@
-// demo HTTP server :8092 —— POST /wf/{action} 全转发 facade + /health + /api/stats + /api/reset + CORS
-// demo 层零业务（方案 §2.6）；JEEFLOW_DEMO_STORE=memory(默认)|mysql；demo 层 body 解析失败→99999999+stderr 日志（rust 88 教训）
-
-///|
-pub(all) struct App {
-  mut store : String
-  mut memory_repo : @memory.MemoryRepository
-  mut mem_facade : @facade.Facade[@memory.MemoryRepository, @memory.MemoryRepository]
-  mut mysql_repo : @repo.MysqlRepository?
-  mut my_ctx : @spi.Ctx[@repo.MysqlRepository, @spi.NoExtRepository]?
-  mut seeded_defines : Int64
-}
-
-///|
-pub async fn App::memory_only() -> App raise {
-  let repo = @memory.MemoryRepository::new()
-  seed_memory(repo)
-  let n = 0L
-  let ctx = make_mem_ctx(repo)
-  let f = @facade.Facade::make(ctx)
-  // T003：业务数据种子（引擎真实启动 16 进行中 + 9 已完成 + 8 委托）
-  seed_business(f)
-  {
-    store: "memory",
-    memory_repo: repo,
-    mem_facade: f,
-    mysql_repo: None,
-    my_ctx: None,
-    seeded_defines: n,
-  }
-}
-
-///|
-fn make_mem_ctx(repo : @memory.MemoryRepository) -> @spi.Ctx[@memory.MemoryRepository, @memory.MemoryRepository] {
-  let ctx = @spi.Ctx::new(repo, repo)
-  let gen = @id_gen.DefaultIdGenerator::new(2L)
-  let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
-  let ctx3 = ctx2.with_user_provider(@spi.async_of_sync(demo_user_provider))
-  let ctx4 = ctx3.with_org_user_provider(demo_org_provider())
-  let _ = ctx4.with_user_search_provider(demo_user_search_provider())
-  ctx4
-}
-
-///|
-fn make_my_ctx(repo : @repo.MysqlRepository) -> @spi.Ctx[@repo.MysqlRepository, @spi.NoExtRepository] {
-  let ctx = @spi.Ctx::new(repo, @spi.NoExtRepository::new())
-  let gen = @id_gen.DefaultIdGenerator::new(2L)
-  let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
-  let ctx3 = ctx2.with_user_provider(@spi.async_of_sync(demo_user_provider))
-  let ctx4 = ctx3.with_org_user_provider(demo_org_provider())
-  let _ = ctx4.with_user_search_provider(demo_user_search_provider())
-  ctx4
-}
-
-///|
-pub fn App::mysql_mode() -> App raise {
-  let repo = @repo.MysqlRepository::from_env()
-  let ctx4 = make_my_ctx(repo)
-  {
-    store: "mysql",
-    memory_repo: @memory.MemoryRepository::new(),
-    mem_facade: @facade.Facade::make(make_mem_ctx(@memory.MemoryRepository::new())),
-    mysql_repo: Some(repo),
-    my_ctx: Some(ctx4),
-    seeded_defines: 0L,
-  }
-}
-
-///|
-pub async fn App::create() -> App raise {
-  // 时钟基准先于装配注入（issues/120 §9：引擎不自取基准，由宿主供给；本栈无集成壳 ⇒ demo 就是宿主）
-  apply_clock_from_env()
-  // 存储模式判定。⚠️ 两条静默陷阱都在此收口（09-30 新手盲测 B2）：
-  // ① 变量名容易拼成 JEFFLOW_DEMO_STORE（两个 F）——本 demo 读的是 JEEFLOW_*（两个 E），
-  //    旧写法下拼错＝整条被忽略、静默起 memory，而 /api/reset 照样回 code=0，看起来「一切正常」；
-  // ② 值不是逐字 mysql/memory（大小写、Mysql、空串都算）——旧代码用 `_` 臂一走了之。
-  // 现口径：两种情况各打一行警告，只认逐字值；存储模式始终以启动横幅的 store= 为准。
-  match @env.get_env_var("JEFFLOW_DEMO_STORE") {
-    Some(v) =>
-      println(
-        "警告：检测到 JEFFLOW_DEMO_STORE=" + v + "（两个 F），但本 demo 读的是 JEEFLOW_DEMO_STORE（两个 E）" +
-          " ⇒ 那条变量没生效，本次仍按下面的实际模式起；想真连库请改拼法",
-      )
-    None => ()
-  }
-  match @env.get_env_var("JEEFLOW_DEMO_STORE") {
-    Some("mysql") => App::mysql_mode()
-    Some("memory") => App::memory_only()
-    Some(other) => {
-      println(
-        "警告：JEEFLOW_DEMO_STORE=" + other +
-          " 既不是 memory 也不是 mysql（逐字比对、大小写敏感） ⇒ 回落 memory；想连真库请写 mysql，并以启动横幅的 store= 为准",
-      )
-      App::memory_only()
-    }
-    None => App::memory_only()
-  }
-}
-
-///|
-/// 时钟基准注入。`JEEFLOW_TZ_OFFSET` 接受**东为正**的小时偏移，三种写法：
-/// `8` / `+8` / `-5`（整小时）、`5.5` / `-9.5`（小数小时）、`+05:30`（时:分）。
-///
-/// **未配或解析失败 ⇒ 不注入**，保持引擎默认臂 UTC —— 宁可显示 UTC，也不静默替用户猜一个区
-/// （这也是 120 那条契约句的可执行形状：基准由宿主注入的时钟决定，未注入不作跨栈承诺）。
-pub fn apply_clock_from_env() -> Unit {
-  match @env.get_env_var("JEEFLOW_TZ_OFFSET") {
-    None => println("时钟基准 = UTC（未配 JEEFLOW_TZ_OFFSET）")
-    Some(raw) =>
-      match parse_tz_offset_seconds(raw) {
-        Some(secs) => {
-          let delta = secs.to_int64()
-          @model.set_clock(Some(fn() { @model.format_unix_utc(@model.epoch_secs() + delta) }))
-          println("时钟基准 = JEEFLOW_TZ_OFFSET=\{raw}（\{secs} 秒）")
-        }
-        None => println("时钟基准 = UTC（JEEFLOW_TZ_OFFSET=\{raw} 解析失败）")
-      }
-  }
-}
-
-///|
-/// 纯数字解析。本工具链的 `@string.parse_int` 是 raise 形态（旧写法 `(...)` 配 Ok/Err
-/// 在两代编译器间含义不同），而这里偏移量只允许十进制数字，自己扫更直白。
-fn digits_to_int(s : String) -> Int? {
-  let cs = s.to_array()
-  if cs.is_empty() {
-    return None
-  }
-  let zero = '0'.to_int()
-  let mut acc = 0
-  for ch in cs {
-    let d = ch.to_int() - zero
-    if d < 0 || d > 9 {
-      return None
-    }
-    acc = acc * 10 + d
-  }
-  Some(acc)
-}
-
-///|
-/// 解析小时偏移为秒。上限 UTC+14（50400 秒），越界或格式不符 ⇒ None（调用侧回落 UTC）。
-pub fn parse_tz_offset_seconds(raw : String) -> Int? {
-  let s = raw.trim(chars=" \t\r\n").to_owned()
-  if s.is_empty() {
-    return None
-  }
-  let neg = s.has_prefix("-")
-  let body =
-    if s.has_prefix("+") || s.has_prefix("-") {
-      s[1:s.length()].to_owned()
-    } else {
-      s
-    }
-  if body.is_empty() {
-    return None
-  }
-  let magnitude =
-    if body.contains_char(':') {
-      hh_mm_to_secs(body)
-    } else if body.contains_char('.') {
-      decimal_hours_to_secs(body)
-    } else {
-      match digits_to_int(body) {
-        Some(h) => Some(h * 3600)
-        None => None
-      }
-    }
-  match magnitude {
-    Some(v) =>
-      if v > 50400 {
-        None
-      } else {
-        Some(if neg { -v } else { v })
-      }
-    None => None
-  }
-}
-
-///|
-/// `HH:MM` → 秒（只允许一个冒号）
-fn hh_mm_to_secs(body : String) -> Int? {
-  match body.find(":") {
-    None => None
-    Some(i) => {
-      let hs = body[0:i].to_owned()
-      let ms = body[i + 1:body.length()].to_owned()
-      if ms.contains_char(':') {
-        return None
-      }
-      match (digits_to_int(hs), digits_to_int(ms)) {
-        (Some(h), Some(m)) =>
-          if m > 59 {
-            None
-          } else {
-            Some(h * 3600 + m * 60)
-          }
-        _ => None
-      }
-    }
-  }
-}
-
-///|
-/// `H.M` → 秒（只允许一个小数点；小数补齐/截断到两位后按「百分之一小时」换算：
-/// `.5` ⇒ 50 ⇒ 1800 秒，`.75` ⇒ 45 ⇒ 2700 秒）
-fn decimal_hours_to_secs(body : String) -> Int? {
-  match body.find(".") {
-    None => None
-    Some(i) => {
-      let hs = body[0:i].to_owned()
-      let fs = body[i + 1:body.length()].to_owned()
-      if fs.contains_char('.') {
-        return None
-      }
-      let h =
-        match digits_to_int(hs) {
-          Some(v) => v
-          None => return None
-        }
-      let pad2 =
-        if fs.is_empty() {
-          "00"
-        } else if fs.length() == 1 {
-          fs + "0"
-        } else {
-          fs[0:2].to_owned()
-        }
-      match digits_to_int(pad2) {
-        Some(dd) => Some(h * 3600 + dd * 36)
-        None => None
-      }
-    }
-  }
-}
-
-///|
-/// /api/reset：memory 重建状态 + 重载种子 + 复跑业务种子；mysql 仅清 demo 自身不可行（共享库）→ 回 ok
-pub async fn App::reset(self : App) -> Unit raise {
-  if self.store == "memory" {
-    let repo = @memory.MemoryRepository::new()
-    seed_memory(repo)
-    self.memory_repo = repo
-    let f = @facade.Facade::make(make_mem_ctx(repo))
-    self.mem_facade = f
-    seed_business(f)
-  }
-}
-
-///|
-/// 请求分发：返回 (status, json)
-pub async fn App::handle(self : App, _meth : String, path : String, query_string : String, body : String) -> (Int, String) raise {
-  if path == "/health" {
-    return (200, "{\"status\":\"ok\",\"engine\":\"jeeflow-moon\",\"store\":\"" + self.store + "\"}")
-  }
-  if path == "/api/reset" {
-    self.reset()
-    return (200, "{\"code\":0,\"msg\":\"成功\"}")
-  }
-  if path == "/api/stats" {
-    let operator = query_param(query_string, "operator").unwrap_or("user1")
-    let todo = match self.store {
-      "mysql" =>
-        match self.mysql_repo {
-          Some(base) => base.new_request().count_todo_tasks(operator)
-          None => 0L
-        }
-      _ => self.memory_repo.count_todo_tasks(operator)
-    }
-    let q = @model.PageQuery::new(1L, 1L)
-    q.set_operator(Some(operator))
-    let instance_count = match self.store {
-      "mysql" =>
-        match self.mysql_repo {
-          Some(base) => base.new_request().page_instances(q).record_count()
-          None => 0L
-        }
-      _ => self.memory_repo.page_instances(q).record_count()
-    }
-    let obj = @json.empty_object()
-    @json.obj_set(obj, "todoCount", @json.number_of(todo))
-    @json.obj_set(obj, "instanceCount", @json.number_of(instance_count))
-    return (200, @json.stringify(obj))
-  }
-  // POST /wf/{action} → facade 全转发
-  if path.has_prefix("/wf/") {
-    let action = path[4:].to_owned()
-    // body 解析失败 → 99999999 + stderr（rust issue 88 教训）
-    let trimmed = body.trim(chars=" \t\r\n").to_owned()
+// demo HTTP server :8092 —— POST /wf/{action} 全转发 facade + /health + /api/stats + /api/reset + CORS
+// demo 层零业务（方案 §2.6）；JEEFLOW_DEMO_STORE=memory(默认)|mysql；demo 层 body 解析失败→99999999+stderr 日志（rust 88 教训）
+
+///|
+pub(all) struct App {
+  mut store : String
+  mut memory_repo : @memory.MemoryRepository
+  mut mem_facade : @facade.Facade[@memory.MemoryRepository, @memory.MemoryRepository]
+  mut mysql_repo : @repo.MysqlRepository?
+  mut my_ctx : @spi.Ctx[@repo.MysqlRepository, @spi.NoExtRepository]?
+  mut seeded_defines : Int64
+}
+
+///|
+pub async fn App::memory_only() -> App raise {
+  let repo = @memory.MemoryRepository::new()
+  seed_memory(repo)
+  let n = 0L
+  let ctx = make_mem_ctx(repo)
+  let f = @facade.Facade::make(ctx)
+  // T003：业务数据种子（引擎真实启动 16 进行中 + 9 已完成 + 8 委托）
+  seed_business(f)
+  {
+    store: "memory",
+    memory_repo: repo,
+    mem_facade: f,
+    mysql_repo: None,
+    my_ctx: None,
+    seeded_defines: n,
+  }
+}
+
+///|
+fn make_mem_ctx(repo : @memory.MemoryRepository) -> @spi.Ctx[@memory.MemoryRepository, @memory.MemoryRepository] {
+  let ctx = @spi.Ctx::new(repo, repo)
+  let gen = @id_gen.DefaultIdGenerator::new(2L)
+  let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
+  let ctx3 = ctx2.with_user_provider(@spi.async_of_sync(demo_user_provider))
+  let ctx4 = ctx3.with_org_user_provider(demo_org_provider())
+  let _ = ctx4.with_user_search_provider(demo_user_search_provider())
+  ctx4
+}
+
+///|
+fn make_my_ctx(repo : @repo.MysqlRepository) -> @spi.Ctx[@repo.MysqlRepository, @spi.NoExtRepository] {
+  let ctx = @spi.Ctx::new(repo, @spi.NoExtRepository::new())
+  let gen = @id_gen.DefaultIdGenerator::new(2L)
+  let ctx2 = ctx.with_id_generator(fn() { gen.next_id() })
+  let ctx3 = ctx2.with_user_provider(@spi.async_of_sync(demo_user_provider))
+  let ctx4 = ctx3.with_org_user_provider(demo_org_provider())
+  let _ = ctx4.with_user_search_provider(demo_user_search_provider())
+  ctx4
+}
+
+///|
+pub fn App::mysql_mode() -> App raise {
+  let repo = @repo.MysqlRepository::from_env()
+  let ctx4 = make_my_ctx(repo)
+  {
+    store: "mysql",
+    memory_repo: @memory.MemoryRepository::new(),
+    mem_facade: @facade.Facade::make(make_mem_ctx(@memory.MemoryRepository::new())),
+    mysql_repo: Some(repo),
+    my_ctx: Some(ctx4),
+    seeded_defines: 0L,
+  }
+}
+
+///|
+pub async fn App::create() -> App raise {
+  // 时钟基准先于装配注入（issues/120 §9：引擎不自取基准，由宿主供给；本栈无集成壳 ⇒ demo 就是宿主）
+  apply_clock_from_env()
+  // 存储模式判定。⚠️ 两条静默陷阱都在此收口（09-30 新手盲测 B2）：
+  // ① 变量名容易拼成 JEFFLOW_DEMO_STORE（两个 F）——本 demo 读的是 JEEFLOW_*（两个 E），
+  //    旧写法下拼错＝整条被忽略、静默起 memory，而 /api/reset 照样回 code=0，看起来「一切正常」；
+  // ② 值不是逐字 mysql/memory（大小写、Mysql、空串都算）——旧代码用 `_` 臂一走了之。
+  // 现口径：两种情况各打一行警告，只认逐字值；存储模式始终以启动横幅的 store= 为准。
+  match @env.get_env_var("JEFFLOW_DEMO_STORE") {
+    Some(v) =>
+      println(
+        "警告：检测到 JEFFLOW_DEMO_STORE=" + v + "（两个 F），但本 demo 读的是 JEEFLOW_DEMO_STORE（两个 E）" +
+          " ⇒ 那条变量没生效，本次仍按下面的实际模式起；想真连库请改拼法",
+      )
+    None => ()
+  }
+  match @env.get_env_var("JEEFLOW_DEMO_STORE") {
+    Some("mysql") => App::mysql_mode()
+    Some("memory") => App::memory_only()
+    Some(other) => {
+      println(
+        "警告：JEEFLOW_DEMO_STORE=" + other +
+          " 既不是 memory 也不是 mysql（逐字比对、大小写敏感） ⇒ 回落 memory；想连真库请写 mysql，并以启动横幅的 store= 为准",
+      )
+      App::memory_only()
+    }
+    None => App::memory_only()
+  }
+}
+
+///|
+/// 时钟基准注入。`JEEFLOW_TZ_OFFSET` 接受**东为正**的小时偏移，三种写法：
+/// `8` / `+8` / `-5`（整小时）、`5.5` / `-9.5`（小数小时）、`+05:30`（时:分）。
+///
+/// **未配或解析失败 ⇒ 不注入**，保持引擎默认臂 UTC —— 宁可显示 UTC，也不静默替用户猜一个区
+/// （这也是 120 那条契约句的可执行形状：基准由宿主注入的时钟决定，未注入不作跨栈承诺）。
+pub fn apply_clock_from_env() -> Unit {
+  match @env.get_env_var("JEEFLOW_TZ_OFFSET") {
+    None => println("时钟基准 = UTC（未配 JEEFLOW_TZ_OFFSET）")
+    Some(raw) =>
+      match parse_tz_offset_seconds(raw) {
+        Some(secs) => {
+          let delta = secs.to_int64()
+          @model.set_clock(Some(fn() { @model.format_unix_utc(@model.epoch_secs() + delta) }))
+          println("时钟基准 = JEEFLOW_TZ_OFFSET=\{raw}（\{secs} 秒）")
+        }
+        None => println("时钟基准 = UTC（JEEFLOW_TZ_OFFSET=\{raw} 解析失败）")
+      }
+  }
+}
+
+///|
+/// 纯数字解析。本工具链的 `@string.parse_int` 是 raise 形态（旧写法 `(...)` 配 Ok/Err
+/// 在两代编译器间含义不同），而这里偏移量只允许十进制数字，自己扫更直白。
+fn digits_to_int(s : String) -> Int? {
+  let cs = s.to_array()
+  if cs.is_empty() {
+    return None
+  }
+  let zero = '0'.to_int()
+  let mut acc = 0
+  for ch in cs {
+    let d = ch.to_int() - zero
+    if d < 0 || d > 9 {
+      return None
+    }
+    acc = acc * 10 + d
+  }
+  Some(acc)
+}
+
+///|
+/// 解析小时偏移为秒。上限 UTC+14（50400 秒），越界或格式不符 ⇒ None（调用侧回落 UTC）。
+pub fn parse_tz_offset_seconds(raw : String) -> Int? {
+  let s = raw.trim(chars=" \t\r\n").to_owned()
+  if s.is_empty() {
+    return None
+  }
+  let neg = s.has_prefix("-")
+  let body =
+    if s.has_prefix("+") || s.has_prefix("-") {
+      s[1:s.length()].to_owned()
+    } else {
+      s
+    }
+  if body.is_empty() {
+    return None
+  }
+  let magnitude =
+    if body.contains_char(':') {
+      hh_mm_to_secs(body)
+    } else if body.contains_char('.') {
+      decimal_hours_to_secs(body)
+    } else {
+      match digits_to_int(body) {
+        Some(h) => Some(h * 3600)
+        None => None
+      }
+    }
+  match magnitude {
+    Some(v) =>
+      if v > 50400 {
+        None
+      } else {
+        Some(if neg { -v } else { v })
+      }
+    None => None
+  }
+}
+
+///|
+/// `HH:MM` → 秒（只允许一个冒号）
+fn hh_mm_to_secs(body : String) -> Int? {
+  match body.find(":") {
+    None => None
+    Some(i) => {
+      let hs = body[0:i].to_owned()
+      let ms = body[i + 1:body.length()].to_owned()
+      if ms.contains_char(':') {
+        return None
+      }
+      match (digits_to_int(hs), digits_to_int(ms)) {
+        (Some(h), Some(m)) =>
+          if m > 59 {
+            None
+          } else {
+            Some(h * 3600 + m * 60)
+          }
+        _ => None
+      }
+    }
+  }
+}
+
+///|
+/// `H.M` → 秒（只允许一个小数点；小数补齐/截断到两位后按「百分之一小时」换算：
+/// `.5` ⇒ 50 ⇒ 1800 秒，`.75` ⇒ 45 ⇒ 2700 秒）
+fn decimal_hours_to_secs(body : String) -> Int? {
+  match body.find(".") {
+    None => None
+    Some(i) => {
+      let hs = body[0:i].to_owned()
+      let fs = body[i + 1:body.length()].to_owned()
+      if fs.contains_char('.') {
+        return None
+      }
+      let h =
+        match digits_to_int(hs) {
+          Some(v) => v
+          None => return None
+        }
+      let pad2 =
+        if fs.is_empty() {
+          "00"
+        } else if fs.length() == 1 {
+          fs + "0"
+        } else {
+          fs[0:2].to_owned()
+        }
+      match digits_to_int(pad2) {
+        Some(dd) => Some(h * 3600 + dd * 36)
+        None => None
+      }
+    }
+  }
+}
+
+///|
+/// /api/reset：memory 重建状态 + 重载种子 + 复跑业务种子；mysql 仅清 demo 自身不可行（共享库）→ 回 ok
+pub async fn App::reset(self : App) -> Unit raise {
+  if self.store == "memory" {
+    let repo = @memory.MemoryRepository::new()
+    seed_memory(repo)
+    self.memory_repo = repo
+    let f = @facade.Facade::make(make_mem_ctx(repo))
+    self.mem_facade = f
+    seed_business(f)
+  }
+}
+
+///|
+/// 请求分发：返回 (status, json)
+pub async fn App::handle(self : App, _meth : String, path : String, query_string : String, body : String) -> (Int, String) raise {
+  if path == "/health" {
+    return (200, "{\"status\":\"ok\",\"engine\":\"jeeflow-moon\",\"store\":\"" + self.store + "\"}")
+  }
+  if path == "/api/reset" {
+    self.reset()
+    return (200, "{\"code\":0,\"msg\":\"成功\"}")
+  }
+  if path == "/api/stats" {
+    let operator = query_param(query_string, "operator").unwrap_or("user1")
+    let todo = match self.store {
+      "mysql" =>
+        match self.mysql_repo {
+          Some(base) => base.new_request().count_todo_tasks(operator)
+          None => 0L
+        }
+      _ => self.memory_repo.count_todo_tasks(operator)
+    }
+    let q = @model.PageQuery::new(1L, 1L)
+    q.set_operator(Some(operator))
+    let instance_count = match self.store {
+      "mysql" =>
+        match self.mysql_repo {
+          Some(base) => base.new_request().page_instances(q).record_count()
+          None => 0L
+        }
+      _ => self.memory_repo.page_instances(q).record_count()
+    }
+    let obj = @json.empty_object()
+    @json.obj_set(obj, "todoCount", @json.number_of(todo))
+    @json.obj_set(obj, "instanceCount", @json.number_of(instance_count))
+    return (200, @json.stringify(obj))
+  }
+  // POST /wf/{action} → facade 全转发
+  if path.has_prefix("/wf/") {
+    let action = path[4:].to_owned()
+    // body 解析失败 → 99999999 + stderr（rust issue 88 教训）
+    let trimmed = body.trim(chars=" \t\r\n").to_owned()
     // parse_json 现在直接 raise（不再返回 Result）：三档判据原样保留
     // ——空 body 当空对象；坏 JSON 打印并转 99999999（rust issue 88 的教训）；非对象另一条文案。
     let parsed = if trimmed.is_empty() {
@@ -314,71 +314,71 @@ pub async fn App::handle(self : App, _meth : String, path : String, query_string
         raise @error.Business("body 必须是 JSON 对象")
       }
     }
-    let result = match self.store {
-      "mysql" =>
-        match self.my_ctx {
-          // 一个请求＝一个仓储实例：issues/144 方案 b 的装配纪律。
-          // ⚠ 必须走 for_request **新建派生体**——本栈结构体是引用语义，原地换 base 的字段
-          //   会让所有请求共用同一个仓储实例（＝共用一个事务槽），就是 144 换个载体重演。
-          //   id 生成器等闭包字段按引用沿用母体，不每请求重置（雪花同毫秒各自归零会撞 id）。
-          Some(ctx) => {
-            let r = ctx.repository().new_request()
-            let f = @facade.Facade::make(ctx.for_request(r, @spi.NoExtRepository::new()))
-            // audit8 R111：动作级事务。f.flow 内部已把业务错误转信封 ⇒ 按 code 判回滚；
-            // 提交/开始错误不得被当成业务信封吞掉（用 rollback 标志区分）。
-            let original : Ref[Json] = Ref(@json.null_json())
-            let rollback = Ref(false)
-            try {
-              r.execute_in_tx(async fn(_rr) {
-                let out = f.flow(action, args)
-                original.val = out
-                if @json.get_i64(out, "code").unwrap_or(0L) != 0L {
-                  rollback.val = true
-                  raise @error.Business("rollback")
-                }
-              })
-              original.val
-            } catch {
-              _ =>
-                if rollback.val {
-                  original.val
-                } else {
-                  raise @error.Business("事务失败")
-                }
-            }
-          }
-          None => err_local("store 未初始化")
-        }
-      _ => self.mem_facade.flow(action, args)
-    }
-    return (200, @json.stringify(result))
-  }
-  (404, "{\"code\":99999999,\"msg\":\"unknown path: " + path + "\"}")
-}
-
-///|
-fn err_local(msg : String) -> Json {
-  let o = @json.empty_object()
-  @json.obj_set(o, "code", @json.number_of(99999999L))
-  @json.obj_set(o, "msg", @json.string_of(msg))
-  o
-}
-
-///|
-fn query_param(qs : String, key : String) -> String? {
-  if qs.is_empty() {
-    return None
-  }
-  for pair in qs.split("&") {
-    let kv = pair.to_owned()
-    let idx = kv.find("=")
-    match idx {
-      Some(i) =>
-        if kv[0:i] == key {
-          return Some(kv[i + 1:].to_owned())
-        }
-      None => ()
-    }
-  }
-  None
-}
+    let result = match self.store {
+      "mysql" =>
+        match self.my_ctx {
+          // 一个请求＝一个仓储实例：issues/144 方案 b 的装配纪律。
+          // ⚠ 必须走 for_request **新建派生体**——本栈结构体是引用语义，原地换 base 的字段
+          //   会让所有请求共用同一个仓储实例（＝共用一个事务槽），就是 144 换个载体重演。
+          //   id 生成器等闭包字段按引用沿用母体，不每请求重置（雪花同毫秒各自归零会撞 id）。
+          Some(ctx) => {
+            let r = ctx.repository().new_request()
+            let f = @facade.Facade::make(ctx.for_request(r, @spi.NoExtRepository::new()))
+            // audit8 R111：动作级事务。f.flow 内部已把业务错误转信封 ⇒ 按 code 判回滚；
+            // 提交/开始错误不得被当成业务信封吞掉（用 rollback 标志区分）。
+            let original : Ref[Json] = Ref(@json.null_json())
+            let rollback = Ref(false)
+            try {
+              r.execute_in_tx(async fn(_rr) {
+                let out = f.flow(action, args)
+                original.val = out
+                if @json.get_i64(out, "code").unwrap_or(0L) != 0L {
+                  rollback.val = true
+                  raise @error.Business("rollback")
+                }
+              })
+              original.val
+            } catch {
+              _ =>
+                if rollback.val {
+                  original.val
+                } else {
+                  raise @error.Business("事务失败")
+                }
+            }
+          }
+          None => err_local("store 未初始化")
+        }
+      _ => self.mem_facade.flow(action, args)
+    }
+    return (200, @json.stringify(result))
+  }
+  (404, "{\"code\":99999999,\"msg\":\"unknown path: " + path + "\"}")
+}
+
+///|
+fn err_local(msg : String) -> Json {
+  let o = @json.empty_object()
+  @json.obj_set(o, "code", @json.number_of(99999999L))
+  @json.obj_set(o, "msg", @json.string_of(msg))
+  o
+}
+
+///|
+fn query_param(qs : String, key : String) -> String? {
+  if qs.is_empty() {
+    return None
+  }
+  for pair in qs.split("&") {
+    let kv = pair.to_owned()
+    let idx = kv.find("=")
+    match idx {
+      Some(i) =>
+        if kv[0:i] == key {
+          return Some(kv[i + 1:].to_owned())
+        }
+      None => ()
+    }
+  }
+  None
+}

@@ -15,7 +15,7 @@ engine core (its metadata, writer and interceptor types are all in terms of `Ctx
 moon new my-persist && cd my-persist
 moon add mldong/jeeflow-core      # engine + SPI + memory repository
 moon add mldong/jeeflow-persist   # this module: metadata-driven persist
-moon add moonbitlang/async        # async methods need it for async main
+moon add moonbitlang/async@0.22.7        # async methods need it for async main
 ```
 
 ## Quickstart
@@ -32,6 +32,10 @@ import {
   "mldong/jeeflow-persist" @persist,
   "moonbitlang/async",
 }
+
+// `async fn main` needs this package; moonc 0.10.22 unused_package does not
+// count the async-main use, so silence that one lint for this demo package.
+warnings = "-unused_package"
 
 pkgtype(kind: "executable")
 ```
