@@ -349,7 +349,7 @@ async test "fu: 节点未设置 ⇒ 空串（回归：不炸流程）" {
 }
 
 ///|
-async test "fu: 现存 form_field handler 查找行为不变（回归钉子）" {
+async test "fu: 现存 form_field handler 不被 254 的并集扩面（回归钉子）" {
   let old = @interceptor.form_field_assignee_handler()
   let prefixed = @json.FlowData::new()
   prefixed.insert_str("f_node1", "user2")
@@ -361,14 +361,54 @@ async test "fu: 现存 form_field handler 查找行为不变（回归钉子）" 
   let bare_out = old(exec_of("node1", bare))
   assert_eq(bare_out, "user3")
 
-  // #／_NN 两档是新 handler 专属——旧 handler 不许跟着扩面
+  // `#` 档是新 handler 专属——旧 handler 不许跟着扩面
   let hash_only = @json.FlowData::new()
   hash_only.insert_str("userId", "u_h")
   let hash_out = old(exec_of("manager#userId", hash_only))
   assert_eq(hash_out, "")
 
+  // `_NN` 档老类本来就应有（issues/48 第三档），issues/255 补齐；但只查 base 裸名，不带 f_
   let suffix_only = @json.FlowData::new()
   suffix_only.insert_str("manager", "u_m")
   let suffix_out = old(exec_of("manager_01", suffix_only))
-  assert_eq(suffix_out, "")
+  assert_eq(suffix_out, "u_m")
+}
+
+///|
+async test "i255: 老 form_field handler 第三档＝去后缀查裸名 base（正／负）" {
+  let old = @interceptor.form_field_assignee_handler()
+
+  let hit = @json.FlowData::new()
+  hit.insert_str("task", "u_a,u_b")
+  assert_eq(old(exec_of("task_01", hit)), "u_a,u_b")
+
+  // 惰性量词的最早可切点：a_b_01 的 base 是 a_b，不是 a
+  let two_under = @json.FlowData::new()
+  two_under.insert_str("a", "u_x")
+  two_under.insert_str("a_b", "u_c")
+  assert_eq(old(exec_of("a_b_01", two_under)), "u_c")
+
+  // 优先级：f_<id> → 裸名 → base 裸名
+  let prio_f = @json.FlowData::new()
+  prio_f.insert_str("f_task_01", "u_1")
+  prio_f.insert_str("task_01", "u_2")
+  prio_f.insert_str("task", "u_3")
+  assert_eq(old(exec_of("task_01", prio_f)), "u_1")
+  let prio_bare = @json.FlowData::new()
+  prio_bare.insert_str("task_01", "u_2")
+  prio_bare.insert_str("task", "u_3")
+  assert_eq(old(exec_of("task_01", prio_bare)), "u_2")
+
+  // 反向：尾巴非纯数字、base 为空都不命中
+  let tail = @json.FlowData::new()
+  tail.insert_str("task", "u_3")
+  assert_eq(old(exec_of("task_01x", tail)), "")
+  let empty_base = @json.FlowData::new()
+  empty_base.insert_str("", "u_3")
+  assert_eq(old(exec_of("_01", empty_base)), "")
+
+  // 第三档只查裸名：只有 f_<base> 时老类不许命中（那是新 handler 的扩面）
+  let f_only = @json.FlowData::new()
+  f_only.insert_str("f_task", "u_3")
+  assert_eq(old(exec_of("task_02", f_only)), "")
 }

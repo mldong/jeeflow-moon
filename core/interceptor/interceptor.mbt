@@ -96,7 +96,10 @@ pub fn dept_leader_handler(
 }
 
 ///|
-/// 6. FormFieldAssigneeHandler —— 表单字段值分配（f_ 前缀优先、裸名兜底，issues/71）
+/// 6. FormFieldAssigneeHandler —— 表单字段值分配（issues/71 顺序 ＋ issues/48 第三档）
+/// 三档＝`f_<id>` → 裸名 → `_NN` 去后缀后查**裸名 base**（`task_01` 读 `task`）。
+/// 第三档历史上只有 moon／rust 两语言缺，issues/255 补齐成八语言同形；
+/// `f_<base>` 是 issues/254 两枚新 handler 的扩面，本老类不跟。
 /// 纯同步取值 ⇒ 走 @spi.async_of_sync 桥（零警告）；语义与旧闭包里的两处 return 等价。
 pub fn form_field_assignee_handler()
   -> (async (@exec.Execution) -> String raise @error.JeeflowError) {
@@ -107,7 +110,14 @@ pub fn form_field_assignee_handler()
         None =>
           match exec.args.get_str(node.id) {
             Some(v) => v
-            None => ""
+            None => match number_suffix_base(node.id) {
+              Some(base) =>
+                match exec.args.get_str(base) {
+                  Some(v) => v
+                  None => ""
+                }
+              None => ""
+            }
           }
       }
     None => ""
@@ -169,7 +179,8 @@ pub fn form_user_dept_leader_handler(
 /// 3. nodeKey 含 `#` ⇒ 最后一个 `#` 之后的 field：先裸名、再 `f_<field>`
 /// 4. nodeKey 匹配 `^(.+?)_(\d+)$` ⇒ base：先 `f_<base>`、再 `<base>`
 /// 3、4 两档各补 `f_` 变体是相对参照实现（mldong-fastapi-wf fe9233d）的唯一增量；
-/// **现存 7 个 handler 的查找行为不动**（`form_field_assignee_handler` 仍只认 f_ 优先＋裸名）。
+/// 现存 handler 走自己的查找：`#` 档始终是新 handler 专属，`_NN` 档 issues/255 起老类
+/// `form_field_assignee_handler` 也认——但老类只查 base 裸名，不带 `f_<base>`。
 fn form_user_field_candidates(node_key : String) -> Array[String] {
   let out : Array[String] = ["f_\{node_key}", node_key]
   match last_hash_segment(node_key) {
