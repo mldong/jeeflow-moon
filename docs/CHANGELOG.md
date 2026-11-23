@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## 0.1.70（2026-11-23）
+
+**老 `form_field_assignee_handler` 补上编号后缀第三档（issues/255，八语言同形轮）。**
+
+- 三档＝`f_<节点 id>` → 裸名 → 去数字后缀后的**裸名 base**（`task_01` 读 `task`）。第三档不查
+  `f_<base>`——那一档仍是 0.1.69 两枚「表单指定用户」handler 的扩面，两族分面不混。切分点取
+  「最早一个后面接非空纯数字的下划线」＝惰性量词 `^(.+?)_(\d+)$` 的最早命中（`a_b_01` 的 base 是
+  `a_b`，`_01` 前缀为空不命中），与 rust 同判据、本栈不引 regex 依赖。取人解析的吞错形状不变
+  （字段缺失／值为空／节点未设置一律空串、不抛）。
+- 翻掉 0.1.69 那枚回归钉子里的 `_NN` 期望：它当时钉的是「moon 缺第三档」这个既成事实，
+  `#` 档不许扩面的那一半照旧保留。`fu: 现存 form_field handler 不被 254 的并集扩面（回归钉子）`
+  的 `suffix_out` 由 `""` 改成命中值；另加 `i255: 老 form_field handler 第三档＝去后缀查裸名 base（正／负）`
+  一条，覆盖命中／惰性切分／三档优先级／`f_<base>` 不吃／无后缀不切五形。
+- 变异对照：把第三档改回返回空串 ⇒ 上述两条同时红（`"" != "u_m"`、`"" != "u_a,u_b"`），还原复绿。
+- 本机读数（工具链 moon 0.1.20261119 / moonc 0.10.22，现读 `moon version --all`）：
+  `moon check --target wasm --no-render` 0 error 0 警告；`moon test --target wasm` **661/661**；
+  T1 `repository-mysql/smoke` **151 PASS/0 FAIL**（160）；T1-F `demo/cmd/t1_mysql` **192 PASS**（160）。
+- 接力 pin 同笔：五个 `moon.mod` 的 `version` → 0.1.70，九枚模块间 pin `@0.1.69` → `@0.1.70`，
+  残留旧 pin 现读 0（共 14 处一笔抬，`moon check` 走 workspace 也复跑绿）。
+- 发布：tag `v0.1.70` 触发 `publish.yml`（run 45212237891 success），core→persist→
+  repository-mysql→facade 四件全发；注册表索引四件各命中 0.1.70；回拉
+  `moon add mldong/jeeflow-facade@0.1.70` 连带解析到 core/persist `@0.1.70`
+  ⇒ 发布物内部 pin 是新代次，不是半代次。
+
+
 ## 0.1.69（2026-11-23）
 
 **两个「表单指定用户所属部门」内置指派处理器（issues/184 同族跨语言契约，八语言轮）。**
