@@ -97,7 +97,7 @@ SPI 全清单与写法见 [docs/spi-guide.md](./docs/spi-guide.md)。
 | 全异步引擎 | 仓储 SPI / 引擎 / 门面全 `async fn`，单一事件循环零嵌套（MoonBit 无 `block_on`，其它语言的"同步 SPI + 桥"形态在此不可移植）；操作覆盖 start / execute / jump / 跳转首尾 / 撤回 | [docs/spi-guide.md](./docs/spi-guide.md) |
 | 会签闸门 | 并行全齐、串行逐个（全名册存任务变量）、比例表达式（`#nrOfCompletedInstances==2`）、一票否决（`ONE_VOTE_VETO`）；软否决 `submitType=20` | [docs/flow-definition.md](./docs/flow-definition.md) |
 | 事件 | `TASK_CREATE`（落库后 fire，监听器可解析任务）/ `INSTANCE_END`（办结与驳回两路）/ `CC_CREATE`（逐人）；per-listener 故障隔离，坏监听器不断流 | [docs/spi-guide.md](./docs/spi-guide.md) |
-| 元数据与处理器 | 7 个内置指派处理器按 Java FQCN 注册（申请人 / 部门负责人 / 表单字段 / 角色）、`EnumDictRegistry` 7 个 `wf_*` 字典、`HandlerRegistry` | [docs/spi-guide.md](./docs/spi-guide.md) |
+| 元数据与处理器 | 9 个内置指派处理器按 Java FQCN 注册（申请人 / 部门负责人 / 表单字段 / 角色 / 表单指定用户所属部门负责人）、`EnumDictRegistry` 7 个 `wf_*` 字典、`HandlerRegistry` | [docs/spi-guide.md](./docs/spi-guide.md) |
 | 业务数据入库 | 独立模块 `persist`：`persistMode` 驱动 **ARCHIVE**（办结+同意时一条幂等 INSERT）或 **SYNC**（发起 INSERT → 按任务节点 `PERMISSION_*` 字段权逐次 UPDATE → 终态 UPDATE），含表名安全检查 | [docs/persist.md](./docs/persist.md) |
 | MySQL 仓储 | 独立模块，纯 MoonBit 线上协议客户端（`moonbitstack/moonmysql/client`，native + wasm）；`m_` 三段过滤、NULL 安全水合、DATETIME 文本归一、真 `BEGIN/COMMIT/ROLLBACK` 事务模板 | [docs/getting-started.md](./docs/getting-started.md)「MySQL 仓储」 |
 | 内存仓储 | 在 core 内：行为一致、无 I/O；行列表按 id 排序保证测试确定 | [docs/getting-started.md](./docs/getting-started.md) |

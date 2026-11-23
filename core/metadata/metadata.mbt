@@ -196,6 +196,20 @@ pub fn HandlerRegistry::new() -> HandlerRegistry {
     order: 60,
     group: "built-in",
   })
+  handlers.push({
+    handler_type: ah,
+    class_name: "com.mldong.jeeflow.interceptor.impl.FormUserDeptLeaderAssignmentHandler",
+    display_name: "表单指定用户所属部门经理",
+    order: 70,
+    group: "built-in",
+  })
+  handlers.push({
+    handler_type: ah,
+    class_name: "com.mldong.jeeflow.interceptor.impl.FormUserDeptMainLeaderAssignmentHandler",
+    display_name: "表单指定用户所属部门分管领导",
+    order: 80,
+    group: "built-in",
+  })
   // Default ActionPermissionProvider
   handlers.push({
     handler_type: "ActionPermissionProvider",

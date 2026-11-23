@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## 0.1.69（2026-11-23）
+
+**两个「表单指定用户所属部门」内置指派处理器（issues/184 同族跨语言契约，八语言轮）。**
+
+- 场景＝HR 代员工提交／代理申请：表单里给出被代理人的用户 id，取**该员工**部门的经理／分管领导，
+  与当前操作人无关。注册名逐字等于 Java 顶级类 FQCN
+  （`…impl.FormUserDeptLeaderAssignmentHandler`／`…FormUserDeptMainLeaderAssignmentHandler`，
+  不进 `OrgUserAssignmentHandlers` 内部类），`HandlerRegistry` 排序 70/80（接在 taskRole 的 60 之后）。
+- 字段查找＝契约 §3.2 四档并集（顺序即优先级）：`f_<nodeKey>` → `<nodeKey>` →
+  nodeKey 含 `#` 时取最后一个 `#` 之后（先裸名、再 `f_`）→ nodeKey 匹配 `^(.+?)_(\d+)$` 时取 base
+  （先 `f_<base>`、再 `<base>`）。相对参照实现（mldong-fastapi-wf fe9233d）只多了 1、4 两档的 `f_` 变体
+  ——jeeflow 家族变量存 `f_` 必须有（issues/48/71）。**现存 7 个处理类的查找行为一字未动**，
+  由 `form_user_test.mbt` 末尾那条回归钉子盯着（旧 handler 不许跟着扩 `#`／`_NN` 两档）。
+- 失败语义一律空串、不抛（字段缺失／值为空／用户不存在／无部门／部门无领导／SPI 未注册／节点未设置），
+  与 `dept_id_of`／`by_dept` 的吞错形状同族。取第一个非空 id（逗号串／数组都只取第一个，多值不在本轮承诺）；
+  判空只比空串 ⇒ `"0"` 是合法 id。`_NN` 档不引 regex：按「最早的下划线且尾部非空纯数字」切，
+  前缀为空（`_01`）不命中，与 rust `number_suffix_base` 同判据。
+- 判据：`core/interceptor/form_user_test.mbt` 11 条（四档优先级／惰性正则对齐／取 id／失败面／回归）
+  ＋ `core/engine/form_user_engine_test.mbt` 3 条（按注册表路径跑通「HR 代员工提交」真实取人链，
+  含"操作人部门不得收到"与负向）＋ `metadata_test.mbt` 一处计数 7→9、一处 8→10 与新钉子。
+  变异对照四形全抓红：档序互换、`#` 右半优先级、`_01` 前缀守卫摘除、数组二次拆逗号；
+  以及把 handler 改成读操作人 ⇒ 拦截器 7 红＋引擎级 2 红。
+- 本机门禁读数（工具链 moon 0.1.20261119 / moonc 0.10.22，现读 `moon version --all`）：
+  `moon check --target wasm|native --no-render` 0 error 0 警告（`moon clean` 后全量重跑，非缓存读数）；
+  `scripts/test-with-floor.sh wasm 500` = 660/660；T1 `repository-mysql/smoke` 150 PASS/0 FAIL；
+  T1-F `demo/cmd/t1_mysql` 200 PASS/0 FAIL；`scripts/smoke_t2.sh` ALL PASS；
+  `check-facade-actions.mjs` 与 `check-action-manifest.mjs` 均 50 action 无差集；
+  `demo/cmd/consistency` 载荷与 `consistency/moon.json` 深比对等值（15 个 stats action）。
+  native 测试腿本机跑不起（MinGW gcc 16.1 与 `windows.h` 头冲突，属 D-M0-2 记过的 MSVC 墙），由 `verify.yml` 承。
+- 接力 pin 同笔：五个 `moon.mod` version → 0.1.69，九枚模块间 pin `@0.1.68` → `@0.1.69`
+  （`scripts/moon_dep_bump.py` 逐文件断言命中数，残留旧 pin 现读 0）。
+
+
 ## 0.1.66（2026-11-12）
 
 **包面导航：facade 页补指向 core 正向 Quickstart 的交叉链接。**

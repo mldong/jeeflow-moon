@@ -89,7 +89,7 @@ test "metadata: unknown dict" {
 test "metadata: handler registry built-ins ordered" {
   let reg = @metadata.HandlerRegistry::new()
   let handlers = reg.list_handlers("AssignmentHandler")
-  assert_eq(handlers.length(), 7)
+  assert_eq(handlers.length(), 9)
   assert_eq(handlers[0].order(), -9999)
   assert_true(handlers[0].class_name().contains("OperatorAssignmentHandler"))
 }
@@ -103,7 +103,7 @@ test "metadata: handler types and custom register" {
   reg.register(
     @metadata.HandlerMeta::make("AssignmentHandler", "com.custom.MyHandler", "自定义处理器", 100, "custom"),
   )
-  assert_eq(reg.list_handlers("AssignmentHandler").length(), 8)
+  assert_eq(reg.list_handlers("AssignmentHandler").length(), 10)
 }
 
 ///|
@@ -115,4 +115,26 @@ test "metadata: ActionPermissionProvider entry matches reference (issues/184)" {
   assert_false(handlers[0].class_name().contains(".impl."))
   assert_eq(handlers[0].display_name(), "action 权限码默认映射（boot3 注解语义归纳）")
   assert_eq(handlers[0].order(), 0)
+}
+
+///|
+test "metadata: form-user dept handlers registered (order 70/80)" {
+  let reg = @metadata.HandlerRegistry::new()
+  let handlers = reg.list_handlers("AssignmentHandler")
+  let leader = handlers.filter(h =>
+    h.class_name() == "com.mldong.jeeflow.interceptor.impl.FormUserDeptLeaderAssignmentHandler"
+  )
+  let main = handlers.filter(h =>
+    h.class_name() == "com.mldong.jeeflow.interceptor.impl.FormUserDeptMainLeaderAssignmentHandler"
+  )
+  assert_eq(leader.length(), 1)
+  assert_eq(main.length(), 1)
+  assert_eq(leader[0].display_name(), "表单指定用户所属部门经理")
+  assert_eq(main[0].display_name(), "表单指定用户所属部门分管领导")
+  assert_eq(leader[0].order(), 70)
+  assert_eq(main[0].order(), 80)
+  assert_eq(leader[0].group(), "built-in")
+  // 两支都是**顶级类**（不进 OrgUserAssignmentHandlers 内部类）⇒ 注册名不含内部类分隔符
+  assert_false(leader[0].class_name().contains("$"))
+  assert_false(main[0].class_name().contains("$"))
 }
