@@ -58,6 +58,26 @@
   （`scripts/moon_dep_bump.py` 逐文件断言命中数，残留旧 pin 现读 0）。
 
 
+## 0.1.68（2026-11-22）
+
+**moonc 0.10.22 适配：CRCRLF 归一＋async 假阳性收口＋README 钉版。**
+
+- 47 个 `.mbt` 仅做 CRCRLF→LF；两个 example 包压制 `unused_package` 假阳性；
+  四份模块 README 将 async 钉到 `0.22.7`。
+- 五个 `moon.mod` 的 `version`＋九枚模块间 relay pin 同笔抬到 0.1.68；无引擎行为变更。
+- 本机读数：`moon check` 0 error 0 警告、`moon test --target wasm` 645/645；
+  action 清单 50/50、README 围栏 4/4；T1／T1-F ALL PASS。
+
+## 0.1.67（2026-11-13）
+
+**动态协办（`processTask/aidant`）＋节点级协办档解析期禁配（issues/252/253）。**
+
+- 主办行 clone 出 `task_type=1` 协办子行，协办办结不驱动；`waitCompletion` 闸、禁递归、
+  会签排除协办行、清场／账本／`ext.aidant` 投影与权限码复用同参考实现。
+- 节点属性 `taskType=1` 解析期禁配；action 清单补第 50 个 action，无 DDL。
+- 本机读数：`moon test --target wasm` 645/0；四模块接力 pin 同笔前进。
+
+
 ## 0.1.66（2026-11-12）
 
 **包面导航：facade 页补指向 core 正向 Quickstart 的交叉链接。**
