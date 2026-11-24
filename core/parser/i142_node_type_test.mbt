@@ -6,7 +6,7 @@
 // ① 加显式 `"snaker:custom"` 臂；② 未知另立 `Unknown` 档，行为照 java
 // （`ModelParser.java:79-90`：WARNING 带 nodeId ＋ 实得类型串 → continue 跳过节点）。
 // ⚠️ 大小写归一/无前缀别名是 issues/141 G4 的 C 方案（先立法后补实现），**本单不做归一化**，
-//    所以下面 `subProcess`（大写 P）与无前缀 `task` 按「未知档」钉 —— 那是已知且刻意的。
+//    所以下面 `subprocesS` 与无前缀 `task` 按「未知档」钉；issues/257 只另补子流程三别名。
 
 ///|
 const TYPE_PROBE_FLOW : String =
@@ -15,7 +15,7 @@ const TYPE_PROBE_FLOW : String =
   $|  {"id": "start", "type": "snaker:start", "text": {"value": "S"}},
   $|  {"id": "custom1", "type": "snaker:custom", "text": {"value": "记录"},
   $|   "properties": {"clazz": "com.mldong.jeeflow.test.TestCustomHandler", "val": "customResult"}},
-  $|  {"id": "typo", "type": "snaker:subProcess", "text": {"value": "大小写拼错"},
+  $|  {"id": "typo", "type": "snaker:subprocesS", "text": {"value": "大小写拼错"},
   $|   "properties": {"form": "sub-form"}},
   $|  {"id": "bare", "type": "task", "text": {"value": "无前缀"}, "properties": {"assignee": "user1"}},
   $|  {"id": "nonsense", "type": "snaker:not-a-node", "text": {"value": "表里根本没有"}},
@@ -66,7 +66,7 @@ test "i142: custom 节点进模型、按类型取得到，clazz/val 属性读得
 ///|
 test "i142: 未知类型落 Unknown 档，不再被当 Custom" {
   // 逐档都是旧兜底臂会答成 Custom 的串：大小写拼错 / 无前缀 / 表里根本没有 / 缺省空串
-  for t in ["snaker:subProcess", "task", "snaker:not-a-node", "snaker:custom1", ""] {
+  for t in ["snaker:subprocesS", "task", "snaker:not-a-node", "snaker:custom1", ""] {
     let got = @parser.NodeType::from_snaker_type(t)
     if got is @parser.Unknown {
       ()
@@ -79,7 +79,7 @@ test "i142: 未知类型落 Unknown 档，不再被当 Custom" {
 ///|
 test "i142: 未知档在解析期被跳过（不入模型），显式 custom 档照常入模型" {
   let model = @parser.parse_model(TYPE_PROBE_FLOW)
-  // 三条未知档都不在模型里：拼错大小写的 subProcess、无前缀 task、表里根本没有的类型
+  // 三条未知档都不在模型里：拼错大小写的 subprocesS、无前缀 task、表里根本没有的类型
   assert_true(model.get_node("typo") is None)
   assert_true(model.get_node("bare") is None)
   assert_true(model.get_node("nonsense") is None)

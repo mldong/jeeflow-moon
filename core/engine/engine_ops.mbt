@@ -74,7 +74,72 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   self.persist_tasks(exec)
   // 11. 回写实例
   (self.repo()).update_instance(exec.process_instance)
-  exec.process_instance
+  // issues/257：自身落库后才允许子终态回父，避免父旧聚合覆盖续跑结果。
+  self.flush_parent_ends(exec)
+  match (self.repo()).find_instance_by_id(exec.process_instance.instance_id) {
+    Some(latest) => latest
+    None => exec.process_instance
+  }
+}
+
+///|
+/// 顶层 startAndExecute 的引擎实现：发起后复用同一初始自办腿。
+pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::start_and_execute_async(
+  self : Engine[R, E],
+  define_id : Int64,
+  operator : String,
+  args : @json.FlowData
+) -> @model.ProcessInstance raise @error.JeeflowError {
+  let instance = self.start_async(define_id, operator, args)
+  let _ = self.apply_initial_tasks(instance.instance_id, operator, args)
+  match (self.repo()).find_instance_by_id(instance.instance_id) {
+    Some(latest) => latest
+    None => instance
+  }
+}
+
+///|
+/// 初始 DOING 快照逐任务加入真实申请人，以 flow.auto + submitType=0 自办。
+/// 无 apply 时同样自办首任务；返回本腿产生的新任务（不改变既有 start API 形状）。
+pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::apply_initial_tasks(
+  self : Engine[R, E],
+  instance_id : Int64,
+  applicant : String,
+  args : @json.FlowData
+) -> Array[@model.ProcessTask] raise @error.JeeflowError {
+  self.apply_initial_tasks_inner(instance_id, applicant, args, None)
+}
+
+///|
+/// 嵌套子启动用 defer=true：只收集子终态续跑项，外层父 execution 落库后再回父。
+async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::apply_initial_tasks_inner(
+  self : Engine[R, E],
+  instance_id : Int64,
+  applicant : String,
+  args : @json.FlowData,
+  pending_sink : Array[@exec.ParentContinuation]?
+) -> Array[@model.ProcessTask] raise @error.JeeflowError {
+  let doing = (self.repo()).find_doing_tasks(instance_id, [])
+  let result : Array[@model.ProcessTask] = []
+  for task in doing {
+    // 先于 add_task_actor 的只读门禁：缺定义时报错连参与者写入也不留。
+    self.validate_task_sub_process_targets(task.task_id)
+    (self.repo()).add_task_actor(task.task_id, [applicant])
+    let apply_args = @json.FlowData::new()
+    apply_args.merge(args)
+    apply_args.insert_i64("submitType", @model.SubmitType::Apply.code())
+    match apply_args.get("f_nextNodeOperator") {
+      Some(next) => apply_args.insert("tf_nextNodeOperator", next)
+      None => ()
+    }
+    let created = self.execute_task_async_inner(
+      task.task_id, "flow.auto", apply_args, pending_sink,
+    )
+    for new_task in created {
+      result.push(new_task)
+    }
+  }
+  result
 }
 
 ///|
@@ -142,7 +207,10 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
   // 守卫全过之后、complete_task_in_aggregate 之前＝java prepareExecution 里紧挨 instance.completeTask
   // 的那一刀；五条办结腿（普通/跳转/驳回/退回发起人/重提直返）都收敛于此，一处盖键全路径覆盖。
   // 盖进 full_args（args 优先级最高，覆盖上一手残留）；只有 Task 节点才盖，默认 false 也盖键。
-  match model.get_node(task.task_name) {
+  let node = model.get_node(task.task_name)
+  // issues/257：直接出边缺失子流程定义必须在任何状态/事件写入前预检。
+  self.validate_sub_process_targets(model, node)
+  match node {
     Some(n) =>
       if n.node_type is @parser.Task {
         full_args.insert(allow_recall_key, @json.bool_of(n.allow_recall()))
@@ -174,7 +242,6 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::load
     operator,
     submit_type,
   )
-  let node = model.get_node(task.task_name)
   let exec = @exec.Execution::make(instance, model, define_info, operator, full_args)
   exec.process_task = Some(task.clone())
   // 加签人取"本次请求"的值显式带上（＝java `Execution#setAddSignOperators`）：full_args 里
@@ -264,6 +331,18 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   task_id : Int64,
   operator : String,
   args : @json.FlowData
+) -> Array[@model.ProcessTask] raise @error.JeeflowError {
+  self.execute_task_async_inner(task_id, operator, args, None)
+}
+
+///|
+/// issues/257 内部腿：嵌套子自办时延迟回父，并把终态续跑项交给外层 sink。
+async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::execute_task_async_inner(
+  self : Engine[R, E],
+  task_id : Int64,
+  operator : String,
+  args : @json.FlowData,
+  pending_sink : Array[@exec.ParentContinuation]?
 ) -> Array[@model.ProcessTask] raise @error.JeeflowError {
   // 「退回修改、重提直返」两条入口判据（java `executeProcessTask` 同位）：
   // ⓪ 客户端传入的保留键先剥掉（`_branchCtx` / `_reapplyContext` 只许引擎写）；
@@ -454,7 +533,21 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
         // 停留本节点的分支（add_sign_hold）不调，否则会把还在办的协办行提前废弃。
         // 会签 merged 档已在 abandon_countersign_remaining 先清过一遍，这里幂等不重复记账。
         if n.node_type is @parser.Task {
-          let _ = self.abandon_aidant_on_node(exec.process_instance, n.id, operator)
+          // issues/257：直接进入 End 时保留协办 DOING，交给 EndProcessHandler 自动办结；
+          // 其余离场路径仍按 issues/253 废弃未办结协办。
+          let mut direct_end = false
+          for edge in exec.process_model.get_output_edges(n.id) {
+            match exec.process_model.get_target_node(edge) {
+              Some(next) =>
+                if next.node_type is @parser.End {
+                  direct_end = true
+                }
+              None => ()
+            }
+          }
+          if !direct_end {
+            let _ = self.abandon_aidant_on_node(exec.process_instance, n.id, operator)
+          }
         }
         let next_nodes : Array[@parser.NodeModel] = []
         for e in exec.process_model.get_output_edges(n.id) {
@@ -490,6 +583,20 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   // 12. 落库
   self.persist_tasks(exec)
   (self.repo()).update_instance(exec.process_instance)
+  // issues/257：普通办理在自身落库后回父；嵌套自办把续跑项交外层统一 flush。
+  match pending_sink {
+    Some(sink) =>
+      for item in exec.pending_parent_ends {
+        sink.push(item)
+      }
+    None => {
+      let continued = self.flush_parent_ends_collect(exec)
+      for task in continued {
+        exec.new_tasks.push(task)
+      }
+    }
+  }
+  exec.pending_parent_ends = []
   exec.new_tasks
 }
 
@@ -665,6 +772,10 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
   }
   self.persist_tasks(exec)
   (self.repo()).update_instance(exec.process_instance)
+  let continued = self.flush_parent_ends_collect(exec)
+  for task in continued {
+    exec.new_tasks.push(task)
+  }
   exec.new_tasks
 }
 
@@ -706,12 +817,19 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
     None => ""
   }
   let _ = self.abandon_add_sign_remaining(exec, add_sign_node)
-  // 驳回：实例 REJECT(45) + 废弃全部 DOING 任务（任务 99）
+  // 驳回：实例 REJECT(45) + 废弃全部 DOING 任务（任务 99）。
+  // 先记下废弃快照：abandon_all_doing 后行状态已变 99，不能再用 DOING 过滤更新。
+  let doing_ids : Array[Int64] = []
+  for t in instance.tasks {
+    if t.task_state == @model.TaskState::Doing.code() {
+      doing_ids.push(t.task_id)
+    }
+  }
   instance.reject()
   instance.abandon_all_doing()
   (self.repo()).update_instance(instance)
   for t in instance.tasks {
-    if t.task_state == @model.TaskState::Doing.code() {
+    if doing_ids.contains(t.task_id) {
       (self.repo()).update_task(t)
     }
   }
@@ -728,7 +846,11 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   // 载荷 instanceId + state（§11.3 code 2「state＝落库后的实例状态整数」）；
   // 取的是上面 update_instance 刚落库的那个值，不是再推一次的。
   self.notify_instance_end(instance.instance_id, instance.state)
-  []
+  // issues/257：拒绝也是子实例终态；事件落库并播出后同样回父一次。
+  exec.pending_parent_ends.push(
+    @exec.ParentContinuation::make(instance.clone(), exec.args, exec.operator),
+  )
+  self.flush_parent_ends_collect(exec)
 }
 
 ///|
@@ -902,7 +1024,7 @@ fn[R, E] Engine::rollback_to_parent(
 }
 
 ///|
-/// 发起（带父实例，子流程）
+/// 发起（带父实例，子流程）；保留既有公开 API，不自办申请。
 pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::start_with_parent_async(
   self : Engine[R, E],
   define_id : Int64,
@@ -911,6 +1033,24 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   parent_id : Int64,
   parent_node_name : String
 ) -> @model.ProcessInstance raise @error.JeeflowError {
+  let (instance, _) = self.start_with_parent_async_inner(
+    define_id, operator, args, parent_id, parent_node_name, false, false,
+  )
+  instance
+}
+
+///|
+/// issues/257 子流程实际启动腿：start + 初始自办；defer=true 时把孙级终态续跑项交外层。
+async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::start_with_parent_async_inner(
+  self : Engine[R, E],
+  define_id : Int64,
+  operator : String,
+  args : @json.FlowData,
+  parent_id : Int64,
+  parent_node_name : String,
+  defer_parent : Bool,
+  auto_execute : Bool
+) -> (@model.ProcessInstance, Array[@exec.ParentContinuation]) raise @error.JeeflowError {
   let define_info = match (self.repo()).find_define_by_id(define_id) {
     Some(d) => d
     None => raise @error.DefineNotFound(define_id)
@@ -953,5 +1093,27 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::
   }
   self.persist_tasks(exec)
   (self.repo()).update_instance(exec.process_instance)
-  exec.process_instance
+  let mut pending : Array[@exec.ParentContinuation] = []
+  for item in exec.pending_parent_ends {
+    pending.push(item)
+  }
+  exec.pending_parent_ends = []
+  // 初始 DOING 快照已持久化；嵌套启动只收集续跑项，外层父 execution 统一回父。
+  let sink = if defer_parent { Some(pending) } else { None }
+  if auto_execute {
+    let _ = self.apply_initial_tasks_inner(
+      exec.process_instance.instance_id, operator, full_args, sink,
+    )
+  }
+  if !defer_parent {
+    for item in pending {
+      self.continue_parent_after_end(item.child_instance, item.args, item.operator)
+    }
+    pending = []
+  }
+  let latest = match (self.repo()).find_instance_by_id(exec.process_instance.instance_id) {
+    Some(i) => i
+    None => exec.process_instance
+  }
+  (latest, pending)
 }

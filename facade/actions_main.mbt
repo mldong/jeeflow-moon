@@ -52,20 +52,7 @@ pub async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Facade::
   }
   let operator = operator_arg(args)
   let flow_args = args_to_flow_data(args, ["processDefineId", "operator"])
-  let inst = (self.engine).start_async(define_id, operator, flow_args)
-  // 自动完成申请节点（assignee=applicant → 发起人）
-  let doing = (self.repo).find_doing_tasks(inst.instance_id, [])
-  for task in doing {
-    (self.repo).add_task_actor(task.task_id, [operator])
-    flow_args.insert_i64("submitType", 0L)
-    match args.get("f_nextNodeOperator") {
-      Some(v) => flow_args.insert("tf_nextNodeOperator", v)
-      None => ()
-    }
-    // issues/176：spec 04:60-62——apply 节点由 flow.auto 代执行（operator 列=flow.auto，
-    // 不进发起人已办）；u_* 由发起腿留下、引擎对 flow.auto 跳过注入（对齐 boot2 :317）
-    let _ = (self.engine).execute_task_async(task.task_id, "flow.auto", flow_args)
-  }
+  let inst = (self.engine).start_and_execute_async(define_id, operator, flow_args)
   let o = @json.empty_object()
   @json.obj_set(o, "processInstanceId", i64_json(inst.instance_id))
   o

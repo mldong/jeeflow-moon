@@ -24,6 +24,28 @@ pub(all) struct Execution {
   /// （`tf_nextNodeOperator` 同病，直返腿为此在 `execute_reapply_async` 里显式剥键）。
   /// 控制类参数一律只认当次请求，这里用字段承载而不是靠剥键。判据见 `core/engine/add_sign.mbt`。
   mut add_sign_operators : Array[String]
+  /// issues/257：本 execution 内子实例已落库并播报终态、待回父的续跑项。
+  /// 父 execution 先完成自身任务/实例落库，再统一 flush，避免旧聚合覆盖回父结果。
+  mut pending_parent_ends : Array[ParentContinuation]
+}
+
+///|
+/// 子实例终态回父所需快照；args 在入队时复制，后续子任务提交不会改写它。
+pub(all) struct ParentContinuation {
+  child_instance : @model.ProcessInstance
+  args : @json.FlowData
+  operator : String
+}
+
+///|
+pub fn ParentContinuation::make(
+  child_instance : @model.ProcessInstance,
+  args : @json.FlowData,
+  operator : String
+) -> ParentContinuation {
+  let copied = @json.FlowData::new()
+  copied.merge(args)
+  { child_instance, args: copied, operator }
 }
 
 ///|
@@ -49,5 +71,6 @@ pub fn Execution::make(
     gate_vars: @json.FlowData::new(),
     // 后加签人一律由办理入口按**当次请求**显式带入（`load_exec_for_task`），缺省空表
     add_sign_operators: [],
+    pending_parent_ends: [],
   }
 }

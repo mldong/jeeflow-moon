@@ -1,8 +1,12 @@
 // jeeflow-core/error —— 移植自 rust jeeflow-core/src/error.rs
-// 引擎错误码：业务失败恒 99999999（spec/06 §2.1，方案 §3.3 只发明 99999999）
+// 既有业务失败恒 99999999；issues/257 子流程定义缺失保留 Java WfErrEnum 的细粒度内部码。
 
 ///|
 pub const ERR_BUSINESS : Int64 = 99999999L
+
+///|
+/// issues/257：子流程定义不存在（对齐 Java WfErrEnum.NOT_FOUND_PROCESS_DEFINE）。
+pub const ERR_SUB_PROCESS_DEFINE_NOT_FOUND : Int64 = 20010002L
 
 ///|
 /// 内部异常对外只说这一句（issues/137 §3-1 · spec 06 §2.12；逐字＝java
@@ -15,6 +19,7 @@ pub(all) suberror JeeflowError {
   Business(String)
   UnknownAction(String)
   DefineNotFound(Int64)
+  SubProcessDefineNotFound(String)
   InstanceNotFound(Int64)
   TaskNotFound(Int64)
   PermissionDenied(String)
@@ -32,8 +37,10 @@ pub(all) suberror JeeflowError {
 
 ///|
 pub fn JeeflowError::code(self : JeeflowError) -> Int64 {
-  let _ = self
-  ERR_BUSINESS
+  match self {
+    SubProcessDefineNotFound(_) => ERR_SUB_PROCESS_DEFINE_NOT_FOUND
+    _ => ERR_BUSINESS
+  }
 }
 
 ///|
@@ -42,6 +49,7 @@ pub fn JeeflowError::message(self : JeeflowError) -> String {
     Business(msg) => msg
     UnknownAction(a) => "未知 action: \{a}"
     DefineNotFound(id) => "流程定义不存在: \{id}"
+    SubProcessDefineNotFound(name) => "子流程\{name}定义不存在"
     InstanceNotFound(id) => "流程实例不存在: \{id}"
     TaskNotFound(id) => "任务不存在: \{id}"
     PermissionDenied(msg) => "权限不足: \{msg}"

@@ -286,12 +286,60 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
     self.fire_post_interceptors(exec)
   } else if node.node_type is @parser.End {
     self.fire_pre_interceptors(exec)
-    // 驳回语义：args.reject=="true" → REJECT(45)，否则 FINISHED(20)
-    let has_reject_var = match exec.args.get_str("reject") {
-      Some(v) => v == "true"
-      None => false
+    // issues/257：当前聚合根优先，避免把本次刚废弃/办结但尚未落库的兄弟任务误判成进行中。
+    let active = exec.process_instance.get_doing_tasks()
+    let known_ids : Array[Int64] = []
+    for task in exec.process_instance.tasks {
+      known_ids.push(task.task_id)
     }
-    if has_reject_var {
+    for task in (self.repo()).find_doing_tasks(exec.process_instance.instance_id, []) {
+      if !known_ids.contains(task.task_id) {
+        active.push(task)
+      }
+    }
+    for task in active {
+      if task.task_type != @model.TaskType::Assistant.code() {
+        raise @error.Business("存在未完成的主办任务,请确认.")
+      }
+    }
+    let active_ids : Array[Int64] = []
+    for task in active {
+      active_ids.push(task.task_id)
+    }
+    for task in active {
+      let aidant_args = @json.FlowData::new()
+      aidant_args.merge(exec.args)
+      aidant_args.insert_i64("submitType", @model.SubmitType::Agree.code())
+      let _ = self.execute_task_async(task.task_id, "flow.auto", aidant_args)
+    }
+    if !active_ids.is_empty() {
+      match (self.repo()).find_instance_by_id(exec.process_instance.instance_id) {
+        Some(latest) => {
+          for task in latest.tasks {
+            let mut index = -1
+            for i, current in exec.process_instance.tasks {
+              if current.task_id == task.task_id {
+                index = i
+                break
+              }
+            }
+            if active_ids.contains(task.task_id) || index < 0 {
+              if index < 0 {
+                exec.process_instance.tasks.push(task)
+              } else {
+                exec.process_instance.tasks[index] = task
+              }
+            }
+          }
+          for key, value in latest.variables.inner() {
+            exec.process_instance.variables.insert(key, value)
+          }
+        }
+        None => ()
+      }
+    }
+    // submitType=2 拒绝，其余办结；与 EndProcessHandler 的 Java 基准同尺。
+    if submit_type_value(exec.args) == Some(@model.SubmitType::Reject.code()) {
       exec.process_instance.reject()
     } else {
       exec.process_instance.finish()
@@ -300,14 +348,18 @@ async fn[R : @spi.ProcessRepository, E : @spi.ProcessExtRepository] Engine::exec
     // 持久化
     (self.repo()).update_instance(exec.process_instance)
     // fire 结束事件：载荷 instanceId + state（§11.3 code 2，「state＝落库后的实例状态整数」）。
-    // 取的就是上面 update_instance 刚落库的那个值，不在这里二次推演。
     self.notify_instance_end(
       exec.process_instance.instance_id, exec.process_instance.state
     )
     self.fire_post_interceptors(exec)
+    // 终态已落库并播出；回父续跑由本 execution 的最终落库点统一 flush。
+    exec.pending_parent_ends.push(
+      @exec.ParentContinuation::make(
+        exec.process_instance.clone(), exec.args, exec.operator,
+      ),
+    )
   } else if node.node_type is @parser.SubProcess {
-    // 子流程简化处理（rust 同款：不做完整子流程展开）
-    ()
+    self.start_sub_process(exec, node)
   } else {
     ()
   }

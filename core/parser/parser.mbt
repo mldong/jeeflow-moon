@@ -97,13 +97,19 @@ pub fn ProcessModel::is_first_task_node(self : ProcessModel, node_id : String) -
   }
 }
 
-/// 能否退回到 parent_id 所在节点——照 mldong-boot2 NodeModel.canRejected 的形状：
-/// 自 current 的入边回溯，命中 parent 放行；入边来源是 fork/join/start 时**跳过该条入边、
-/// 不再深入**（boot2 是 continue，不是穿越），其余来源递归。subprocess 在 boot2 里被注释掉，
-/// 等同普通节点。
+/// 能否退回到 parent_id 所在节点——对齐 jeeflow-java NodeModel.canRejected：
+/// 父节点为会签（performType!=NORMAL）不可退；自 current 的入边回溯，命中 parent 放行；
+/// 入边来源是 fork/join/start/subprocess 时跳过该条入边，不再深入（不得穿越子流程边界）。
 pub fn ProcessModel::can_rejected(
   self : ProcessModel, current_id : String, parent_id : String
 ) -> Bool {
+  let parent = match self.get_node(parent_id) {
+    Some(n) => n
+    None => return false
+  }
+  if parent.node_type is Task && parent.perform_type() != 0 {
+    return false
+  }
   for e in self.get_input_edges(current_id) {
     let source = e.source_node_id
     if source == parent_id {
@@ -112,7 +118,8 @@ pub fn ProcessModel::can_rejected(
     let skip = match self.get_node(source) {
       None => true
       Some(n) =>
-        n.node_type == Fork || n.node_type == Join || n.node_type == Start
+        n.node_type == Fork || n.node_type == Join || n.node_type == Start ||
+        n.node_type == SubProcess
     }
     if !skip && self.can_rejected(source, parent_id) {
       return true
@@ -203,6 +210,12 @@ pub fn NodeType::from_snaker_type(t : String) -> NodeType {
     "snaker:join" => Join
     "snaker:end" => End
     "snaker:subprocess" => SubProcess
+    // issues/257：设计器规范键与两个历史别名同值；裸键也接受，和 Configuration 的注册键一致。
+    "snaker:subProcess" => SubProcess
+    "snaker:wfSubProcess" => SubProcess
+    "subprocess" => SubProcess
+    "subProcess" => SubProcess
+    "wfSubProcess" => SubProcess
     // issues/142 A 批：custom 从此是**显式档**，不再由兜底臂代答——旧兜底臂把「没认出来的
     // 类型」和「记录类节点」塌成同一档，拼错的定义会被当记录类照常执行并落一条留痕行。
     "snaker:custom" => Custom
@@ -703,8 +716,43 @@ pub fn NodeModel::field_permissions(self : NodeModel) -> Map[String, Int] {
 }
 
 ///|
+/// 子流程目标定义名（issues/257 裁决 A）：processName → properties.name → 节点 id。
+/// 空串/纯空白视为缺省；form 只保留，不参与定义查找。
+pub fn NodeModel::process_name(self : NodeModel) -> String {
+  let candidates = [
+    self.prop_str("processName"),
+    self.prop_str("name"),
+    Some(self.id),
+  ]
+  for candidate in candidates {
+    match candidate {
+      Some(value) =>
+        if !value.trim(chars=" \t\r\n").is_empty() {
+          return value
+        }
+      None => ()
+    }
+  }
+  self.id
+}
+
+///|
+/// 子流程显式版本；缺省/null=该名称下 version desc、id desc 的最新定义。
+pub fn NodeModel::sub_process_version(self : NodeModel) -> Int64? {
+  self.prop_i64("version")
+}
+
+///|
+/// 子流程表单声明（仅解析保留，不参与定义查找）。
+pub fn NodeModel::sub_process_form(self : NodeModel) -> String? {
+  self.prop_str("form")
+}
+
+///|
+/// 旧公开访问器保留转发；语义已由 issues/257 改为 processName/name/id 回落，
+/// 不再读历史键 subProcessName。
 pub fn NodeModel::sub_process_name(self : NodeModel) -> String? {
-  self.prop_str("subProcessName")
+  Some(self.process_name())
 }
 
 ///|
