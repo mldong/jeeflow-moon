@@ -20,7 +20,7 @@ fn check(cond : Bool, label : String) -> Unit {
 
 ///|
 /// 9xxxxx 段自清理（只动 jeeflow 库 wf_* 表）
-async fn clean_9x(repo : @repo.MysqlRepository) -> Unit raise {
+async fn clean_9x(repo : @repo.MysqlRepository) -> Unit {
   // 先按外键清子行：add_task_actor/抄送行的 id 是雪花（不在 9xxxxx 段），
   // 只有按 process_task_id/process_instance_id 反查才扫得到（issues/115 转办会新增这类行）。
   // 必须在下面按 id 段删主行**之前**做，否则子查询已经扫不到。
@@ -37,18 +37,16 @@ async fn clean_9x(repo : @repo.MysqlRepository) -> Unit raise {
   )
   sub_conn.close()
   let tables = [
-    "wf_process_task_actor",
-    "wf_process_task",
-    "wf_process_cc_instance",
-    "wf_process_instance",
-    "wf_process_define",
-    "wf_process_design_his",
-    "wf_process_design",
-    "wf_process_surrogate",
+    "wf_process_task_actor", "wf_process_task", "wf_process_cc_instance", "wf_process_instance",
+    "wf_process_define", "wf_process_design_his", "wf_process_design", "wf_process_surrogate",
   ]
   for t in tables {
     let conn = repo.open_raw()
-    let _ = @repo.q(conn, "DELETE FROM \{t} WHERE id >= 990000 AND id < 1000000", [])
+    let _ = @repo.q(
+      conn,
+      "DELETE FROM \{t} WHERE id >= 990000 AND id < 1000000",
+      [],
+    )
     conn.close()
   }
   // 兜底：清理 operator/user9x 标记的历史残留（早前崩溃运行可能落雪花 id）
@@ -58,19 +56,41 @@ async fn clean_9x(repo : @repo.MysqlRepository) -> Unit raise {
     "DELETE FROM wf_process_task_actor WHERE process_task_id IN (SELECT id FROM wf_process_task WHERE process_instance_id IN (SELECT id FROM wf_process_instance WHERE operator = 'user9x'))",
     [],
   )
-  let _ = @repo.q(conn, "DELETE FROM wf_process_task WHERE process_instance_id IN (SELECT id FROM wf_process_instance WHERE operator = 'user9x')", [])
-  let _ = @repo.q(conn, "DELETE FROM wf_process_cc_instance WHERE process_instance_id IN (SELECT id FROM wf_process_instance WHERE operator = 'user9x')", [])
-  let _ = @repo.q(conn, "DELETE FROM wf_process_instance WHERE operator = 'user9x'", [])
+  let _ = @repo.q(
+    conn,
+    "DELETE FROM wf_process_task WHERE process_instance_id IN (SELECT id FROM wf_process_instance WHERE operator = 'user9x')",
+    [],
+  )
+  let _ = @repo.q(
+    conn,
+    "DELETE FROM wf_process_cc_instance WHERE process_instance_id IN (SELECT id FROM wf_process_instance WHERE operator = 'user9x')",
+    [],
+  )
+  let _ = @repo.q(
+    conn,
+    "DELETE FROM wf_process_instance WHERE operator = 'user9x'",
+    [],
+  )
   conn.close()
 }
 
 ///|
-async fn save_define_9x(repo : @repo.MysqlRepository, id : Int64, name : String, content : String) -> Unit raise {
+async fn save_define_9x(
+  repo : @repo.MysqlRepository,
+  id : Int64,
+  name : String,
+  content : String,
+) -> Unit {
   let conn = repo.open_raw()
   let _ = @repo.x(
     conn,
     "INSERT INTO wf_process_define (id, name, display_name, type, state, content, version, create_time, create_user) VALUES (?, ?, ?, 'approval', 1, ?, 1, NOW(), 't1')",
-    [@moondb.Int64(id), @moondb.Text(name), @moondb.Text(name), @moondb.Text(content)],
+    [
+      @moondb.Int64(id),
+      @moondb.Text(name),
+      @moondb.Text(name),
+      @moondb.Text(content),
+    ],
   )
   conn.close()
 }
@@ -90,7 +110,9 @@ const SIMPLE_FLOW : String =
   $|]}
 
 ///|
-fn make_mysql_engine(repo : @repo.MysqlRepository) -> @engine.Engine[@repo.MysqlRepository, @spi.NoExtRepository] {
+fn make_mysql_engine(
+  repo : @repo.MysqlRepository,
+) -> @engine.Engine[@repo.MysqlRepository, @spi.NoExtRepository] {
   let ctx = @spi.Ctx::new(repo, @spi.NoExtRepository::new())
   // 9xxxxx 段计数器：实例/任务 id 全落测试段（R6 可清理）
   let counter : Ref[Int64] = Ref(990100L)
@@ -104,7 +126,7 @@ fn make_mysql_engine(repo : @repo.MysqlRepository) -> @engine.Engine[@repo.Mysql
 
 ///|
 /// T1-M1：分页五键（C22）+ id DESC + operator 过滤
-async fn t1_m1_page() -> Unit raise {
+async fn t1_m1_page() -> Unit {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   save_define_9x(repo, 990001L, "t1-page", SIMPLE_FLOW)
@@ -131,7 +153,7 @@ async fn t1_m1_page() -> Unit raise {
 
 ///|
 /// T1-M2：hydrate 参与人/变量/DATETIME 归一 + 引擎全链落库
-async fn t1_m2_hydrate() -> Unit raise {
+async fn t1_m2_hydrate() -> Unit {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   save_define_9x(repo, 990001L, "t1-hydrate", SIMPLE_FLOW)
@@ -143,16 +165,26 @@ async fn t1_m2_hydrate() -> Unit raise {
   let tasks = repo.find_doing_tasks(inst.instance_id, [])
   check(tasks.length() == 1, "发起后 1 个 DOING 任务")
   let task = tasks[0]
-  check(task.actor_ids.contains("user9x"), "参与人水合（is_allowed 依赖）")
+  check(
+    task.actor_ids.contains("user9x"),
+    "参与人水合（is_allowed 依赖）",
+  )
   check(task.is_allowed("user9x"), "处理人判定通过")
   match task.create_time {
     Some(t) => check(t.length() <= 19, "DATETIME 归一无毫秒尾巴（C7）")
     None => check(false, "create_time 应有值")
   }
-  let _ = engine.execute_task_async(task.task_id, "user9x", @json.FlowData::new())
+  let _ = engine.execute_task_async(
+    task.task_id,
+    "user9x",
+    @json.FlowData::new(),
+  )
   let inst2 = repo.find_instance_by_id(inst.instance_id).unwrap()
   check(inst2.state == 20, "全链完成后实例 state=20")
-  check(inst2.variables.get_str("autoGenTitle") is Some(_), "实例变量 JSON hydrate 回读")
+  check(
+    inst2.variables.get_str("autoGenTitle") is Some(_),
+    "实例变量 JSON hydrate 回读",
+  )
   let done = repo.find_history_tasks(inst.instance_id)
   let mut all_finished = true
   for t in done {
@@ -166,7 +198,7 @@ async fn t1_m2_hydrate() -> Unit raise {
 
 ///|
 /// T1-M3：m_ 三段式过滤真实走 SQL
-async fn t1_m3_mparams() -> Unit raise {
+async fn t1_m3_mparams() -> Unit {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   save_define_9x(repo, 990001L, "t1-like-target-xyz", SIMPLE_FLOW)
@@ -190,20 +222,28 @@ async fn t1_m3_mparams() -> Unit raise {
 /// 的实现必然红；条件整档没下发时 record_count 会是 3 不是 2。
 /// 纯文本档（白名单／回落／注入形状）在 repository-mysql/repo/i197_define_order_sql_test.mbt，
 /// 这一格守的是「impl 到底有没有调那个函数」。
-async fn t1_m9_define_order_by() -> Unit raise {
+async fn t1_m9_define_order_by() -> Unit {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   let conn = repo.open_raw()
-  let ins =
-    "INSERT INTO wf_process_define (id, name, display_name, type, state, content, version, create_time, create_user) VALUES (?, ?, ?, 'approval', 1, '{}', ?, NOW(), 't1')"
+  let ins = "INSERT INTO wf_process_define (id, name, display_name, type, state, content, version, create_time, create_user) VALUES (?, ?, ?, 'approval', 1, '{}', ?, NOW(), 't1')"
   let _ = @repo.x(conn, ins, [
-    @moondb.Int64(990011L), @moondb.Text("t1-i197-a"), @moondb.Text("t1-i197-a"), @moondb.Int64(7L),
+    @moondb.Int64(990011L),
+    @moondb.Text("t1-i197-a"),
+    @moondb.Text("t1-i197-a"),
+    @moondb.Int64(7L),
   ])
   let _ = @repo.x(conn, ins, [
-    @moondb.Int64(990012L), @moondb.Text("t1-i197-a"), @moondb.Text("t1-i197-a"), @moondb.Int64(3L),
+    @moondb.Int64(990012L),
+    @moondb.Text("t1-i197-a"),
+    @moondb.Text("t1-i197-a"),
+    @moondb.Int64(3L),
   ])
   let _ = @repo.x(conn, ins, [
-    @moondb.Int64(990013L), @moondb.Text("t1-i197-b"), @moondb.Text("t1-i197-b"), @moondb.Int64(5L),
+    @moondb.Int64(990013L),
+    @moondb.Text("t1-i197-b"),
+    @moondb.Text("t1-i197-b"),
+    @moondb.Int64(5L),
   ])
   conn.close()
 
@@ -212,42 +252,99 @@ async fn t1_m9_define_order_by() -> Unit raise {
   q.add_filter(@model.QueryFilter::make("t", @model.Eq, "name", "t1-i197-a"))
   q.set_order_by("t.version desc")
   let p = repo.page_defines(q)
-  check(p.record_count() == 2L, "T1-M9 条件下发：t1-i197-a 只 2 行（实得 \{p.record_count()}）")
-  check(p.rows().length() == 1 && p.rows()[0].id == 990011L, "T1-M9 order_by 下发：首行＝版本最大 990011")
-  check(p.rows().length() == 1 && p.rows()[0].version == 7, "T1-M9 首行 version=7")
+  check(
+    p.record_count() == 2L,
+    "T1-M9 条件下发：t1-i197-a 只 2 行（实得 \{p.record_count()}）",
+  )
+  check(
+    p.rows().length() == 1 && p.rows()[0].id == 990011L,
+    "T1-M9 order_by 下发：首行＝版本最大 990011",
+  )
+  check(
+    p.rows().length() == 1 && p.rows()[0].version == 7,
+    "T1-M9 首行 version=7",
+  )
+
+  // issues/257：子流程显式 version 会同时带 name＋version 两个默认别名条件。
+  // String.replace 只改第一处时，第二条会留成 t.version 并在真库报 Unknown column。
+  let qv = @model.PageQuery::new(1L, 1L)
+  qv.add_filter(@model.QueryFilter::make("t", @model.Eq, "name", "t1-i197-a"))
+  qv.add_filter(@model.QueryFilter::make("t", @model.Eq, "version", "7"))
+  qv.set_order_by("t.version desc,t.id desc")
+  let pv = repo.page_defines(qv)
+  check(
+    pv.record_count() == 1L &&
+    pv.rows().length() == 1 &&
+    pv.rows()[0].id == 990011L,
+    "T1-M9 issues/257 name+version 双条件全部落到 pd 别名",
+  )
+  let qv_missing = @model.PageQuery::new(1L, 1L)
+  qv_missing.add_filter(
+    @model.QueryFilter::make("t", @model.Eq, "name", "t1-i197-a"),
+  )
+  qv_missing.add_filter(
+    @model.QueryFilter::make("t", @model.Eq, "version", "6"),
+  )
+  let pv_missing = repo.page_defines(qv_missing)
+  check(
+    pv_missing.record_count() == 0L && pv_missing.rows().is_empty(),
+    "T1-M9 issues/257 显式版本不匹配返回空页",
+  )
 
   // 缺省序档：不给 order_by ⇒ id 倒序（与内存腿缺省同档），首行 990012
   let q2 = @model.PageQuery::new(1L, 1L)
   q2.add_filter(@model.QueryFilter::make("t", @model.Eq, "name", "t1-i197-a"))
   let p2 = repo.page_defines(q2)
-  check(p2.rows().length() == 1 && p2.rows()[0].id == 990012L, "T1-M9 缺省序＝id 倒序 ⇒ 首行 990012")
+  check(
+    p2.rows().length() == 1 && p2.rows()[0].id == 990012L,
+    "T1-M9 缺省序＝id 倒序 ⇒ 首行 990012",
+  )
 
   // 负向：查无此名 ⇒ 空页（条件不下发时这里会放出别名的行）
   let q3 = @model.PageQuery::new(1L, 10L)
-  q3.add_filter(@model.QueryFilter::make("t", @model.Eq, "name", "t1-i197-missing"))
+  q3.add_filter(
+    @model.QueryFilter::make("t", @model.Eq, "name", "t1-i197-missing"),
+  )
   q3.set_order_by("t.version desc")
   let p3 = repo.page_defines(q3)
-  check(p3.record_count() == 0L && p3.rows().is_empty(), "T1-M9 查无此名 ⇒ 空页")
+  check(
+    p3.record_count() == 0L && p3.rows().is_empty(),
+    "T1-M9 查无此名 ⇒ 空页",
+  )
 
   // 白名单外 ⇒ 回落 id 倒序，且不把攻击串拼进去（能跑完本身即证明语法没被破坏）
   let q4 = @model.PageQuery::new(1L, 1L)
   q4.add_filter(@model.QueryFilter::make("t", @model.Eq, "name", "t1-i197-a"))
   q4.set_order_by("t.password desc; DROP TABLE wf_process_define")
   let p4 = repo.page_defines(q4)
-  check(p4.record_count() == 2L, "T1-M9 非法列＋攻击串：条件照旧生效，count＝2（实得 \{p4.record_count()}）")
-  check(p4.rows().length() == 1 && p4.rows()[0].id == 990012L, "T1-M9 回落档首行＝id 最大 990012")
+  check(
+    p4.record_count() == 2L,
+    "T1-M9 非法列＋攻击串：条件照旧生效，count＝2（实得 \{p4.record_count()}）",
+  )
+  check(
+    p4.rows().length() == 1 && p4.rows()[0].id == 990012L,
+    "T1-M9 回落档首行＝id 最大 990012",
+  )
   // 攻击串没被拼进去 ⇒ 表还在、行还在（DROP 若真执行，下面两条一条也活不到）
   let conn2 = repo.open_raw()
-  let alive = @repo.q(conn2, "SELECT COUNT(*) AS cnt FROM wf_process_define WHERE id IN (990011, 990012, 990013)", [])
+  let alive = @repo.q(
+    conn2,
+    "SELECT COUNT(*) AS cnt FROM wf_process_define WHERE id IN (990011, 990012, 990013)",
+    [],
+  )
   conn2.close()
-  check(!alive.is_empty() && @repo.row_i64(alive[0], "cnt") == 3L, "T1-M9 注入未落地：三条夹具行仍在")
+  check(
+    !alive.is_empty() && @repo.row_i64(alive[0], "cnt") == 3L,
+    "T1-M9 注入未落地：三条夹具行仍在",
+  )
   clean_9x(repo)
 }
 
+///|
 /// 事务体：两条 INSERT 后主动抛错。抽成具名 async fn 是因为内联 `fn() { … }` 闭包
 /// 在本工具链下两头堵——不标 async 吃 deprecated_syntax，标了 `async fn()` 又把效应推成
 /// 开放 Error、与 execute_in_tx 声明的闭集 raise JeeflowError 不匹配。
-async fn t1_m4_boom_tx(repo : @repo.MysqlRepository) -> Unit raise {
+async fn t1_m4_boom_tx(repo : @repo.MysqlRepository) -> Unit {
   let conn = repo.current_tx_conn().unwrap()
   let _ = @repo.x(
     conn,
@@ -263,9 +360,10 @@ async fn t1_m4_boom_tx(repo : @repo.MysqlRepository) -> Unit raise {
 }
 
 ///|
+
 ///|
 /// T1-M4：事务回滚无半完成实例（§6.2 语义级）
-async fn t1_m4_tx_rollback() -> Unit raise {
+async fn t1_m4_tx_rollback() -> Unit {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   let tpl = @repo.MysqlTxTemplate::from_env()
@@ -279,8 +377,16 @@ async fn t1_m4_tx_rollback() -> Unit raise {
   }
   check(raised, "回调抛错外传")
   let conn = repo.open_raw()
-  let inst_rows = @repo.q(conn, "SELECT COUNT(*) AS c FROM wf_process_instance WHERE id = 990020", [])
-  let task_rows = @repo.q(conn, "SELECT COUNT(*) AS c FROM wf_process_task WHERE id = 990021", [])
+  let inst_rows = @repo.q(
+    conn,
+    "SELECT COUNT(*) AS c FROM wf_process_instance WHERE id = 990020",
+    [],
+  )
+  let task_rows = @repo.q(
+    conn,
+    "SELECT COUNT(*) AS c FROM wf_process_task WHERE id = 990021",
+    [],
+  )
   conn.close()
   check(@repo.row_i64(inst_rows[0], "c") == 0L, "实例行回滚净")
   check(@repo.row_i64(task_rows[0], "c") == 0L, "任务行回滚净")
@@ -289,7 +395,7 @@ async fn t1_m4_tx_rollback() -> Unit raise {
 
 ///|
 /// T1-M5：并发办理只一次成功（引擎读-改-写守卫，§6.2）
-async fn t1_m5_idempotent() -> Unit raise {
+async fn t1_m5_idempotent() -> Unit {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   save_define_9x(repo, 990001L, "t1-idem", SIMPLE_FLOW)
@@ -299,7 +405,11 @@ async fn t1_m5_idempotent() -> Unit raise {
   check(tasks.length() == 1, "办理前 1 个 DOING")
   // 正向第一次：旧 `is Ok(_)`
   let first_ok = try {
-    let _ = engine.execute_task_async(tasks[0].task_id, "user9x", @json.FlowData::new())
+    let _ = engine.execute_task_async(
+      tasks[0].task_id,
+      "user9x",
+      @json.FlowData::new(),
+    )
     true
   } catch {
     _ => false
@@ -307,7 +417,11 @@ async fn t1_m5_idempotent() -> Unit raise {
   check(first_ok, "第一次办理成功")
   // 负向第二次：守卫必须报 99999999；没抛错 ⇒ Some? 不，None 臂 ⇒ code_ok 恒 false
   let second_code = try {
-    let _ = engine.execute_task_async(tasks[0].task_id, "user9x", @json.FlowData::new())
+    let _ = engine.execute_task_async(
+      tasks[0].task_id,
+      "user9x",
+      @json.FlowData::new(),
+    )
     None
   } catch {
     e => Some(e.code())
@@ -321,6 +435,7 @@ async fn t1_m5_idempotent() -> Unit raise {
 }
 
 ///|
+
 ///|
 /// T1-I110：SQL 仓 find_instance_by_id 水合任务 → detail 任务列表非空（issues/110）
 /// 修复前：find_instance_by_id 只查 wf_process_instance 单表，tasks 硬编码 []，
@@ -328,7 +443,7 @@ async fn t1_m5_idempotent() -> Unit raise {
 /// 对齐 Java findTasksByInstanceId / PHP PdoProcessRepository / C# issues/89 聚合水合。
 /// 真实 MySQL：引擎发起 doing 实例（落 9903xx 段）→ 断言 find_instance_by_id 水合任务
 /// 非空 + 带 actor_ids，且门面 detail 消费（遍历 inst.tasks 组 tasks/activeTaskList）非空。
-async fn t1_i110_hydrate() -> Unit raise {
+async fn t1_i110_hydrate() -> Unit {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   save_define_9x(repo, 990301L, "t1-i110", SIMPLE_FLOW)
@@ -391,8 +506,8 @@ async fn select_cell(
   repo : @repo.MysqlRepository,
   sql : String,
   params : Array[@moondb.Value],
-  col : String
-) -> String raise {
+  col : String,
+) -> String {
   let conn = repo.open_raw()
   let rows = @repo.q(conn, sql, params)
   conn.close()
@@ -409,7 +524,7 @@ async fn select_cell(
 /// → 双仓答案不一致。末跳 `update_user=None → 库里 <NULL>` 是对照组，专门证伪
 /// "这列从来没被写过"式的假绿。门面级（鉴权 + 三件留痕 + 出口）真机用例见
 /// demo/cmd/t1_mysql。
-async fn t1_i114_update_user_lands() -> Unit raise {
+async fn t1_i114_update_user_lands() -> Unit {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   save_define_9x(repo, 990401L, "t1-i114", SIMPLE_FLOW)
@@ -424,20 +539,23 @@ async fn t1_i114_update_user_lands() -> Unit raise {
   inst.update_user = Some("i114-revoker")
   repo.update_instance(inst)
   check(
-    select_cell(repo, iid_sql, [@moondb.Int64(inst.instance_id)], "update_user") == "i114-revoker",
+    select_cell(repo, iid_sql, [@moondb.Int64(inst.instance_id)], "update_user") ==
+    "i114-revoker",
     "I114 库里 wf_process_instance.update_user 真被写入（列确在 UPDATE 语句里）",
   )
   task.update_user = Some("i114-revoker")
   repo.update_task(task)
   check(
-    select_cell(repo, tid_sql, [@moondb.Int64(task.task_id)], "update_user") == "i114-revoker",
+    select_cell(repo, tid_sql, [@moondb.Int64(task.task_id)], "update_user") ==
+    "i114-revoker",
     "I114 库里 wf_process_task.update_user 真被写入",
   )
   // 对照组：None 必须落 NULL（否则前面的命中可能是"这列从没被写过 + 哨兵恰好同值"）
   inst.update_user = None
   repo.update_instance(inst)
   check(
-    select_cell(repo, iid_sql, [@moondb.Int64(inst.instance_id)], "update_user") == "<NULL>",
+    select_cell(repo, iid_sql, [@moondb.Int64(inst.instance_id)], "update_user") ==
+    "<NULL>",
     "I114 update_user=None 落库 NULL（对照，证伪假绿）",
   )
   clean_9x(repo)
@@ -451,8 +569,8 @@ async fn select_cell_dt(
   repo : @repo.MysqlRepository,
   sql : String,
   params : Array[@moondb.Value],
-  col : String
-) -> String raise {
+  col : String,
+) -> String {
   let conn = repo.open_raw()
   let rows = @repo.q(conn, sql, params)
   conn.close()
@@ -474,7 +592,11 @@ async fn select_cell_dt(
 ///|
 /// DATETIME(3) 文本比较取前 19 位（列带 `.000` 尾巴时不影响判据；C7 同口径）
 fn head19(s : String) -> String {
-  if s.length() >= 19 { s[0:19].to_owned() } else { s }
+  if s.length() >= 19 {
+    s[0:19].to_owned()
+  } else {
+    s
+  }
 }
 
 ///|
@@ -491,7 +613,7 @@ fn head19(s : String) -> String {
 /// 夹具设计：注入钟 = 真实 UTC − 12h ⇒ 「引擎钟(注入)」「真实 UTC」「DB +08:00」三方互不相同，
 /// 库里读到哪一把当场可分辨；末跳摘掉注入再写一次作**对照组**，读回值必须换成真实 UTC
 /// （≠ 注入串），用以证伪"这列根本没被写 / 被写成了常量"式的假绿。
-async fn t1_i120_engine_clock_lands() -> Unit raise {
+async fn t1_i120_engine_clock_lands() -> Unit {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   save_define_9x(repo, 990501L, "t1-i120", SIMPLE_FLOW)
@@ -506,34 +628,54 @@ async fn t1_i120_engine_clock_lands() -> Unit raise {
 
   inst.update_user = Some("i120")
   repo.update_instance(inst)
-  let inst_upd = head19(select_cell_dt(repo, "SELECT update_time FROM wf_process_instance WHERE id = ?", [
-    @moondb.Int64(inst.instance_id)
-  ], "update_time"))
+  let inst_upd = head19(
+    select_cell_dt(
+      repo,
+      "SELECT update_time FROM wf_process_instance WHERE id = ?",
+      [@moondb.Int64(inst.instance_id)],
+      "update_time",
+    ),
+  )
   check(
     inst_upd == injected,
     "I120 库里 wf_process_instance.update_time = 注入的引擎钟（实际=\{inst_upd}，注入串=\{injected}）",
   )
   task.update_user = Some("i120")
   repo.update_task(task)
-  let task_upd = head19(select_cell_dt(repo, "SELECT update_time FROM wf_process_task WHERE id = ?", [
-    @moondb.Int64(task.task_id)
-  ], "update_time"))
+  let task_upd = head19(
+    select_cell_dt(
+      repo,
+      "SELECT update_time FROM wf_process_task WHERE id = ?",
+      [@moondb.Int64(task.task_id)],
+      "update_time",
+    ),
+  )
   check(
     task_upd == injected,
     "I120 库里 wf_process_task.update_time = 注入的引擎钟（实际=\{task_upd}，同行 finish_time 同基准）",
   )
   repo.add_task_actor(task.task_id, ["i120-extra"])
-  let actor_ct = head19(select_cell_dt(repo, "SELECT create_time FROM wf_process_task_actor WHERE process_task_id = ? AND actor_id = ?", [
-    @moondb.Int64(task.task_id), @moondb.Text("i120-extra")
-  ], "create_time"))
+  let actor_ct = head19(
+    select_cell_dt(
+      repo,
+      "SELECT create_time FROM wf_process_task_actor WHERE process_task_id = ? AND actor_id = ?",
+      [@moondb.Int64(task.task_id), @moondb.Text("i120-extra")],
+      "create_time",
+    ),
+  )
   check(
     actor_ct == injected,
     "I120 库里 wf_process_task_actor.create_time = 注入的引擎钟（实际=\{actor_ct}）",
   )
   repo.create_cc_instance(inst.instance_id, "user9x", ["i120-cc"])
-  let cc_ct = head19(select_cell_dt(repo, "SELECT create_time FROM wf_process_cc_instance WHERE process_instance_id = ? AND actor_id = ?", [
-    @moondb.Int64(inst.instance_id), @moondb.Text("i120-cc")
-  ], "create_time"))
+  let cc_ct = head19(
+    select_cell_dt(
+      repo,
+      "SELECT create_time FROM wf_process_cc_instance WHERE process_instance_id = ? AND actor_id = ?",
+      [@moondb.Int64(inst.instance_id), @moondb.Text("i120-cc")],
+      "create_time",
+    ),
+  )
   check(
     cc_ct == injected,
     "I120 抄送行 create_time = 注入的引擎钟（实际=\{cc_ct}；该列会被 page_cc_instances 回读投影给前端）",
@@ -553,9 +695,14 @@ async fn t1_i120_engine_clock_lands() -> Unit raise {
   }
   repo.save_design(design)
   repo.update_design(design)
-  let design_upd = head19(select_cell_dt(repo, "SELECT update_time FROM wf_process_design WHERE id = ?", [
-    @moondb.Int64(990502L)
-  ], "update_time"))
+  let design_upd = head19(
+    select_cell_dt(
+      repo,
+      "SELECT update_time FROM wf_process_design WHERE id = ?",
+      [@moondb.Int64(990502L)],
+      "update_time",
+    ),
+  )
   check(
     design_upd == injected,
     "I120 库里 wf_process_design.update_time = 注入的引擎钟（实际=\{design_upd}）",
@@ -575,9 +722,14 @@ async fn t1_i120_engine_clock_lands() -> Unit raise {
   }
   repo.save_surrogate(sg)
   repo.update_surrogate(sg)
-  let sg_upd = head19(select_cell_dt(repo, "SELECT update_time FROM wf_process_surrogate WHERE id = ?", [
-    @moondb.Int64(990503L)
-  ], "update_time"))
+  let sg_upd = head19(
+    select_cell_dt(
+      repo,
+      "SELECT update_time FROM wf_process_surrogate WHERE id = ?",
+      [@moondb.Int64(990503L)],
+      "update_time",
+    ),
+  )
   check(
     sg_upd == injected,
     "I120 库里 wf_process_surrogate.update_time = 注入的引擎钟（实际=\{sg_upd}）",
@@ -587,9 +739,14 @@ async fn t1_i120_engine_clock_lands() -> Unit raise {
   // 否则上面的命中可能只是"常量/从没被写过"。
   @model.set_clock(None)
   repo.update_instance(inst)
-  let after_default = head19(select_cell_dt(repo, "SELECT update_time FROM wf_process_instance WHERE id = ?", [
-    @moondb.Int64(inst.instance_id)
-  ], "update_time"))
+  let after_default = head19(
+    select_cell_dt(
+      repo,
+      "SELECT update_time FROM wf_process_instance WHERE id = ?",
+      [@moondb.Int64(inst.instance_id)],
+      "update_time",
+    ),
+  )
   check(
     after_default != injected && after_default.length() >= 19,
     "I120 摘掉注入后 update_time 跟随默认臂真实 UTC（实际=\{after_default}，注入串=\{injected}）",
@@ -613,16 +770,16 @@ fn sg_row(
   process_name : String,
   start_time : String?,
   end_time : String?,
-  enabled : Int
+  enabled : Int32,
 ) -> @model.ProcessSurrogate {
   {
-    id: id,
-    process_name: process_name,
-    operator: operator,
+    id,
+    process_name,
+    operator,
     surrogate: agent,
-    start_time: start_time,
-    end_time: end_time,
-    enabled: enabled,
+    start_time,
+    end_time,
+    enabled,
     create_time: None,
     create_user: Some("i116"),
     update_time: None,
@@ -631,43 +788,131 @@ fn sg_row(
 }
 
 ///|
-async fn t1_i116_surrogate_query() -> Unit raise {
+async fn t1_i116_surrogate_query() -> Unit {
   @model.set_clock(Some(fn() { I116_NOW }))
-  defer { @model.set_clock(None) }
+  defer @model.set_clock(None)
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   let mem = @mem.MemoryRepository::new()
   let rows = [
-    sg_row(990501L, "i116-zhang", "i116-li", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
-    sg_row(990502L, "i116-future", "i116-li", "i116-flow", Some("2026-09-25 00:00:00"), None, 1),
-    sg_row(990503L, "i116-past", "i116-li", "i116-flow", None, Some("2026-09-20 23:59:59"), 1),
+    sg_row(
+      990501L,
+      "i116-zhang",
+      "i116-li",
+      "i116-flow",
+      Some("2026-09-01 00:00:00"),
+      Some("2026-09-30 23:59:59"),
+      1,
+    ),
+    sg_row(
+      990502L,
+      "i116-future",
+      "i116-li",
+      "i116-flow",
+      Some("2026-09-25 00:00:00"),
+      None,
+      1,
+    ),
+    sg_row(
+      990503L,
+      "i116-past",
+      "i116-li",
+      "i116-flow",
+      None,
+      Some("2026-09-20 23:59:59"),
+      1,
+    ),
     sg_row(990504L, "i116-off", "i116-li", "i116-flow", None, None, 0),
     sg_row(990505L, "i116-self", "i116-self", "i116-flow", None, None, 1),
     sg_row(990506L, "i116-blank", "i116-li", "", None, None, 1),
     sg_row(990507L, "i116-multi", "i116-old", "i116-flow", None, None, 1),
     sg_row(990508L, "i116-multi", "i116-new", "i116-flow", None, None, 1),
-    sg_row(990509L, "i116-edge", "i116-li", "i116-flow", Some(I116_NOW), Some(I116_NOW), 1),
+    sg_row(
+      990509L,
+      "i116-edge",
+      "i116-li",
+      "i116-flow",
+      Some(I116_NOW),
+      Some(I116_NOW),
+      1,
+    ),
     // 精确名行 id 比兜底行**小**：证明两阶段查询，而不是"一次 ORDER BY id DESC 扫全表"
     sg_row(990510L, "i116-prio", "i116-exact", "i116-flow", None, None, 1),
     sg_row(990511L, "i116-prio", "i116-blank-hit", "", None, None, 1),
     // ── issues/123 条款 1.4：同作用域「旧记录有效 + 新记录不生效」四格 ──
     // 新记录 id 必须更大（ORDER BY id DESC 才落到它）。四格期望 **<none>**：
     // "先滤生效、剩下的才取最新"的旧形状会跳过新的那条、复活旧的那条 ⇒ 这四格是杀手。
-    sg_row(990512L, "i123-out", "i123-old-valid", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
-    sg_row(990513L, "i123-out", "i123-new-agent", "i116-flow", Some("2026-09-25 00:00:00"), None, 1),
-    sg_row(990514L, "i123-off", "i123-old-valid", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
+    sg_row(
+      990512L,
+      "i123-out",
+      "i123-old-valid",
+      "i116-flow",
+      Some("2026-09-01 00:00:00"),
+      Some("2026-09-30 23:59:59"),
+      1,
+    ),
+    sg_row(
+      990513L,
+      "i123-out",
+      "i123-new-agent",
+      "i116-flow",
+      Some("2026-09-25 00:00:00"),
+      None,
+      1,
+    ),
+    sg_row(
+      990514L,
+      "i123-off",
+      "i123-old-valid",
+      "i116-flow",
+      Some("2026-09-01 00:00:00"),
+      Some("2026-09-30 23:59:59"),
+      1,
+    ),
     sg_row(990515L, "i123-off", "i123-new-agent", "i116-flow", None, None, 0),
-    sg_row(990516L, "i123-dirty", "i123-old-valid", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
+    sg_row(
+      990516L,
+      "i123-dirty",
+      "i123-old-valid",
+      "i116-flow",
+      Some("2026-09-01 00:00:00"),
+      Some("2026-09-30 23:59:59"),
+      1,
+    ),
     // 脏值经 sg_row **直落仓储**（不经门面，门面对非 0/1 是判错口径，见 facade 用例）
     sg_row(990517L, "i123-dirty", "i123-new-agent", "i116-flow", None, None, 2),
-    sg_row(990518L, "i123-self", "i123-old-valid", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
+    sg_row(
+      990518L,
+      "i123-self",
+      "i123-old-valid",
+      "i116-flow",
+      Some("2026-09-01 00:00:00"),
+      Some("2026-09-30 23:59:59"),
+      1,
+    ),
     sg_row(990519L, "i123-self", "i123-self", "i116-flow", None, None, 1),
     // 最新一条有效 ⇒ 照常取它（证明四格的红不是"委托整体失效"）
     sg_row(990520L, "i123-ok", "i123-old-off", "i116-flow", None, None, 0),
-    sg_row(990521L, "i123-ok", "i123-new-valid", "i116-flow", Some("2026-09-01 00:00:00"), Some("2026-09-30 23:59:59"), 1),
+    sg_row(
+      990521L,
+      "i123-ok",
+      "i123-new-valid",
+      "i116-flow",
+      Some("2026-09-01 00:00:00"),
+      Some("2026-09-30 23:59:59"),
+      1,
+    ),
     // 精确作用域最新一条已过期 ⇒ 判否后**仍**回落全流程作用域那条（Java testSurrogateCrudAndGet 同形）
     sg_row(990522L, "i123-fb", "i123-global", "", None, None, 1),
-    sg_row(990523L, "i123-fb", "i123-exact-expired", "i116-flow", None, Some("2026-09-20 23:59:59"), 1),
+    sg_row(
+      990523L,
+      "i123-fb",
+      "i123-exact-expired",
+      "i116-flow",
+      None,
+      Some("2026-09-20 23:59:59"),
+      1,
+    ),
   ]
   for r in rows {
     repo.save_surrogate(r)
@@ -707,24 +952,33 @@ async fn t1_i116_surrogate_query() -> Unit raise {
       Some(s) => s.surrogate
       None => "<none>"
     }
-    check(sql_v == want, "I116 SQL 仓 \{op}@\{name} → \{want}（实际=\{sql_v}）")
-    check(mem_v == want, "I116 内存仓 \{op}@\{name} → \{want}（实际=\{mem_v}）")
+    check(
+      sql_v == want,
+      "I116 SQL 仓 \{op}@\{name} → \{want}（实际=\{sql_v}）",
+    )
+    check(
+      mem_v == want,
+      "I116 内存仓 \{op}@\{name} → \{want}（实际=\{mem_v}）",
+    )
     check(
       sql_v == mem_v,
       "I116 条款6 双仓同答案 \{op}@\{name}：SQL=\{sql_v} 内存=\{mem_v}",
     )
   }
   // 兜底不得跨授权人
-  check(repo.get_surrogate("i116-nobody", "any-unlisted-flow", I116_NOW) is None, "I116 兜底仅按授权人")
+  check(
+    repo.get_surrogate("i116-nobody", "any-unlisted-flow", I116_NOW) is None,
+    "I116 兜底仅按授权人",
+  )
   clean_9x(repo)
 }
 
 ///|
 /// ── issues/117：我已办状态集合 = task_state <> 10，且空 operator 不得返回全库 ──
 /// 造 20/30/40/99/10 五条行，SQL 仓与内存仓必须给出**同一 id 集合**（条款 6 通则）。
-async fn t1_i117_done_state_set() -> Unit raise {
+async fn t1_i117_done_state_set() -> Unit {
   @model.set_clock(Some(fn() { I116_NOW }))
-  defer { @model.set_clock(None) }
+  defer @model.set_clock(None)
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   save_define_9x(repo, 990601L, "t1-i117", SIMPLE_FLOW)
@@ -735,7 +989,7 @@ async fn t1_i117_done_state_set() -> Unit raise {
     [],
   )
   conn.close()
-  let specs : Array[(Int64, Int, String?)] = [
+  let specs : Array[(Int64, Int32, String?)] = [
     (990611L, 20, Some("i117-leader")),
     (990612L, 30, Some("i117-leader")),
     (990613L, 40, Some("i117-leader")),
@@ -769,7 +1023,11 @@ async fn t1_i117_done_state_set() -> Unit raise {
       task_state: state,
       actor_id: actor,
       actor_ids: ["i117-leader"],
-      finish_time: if state == 20 { Some(I116_NOW) } else { None },
+      finish_time: if state == 20 {
+        Some(I116_NOW)
+      } else {
+        None
+      },
       expire_time: None,
       form_key: None,
       parent_task_id: None,
@@ -788,18 +1046,36 @@ async fn t1_i117_done_state_set() -> Unit raise {
   let q = @model.PageQuery::new(1L, 20L)
   q.set_operator(Some("i117-leader"))
   let page = repo.page_done_tasks(q)
-  check(page.record_count() == 4L, "I117 SQL 仓已办 4 条（实际=\{page.record_count()}）")
+  check(
+    page.record_count() == 4L,
+    "I117 SQL 仓已办 4 条（实际=\{page.record_count()}）",
+  )
   for want in done_ids {
-    check(page.rows().exists(r => r.id.to_string() == want), "I117 SQL 仓含任务行 \{want}")
+    check(
+      page.rows().exists(r => r.id.to_string() == want),
+      "I117 SQL 仓含任务行 \{want}",
+    )
   }
-  check(!page.rows().exists(r => r.id.to_string() == "990615"), "I117 SQL 仓 DOING(10) 不进已办")
+  check(
+    !page.rows().exists(r => r.id.to_string() == "990615"),
+    "I117 SQL 仓 DOING(10) 不进已办",
+  )
   // 内存仓同答案
   let mpage = mem.page_done_tasks(q)
-  check(mpage.record_count() == page.record_count(), "I117 条款6 双仓条数一致")
+  check(
+    mpage.record_count() == page.record_count(),
+    "I117 条款6 双仓条数一致",
+  )
   for want in done_ids {
-    check(mpage.rows().exists(r => r.id.to_string() == want), "I117 内存仓含任务行 \{want}")
+    check(
+      mpage.rows().exists(r => r.id.to_string() == want),
+      "I117 内存仓含任务行 \{want}",
+    )
   }
-  check(!mpage.rows().exists(r => r.id.to_string() == "990615"), "I117 内存仓 DOING(10) 不进已办")
+  check(
+    !mpage.rows().exists(r => r.id.to_string() == "990615"),
+    "I117 内存仓 DOING(10) 不进已办",
+  )
   // 判据生效自证：库里 task_state <> 10 确实筛出这 4 行（不是"=20 蓙对"）
   let cand = select_cell(
     repo,
@@ -807,20 +1083,41 @@ async fn t1_i117_done_state_set() -> Unit raise {
     [],
     "cnt",
   )
-  check(cand == "4", "I117 裸 SQL 候选集 = 4（证 <>10 判据真在筛，实际=\{cand}）")
+  check(
+    cand == "4",
+    "I117 裸 SQL 候选集 = 4（证 <>10 判据真在筛，实际=\{cand}）",
+  )
   // 负向：空 operator 不得返回全库
   let q_none = @model.PageQuery::new(1L, 20L)
-  check(repo.page_done_tasks(q_none).record_count() == 0L, "I117 SQL 仓无 operator → 空页（不得全库）")
-  check(mem.page_done_tasks(q_none).record_count() == 0L, "I117 内存仓无 operator → 空页（不得全库）")
+  check(
+    repo.page_done_tasks(q_none).record_count() == 0L,
+    "I117 SQL 仓无 operator → 空页（不得全库）",
+  )
+  check(
+    mem.page_done_tasks(q_none).record_count() == 0L,
+    "I117 内存仓无 operator → 空页（不得全库）",
+  )
   let q_blank = @model.PageQuery::new(1L, 20L)
   q_blank.set_operator(Some(""))
-  check(repo.page_done_tasks(q_blank).record_count() == 0L, "I117 SQL 仓 operator='' → 空页")
-  check(mem.page_done_tasks(q_blank).record_count() == 0L, "I117 内存仓 operator='' → 空页")
+  check(
+    repo.page_done_tasks(q_blank).record_count() == 0L,
+    "I117 SQL 仓 operator='' → 空页",
+  )
+  check(
+    mem.page_done_tasks(q_blank).record_count() == 0L,
+    "I117 内存仓 operator='' → 空页",
+  )
   // 负向：发起人（create_user）看不到
   let q_creator = @model.PageQuery::new(1L, 20L)
   q_creator.set_operator(Some("i117-applicant"))
-  check(repo.page_done_tasks(q_creator).record_count() == 0L, "I117 SQL 仓 create_user 不放行")
-  check(mem.page_done_tasks(q_creator).record_count() == 0L, "I117 内存仓 create_user 不放行")
+  check(
+    repo.page_done_tasks(q_creator).record_count() == 0L,
+    "I117 SQL 仓 create_user 不放行",
+  )
+  check(
+    mem.page_done_tasks(q_creator).record_count() == 0L,
+    "I117 内存仓 create_user 不放行",
+  )
   // 回归：分页五键在判据收紧后仍成立
   let q_page = @model.PageQuery::new(1L, 2L)
   q_page.set_operator(Some("i117-leader"))
@@ -861,7 +1158,7 @@ fn m6_inst(iid : Int64) -> @model.ProcessInstance {
 
 ///|
 /// 持久态读数：另开一条连接，绕开事务可见性——读到的就是"已提交/已回滚"的终态
-async fn m6_row_count(base : @repo.MysqlRepository, iid : Int64) -> Int64 raise {
+async fn m6_row_count(base : @repo.MysqlRepository, iid : Int64) -> Int64 {
   let conn = base.open_raw()
   let rows = @repo.q(
     conn,
@@ -874,7 +1171,7 @@ async fn m6_row_count(base : @repo.MysqlRepository, iid : Int64) -> Int64 raise 
 
 ///|
 /// A 支：事务里写一行 → 让出事件循环 → 抛错（模板 ROLLBACK）
-async fn m6_body_a(r : @repo.MysqlRepository) -> Unit raise {
+async fn m6_body_a(r : @repo.MysqlRepository) -> Unit {
   r.save_instance(m6_inst(990030L))
   // 真实系统里任何一次 DB 往返都是 await，这里用 sleep 制造同一个让出点
   let _ = @async.sleep(60)
@@ -883,15 +1180,17 @@ async fn m6_body_a(r : @repo.MysqlRepository) -> Unit raise {
 
 ///|
 /// B 支：在 A 的让出窗口里进模板，写完并成功返回
-async fn m6_body_b(r : @repo.MysqlRepository) -> Unit raise {
+async fn m6_body_b(r : @repo.MysqlRepository) -> Unit {
   r.save_instance(m6_inst(990031L))
 }
 
 ///|
 /// T1-M6 并发原子档（案文 §5 第一条）：X2 那格必须从 `has400=0` 翻成 1，
 /// 否则"跨请求共用同一条连接时事务边界不存在"这条结论仍然成立。
-async fn t1_m6_tx_scope_isolation() -> Unit raise {
-  println("T1-M6 两个并发请求各走一次模板（issues/144 X2 档）...")
+async fn t1_m6_tx_scope_isolation() -> Unit {
+  println(
+    "T1-M6 两个并发请求各走一次模板（issues/144 X2 档）...",
+  )
   let base = @repo.MysqlRepository::from_env()
   clean_9x(base)
   let ra = base.new_request()
@@ -920,32 +1219,48 @@ async fn t1_m6_tx_scope_isolation() -> Unit raise {
       b_out.val = out
     },
   ])
-  check(a_out.val == "raised", "T1-M6 A 支回调抛错按预期外传（模板已 ROLLBACK）")
-  check(b_out.val == "committed", "T1-M6 B 支独立提交并成功返回（没搭 A 的事务）")
-  check(m6_row_count(base, 990030L) == 0L, "T1-M6 A 支自己的行被自己回滚撤掉")
-  check(m6_row_count(base, 990031L) == 1L, "T1-M6 B 支已确认的写入还在（X2 的 has400 翻成 1）")
+  check(
+    a_out.val == "raised",
+    "T1-M6 A 支回调抛错按预期外传（模板已 ROLLBACK）",
+  )
+  check(
+    b_out.val == "committed",
+    "T1-M6 B 支独立提交并成功返回（没搭 A 的事务）",
+  )
+  check(
+    m6_row_count(base, 990030L) == 0L,
+    "T1-M6 A 支自己的行被自己回滚撤掉",
+  )
+  check(
+    m6_row_count(base, 990031L) == 1L,
+    "T1-M6 B 支已确认的写入还在（X2 的 has400 翻成 1）",
+  )
   clean_9x(base)
 }
 
 ///|
 /// 内层：写一行后"成功返回"。若嵌套错误地另开事务，这里就会独立提交，
 /// 外层随后回滚就撤不掉它——所以"内层行也不在"同时证伪了两种坏形状。
-async fn m7_body_inner(r : @repo.MysqlRepository) -> Unit raise {
+async fn m7_body_inner(r : @repo.MysqlRepository) -> Unit {
   r.save_instance(m6_inst(990033L))
 }
 
-async fn m7_body_outer(r : @repo.MysqlRepository) -> Unit raise {
+///|
+async fn m7_body_outer(r : @repo.MysqlRepository) -> Unit {
   r.save_instance(m6_inst(990032L))
   let inner = r.tx_template()
   inner.execute_in_tx(m7_body_inner)
-  check(r.tx_active(), "T1-M7 嵌套调用返回后本实例仍在同一事务中（未另开连接）")
+  check(
+    r.tx_active(),
+    "T1-M7 嵌套调用返回后本实例仍在同一事务中（未另开连接）",
+  )
   raise @error.Business("outer-boom")
 }
 
 ///|
 /// T1-M7 正向对照（案文 §5 第二条）：同一实例内嵌套不重复 BEGIN、同属一个事务。
 /// 这条是本案要**保住**的既有语义，不是新能力。
-async fn t1_m7_nested_tx_reuse() -> Unit raise {
+async fn t1_m7_nested_tx_reuse() -> Unit {
   println("T1-M7 同一实例内嵌套不重复 BEGIN（正向对照）...")
   let base = @repo.MysqlRepository::from_env()
   clean_9x(base)
@@ -957,9 +1272,18 @@ async fn t1_m7_nested_tx_reuse() -> Unit raise {
     _ => true
   }
   check(raised, "T1-M7 外层抛错按预期外传")
-  check(!r.tx_active(), "T1-M7 模板收尾清空本实例事务槽（不留悬空连接）")
-  check(m6_row_count(base, 990032L) == 0L, "T1-M7 外层写入随外层回滚撤掉")
-  check(m6_row_count(base, 990033L) == 0L, "T1-M7 嵌套内层写入与外层同事务、被一起撤掉")
+  check(
+    !r.tx_active(),
+    "T1-M7 模板收尾清空本实例事务槽（不留悬空连接）",
+  )
+  check(
+    m6_row_count(base, 990032L) == 0L,
+    "T1-M7 外层写入随外层回滚撤掉",
+  )
+  check(
+    m6_row_count(base, 990033L) == 0L,
+    "T1-M7 嵌套内层写入与外层同事务、被一起撤掉",
+  )
   clean_9x(base)
 }
 
@@ -967,16 +1291,20 @@ async fn t1_m7_nested_tx_reuse() -> Unit raise {
 /// T1-M8 归属边界的两个方向：
 /// 拷贝共享槽（⇒ Ctx/Facade/Engine 各自持有的那份 R 自动落在同一事务里，这是 b 成立的前提）；
 /// 派生独立槽（⇒ 请求边界切开，这是 b 修复本案的前提）。
-async fn m8_body(r : @repo.MysqlRepository) -> Unit raise {
+async fn m8_body(r : @repo.MysqlRepository) -> Unit {
   let as_copy = r
   as_copy.save_instance(m6_inst(990034L))
   let derived = r.new_request()
   derived.save_instance(m6_inst(990035L))
-  check(derived.tx_active() == false, "T1-M8 派生实例看不到母体的事务（新槽）")
+  check(
+    derived.tx_active() == false,
+    "T1-M8 派生实例看不到母体的事务（新槽）",
+  )
   raise @error.Business("m8-boom")
 }
 
-async fn t1_m8_tx_ownership_boundary() -> Unit raise {
+///|
+async fn t1_m8_tx_ownership_boundary() -> Unit {
   println("T1-M8 事务归属边界：拷贝共用槽 / 派生独立槽...")
   let base = @repo.MysqlRepository::from_env()
   clean_9x(base)
@@ -988,10 +1316,17 @@ async fn t1_m8_tx_ownership_boundary() -> Unit raise {
     _ => true
   }
   check(raised, "T1-M8 抛错按预期外传")
-  check(m6_row_count(base, 990034L) == 0L, "T1-M8 经拷贝写入的行落在事务内（被回滚撤掉）")
-  check(m6_row_count(base, 990035L) == 1L, "T1-M8 经派生实例写入的行落在事务外（autocommit 留存）")
+  check(
+    m6_row_count(base, 990034L) == 0L,
+    "T1-M8 经拷贝写入的行落在事务内（被回滚撤掉）",
+  )
+  check(
+    m6_row_count(base, 990035L) == 1L,
+    "T1-M8 经派生实例写入的行落在事务外（autocommit 留存）",
+  )
   clean_9x(base)
 }
+
 ///|
 /// T1-M10 空转档（audit8 R95，10-16 owner 拍甲补上）——spec/12 §12.4 第三档，专抓
 /// 「名义有事务、实际盖不住写」：SPI 声明在不在、模板注册没注册、代码读起来像不像有事务，
@@ -1004,22 +1339,29 @@ async fn t1_m8_tx_ownership_boundary() -> Unit raise {
 /// ③ 抛错回滚后独立连接仍读不到（终态不存在）。
 /// 阳性对照（变异，读数见 notes/R95.md）＝把 `open_or_tx` 退回「每句自取新连接」⇒ ① 必红；
 /// 去掉回滚臂 ⇒ ③ 必红。
-async fn m10_body(r : @repo.MysqlRepository) -> Unit raise {
+async fn m10_body(r : @repo.MysqlRepository) -> Unit {
   r.save_instance(m6_inst(990040L))
   let seen = r.find_instance_by_id(990040L)
   let readable = match seen {
     Some(_) => true
     None => false
   }
-  check(readable, "T1-M10 空转档①：事务内在同一条连接上读得到自己刚写的行")
+  check(
+    readable, "T1-M10 空转档①：事务内在同一条连接上读得到自己刚写的行",
+  )
   let other = m6_row_count(r, 990040L)
-  check(other == 0L, "T1-M10 空转档②：独立连接在提交前读不到未提交的行（实得 \{other}）")
+  check(
+    other == 0L,
+    "T1-M10 空转档②：独立连接在提交前读不到未提交的行（实得 \{other}）",
+  )
   raise @error.Business("m10-boom-in-tx")
 }
 
 ///|
-async fn t1_m10_tx_read_your_own_writes() -> Unit raise {
-  println("T1-M10 空转档：同连接读回＋提交前独立连接不可见＋回滚后不存在（spec/12 §12.4 第三档）...")
+async fn t1_m10_tx_read_your_own_writes() -> Unit {
+  println(
+    "T1-M10 空转档：同连接读回＋提交前独立连接不可见＋回滚后不存在（spec/12 §12.4 第三档）...",
+  )
   let base = @repo.MysqlRepository::from_env()
   clean_9x(base)
   let r = base.new_request()
@@ -1030,11 +1372,15 @@ async fn t1_m10_tx_read_your_own_writes() -> Unit raise {
     _ => true
   }
   check(raised, "T1-M10 抛错按预期外传（模板已 ROLLBACK）")
-  check(m6_row_count(base, 990040L) == 0L, "T1-M10 空转档③：回滚后独立连接读不到该行")
+  check(
+    m6_row_count(base, 990040L) == 0L,
+    "T1-M10 空转档③：回滚后独立连接读不到该行",
+  )
   clean_9x(base)
 }
+
 ///|
-async fn t1_all() -> Unit raise {
+async fn t1_all() -> Unit {
   println("T1-M1 page five keys...")
   t1_m1_page()
   println("T1-M2 hydrate + engine flow...")
@@ -1051,20 +1397,26 @@ async fn t1_all() -> Unit raise {
   t1_i110_hydrate()
   println("T1-I114 update_user 真写进 UPDATE 语句（仓储级）...")
   t1_i114_update_user_lands()
-  println("T1-I120 六条写路径时间列 = 引擎钟，SQL 侧无 NOW()（仓储级）...")
+  println(
+    "T1-I120 六条写路径时间列 = 引擎钟，SQL 侧无 NOW()（仓储级）...",
+  )
   t1_i120_engine_clock_lands()
   println("T1-I116 委托查询四判据 + 双仓同答案...")
   t1_i116_surrogate_query()
   println("T1-I117 我已办状态集合 <>10 + 空 operator 空页...")
   t1_i117_done_state_set()
-  println("T1-I152 委托台账分页归属不变式（空归属=空页，双仓同答案）...")
+  println(
+    "T1-I152 委托台账分页归属不变式（空归属=空页，双仓同答案）...",
+  )
   t1_i152_surrogate_page_ownership()
   t1_m6_tx_scope_isolation()
   t1_m7_nested_tx_reuse()
   t1_m8_tx_ownership_boundary()
   t1_m10_tx_read_your_own_writes()
   println("T1 ALL PASS (wasm → 160)")
-  println("门面级 withdraw/transfer 真机对拍另跑：moon run --target wasm demo/cmd/t1_mysql")
+  println(
+    "门面级 withdraw/transfer 真机对拍另跑：moon run --target wasm demo/cmd/t1_mysql",
+  )
 }
 
 ///|
@@ -1073,7 +1425,7 @@ async fn t1_all() -> Unit raise {
 /// 绝不"这条不加"退化成全库台账；与内存仓同一判据（@model.surrogate_ownership_operator）
 /// ⇒ 同一份夹具两仓逐档并排对拍，条数或集合不一致即红（条款 6）。
 /// 阳性对照：有效归属条件照常出行——防"一律空页"那种假修。
-async fn t1_i152_surrogate_page_ownership() -> Unit raise {
+async fn t1_i152_surrogate_page_ownership() -> Unit {
   let repo = @repo.MysqlRepository::from_env()
   clean_9x(repo)
   let mem = @mem.MemoryRepository::new()
@@ -1091,32 +1443,61 @@ async fn t1_i152_surrogate_page_ownership() -> Unit raise {
   q_own.set_operator(Some("i152-own"))
   let sql_own = repo.page_surrogates(q_own)
   let mem_own = mem.page_surrogates(q_own)
-  check(sql_own.record_count() == 2L, "I152 SQL 仓有效归属=2 行（实际=\{sql_own.record_count()}）")
-  check(mem_own.record_count() == sql_own.record_count(), "I152 条款6 双仓条数一致（有效档）")
+  check(
+    sql_own.record_count() == 2L,
+    "I152 SQL 仓有效归属=2 行（实际=\{sql_own.record_count()}）",
+  )
+  check(
+    mem_own.record_count() == sql_own.record_count(),
+    "I152 条款6 双仓条数一致（有效档）",
+  )
   for r in sql_own.rows() {
-    check(r.operator == "i152-own", "I152 SQL 仓读回行归属列逐字为 own（实际=\{r.operator}）")
+    check(
+      r.operator == "i152-own",
+      "I152 SQL 仓读回行归属列逐字为 own（实际=\{r.operator}）",
+    )
   }
   let q_other = @model.PageQuery::new(1L, 20L)
   q_other.set_operator(Some("i152-other"))
-  check(repo.page_surrogates(q_other).record_count() == 1L, "I152 SQL 仓他人档=1 行")
+  check(
+    repo.page_surrogates(q_other).record_count() == 1L,
+    "I152 SQL 仓他人档=1 行",
+  )
   // 负向：缺键 / 空串 / 全空白 ⇒ 空页（不是全库 3 行），双仓同答案
   let q_none = @model.PageQuery::new(1L, 20L)
-  check(repo.page_surrogates(q_none).record_count() == 0L, "I152 SQL 仓缺归属键 ⇒ 空页（不得全库 3 行）")
-  check(repo.page_surrogates(q_none).rows().is_empty(), "I152 SQL 仓缺键档 rows 也为空")
-  check(mem.page_surrogates(q_none).record_count() == 0L, "I152 内存仓缺归属键 ⇒ 空页（同答案）")
+  check(
+    repo.page_surrogates(q_none).record_count() == 0L,
+    "I152 SQL 仓缺归属键 ⇒ 空页（不得全库 3 行）",
+  )
+  check(
+    repo.page_surrogates(q_none).rows().is_empty(),
+    "I152 SQL 仓缺键档 rows 也为空",
+  )
+  check(
+    mem.page_surrogates(q_none).record_count() == 0L,
+    "I152 内存仓缺归属键 ⇒ 空页（同答案）",
+  )
   for blank in ["", "   ", " \t\r\n "] {
     let qb = @model.PageQuery::new(1L, 20L)
     qb.set_operator(Some(blank))
-    check(repo.page_surrogates(qb).record_count() == 0L, "I152 SQL 仓空白归属档(\{blank}) ⇒ 空页")
-    check(mem.page_surrogates(qb).record_count() == 0L, "I152 内存仓空白归属档(\{blank}) ⇒ 空页（条款6）")
+    check(
+      repo.page_surrogates(qb).record_count() == 0L,
+      "I152 SQL 仓空白归属档(\{blank}) ⇒ 空页",
+    )
+    check(
+      mem.page_surrogates(qb).record_count() == 0L,
+      "I152 内存仓空白归属档(\{blank}) ⇒ 空页（条款6）",
+    )
   }
   clean_9x(repo)
 }
 
 ///|
-async fn smoke() -> Unit raise {
+async fn smoke() -> Unit {
   if skip_mysql() {
-    println("SKIP_MYSQL=1 → T1 skipped (开发机口径；发版机连不上=fail)")
+    println(
+      "SKIP_MYSQL=1 → T1 skipped (开发机口径；发版机连不上=fail)",
+    )
     return
   }
   t1_all()

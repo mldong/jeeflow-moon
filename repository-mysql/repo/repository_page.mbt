@@ -292,11 +292,16 @@ fn is_define_order_column(bare : String) -> Bool {
 }
 
 ///|
+pub fn define_page_where(raw : String) -> String {
+  raw.replace_all(old=" AND t.", new=" AND pd.")
+}
+
+///|
 pub impl @spi.ProcessRepository for MysqlRepository with fn page_defines(self, query) {
   let (page_num, page_size, offset) = page_bounds(query)
   let (m_where_raw, m_params) = @query.build_m_where(query.filters())
   // 主表别名解析：m_ 默认别名 t → page_defines 主表实际是 pd（java t-白名单同义）
-  let m_where = m_where_raw.replace(old=" AND t.", new=" AND pd.")
+  let m_where = define_page_where(m_where_raw)
   let conn = self.open_or_tx()
   let count_sql = "SELECT COUNT(*) AS cnt FROM wf_process_define pd WHERE 1=1" + m_where
   let count_params : Array[@moondb.Value] = []
