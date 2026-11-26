@@ -89,9 +89,13 @@ test "metadata: unknown dict" {
 test "metadata: handler registry built-ins ordered" {
   let reg = @metadata.HandlerRegistry::new()
   let handlers = reg.list_handlers("AssignmentHandler")
-  assert_eq(handlers.length(), 9)
+  assert_eq(handlers.length(), 11)
+  assert_eq(reg.list_handlers_group("AssignmentHandler", "built-in").length(), 11)
   assert_eq(handlers[0].order(), -9999)
   assert_true(handlers[0].class_name().contains("OperatorAssignmentHandler"))
+  assert_eq(handlers[8].order(), 80)
+  assert_eq(handlers[9].order(), 90)
+  assert_eq(handlers[10].order(), 100)
 }
 
 ///|
@@ -103,7 +107,7 @@ test "metadata: handler types and custom register" {
   reg.register(
     @metadata.HandlerMeta::make("AssignmentHandler", "com.custom.MyHandler", "自定义处理器", 100, "custom"),
   )
-  assert_eq(reg.list_handlers("AssignmentHandler").length(), 10)
+  assert_eq(reg.list_handlers("AssignmentHandler").length(), 12)
 }
 
 ///|
@@ -135,6 +139,30 @@ test "metadata: form-user dept handlers registered (order 70/80)" {
   assert_eq(main[0].order(), 80)
   assert_eq(leader[0].group(), "built-in")
   // 两支都是**顶级类**（不进 OrgUserAssignmentHandlers 内部类）⇒ 注册名不含内部类分隔符
+  assert_false(leader[0].class_name().contains("$"))
+  assert_false(main[0].class_name().contains("$"))
+}
+
+///|
+test "metadata: form-dept handlers registered as top-level classes (order 90/100)" {
+  let reg = @metadata.HandlerRegistry::new()
+  let handlers = reg.list_handlers("AssignmentHandler")
+  let leader = handlers.filter(h =>
+    h.class_name() == "com.mldong.jeeflow.interceptor.impl.FormDeptLeaderAssignmentHandler"
+  )
+  let main = handlers.filter(h =>
+    h.class_name() == "com.mldong.jeeflow.interceptor.impl.FormDeptMainLeaderAssignmentHandler"
+  )
+  assert_eq(leader.length(), 1)
+  assert_eq(main.length(), 1)
+  assert_eq(handlers[9].class_name(), leader[0].class_name())
+  assert_eq(handlers[10].class_name(), main[0].class_name())
+  assert_eq(leader[0].display_name(), "表单指定部门负责人")
+  assert_eq(main[0].display_name(), "表单指定部门分管领导")
+  assert_eq(leader[0].order(), 90)
+  assert_eq(main[0].order(), 100)
+  assert_eq(leader[0].group(), "built-in")
+  assert_eq(main[0].group(), "built-in")
   assert_false(leader[0].class_name().contains("$"))
   assert_false(main[0].class_name().contains("$"))
 }

@@ -1,4 +1,4 @@
-// 内置 AssignmentHandler（9 个，注册名=Java 全限定名）+ 字段权限过滤
+// 内置 AssignmentHandler（11 个，注册名=Java 全限定名）+ 字段权限过滤
 // 移植自 rust interceptor.rs。MoonBit 形态：handler = (Execution) -> String raise JeeflowError 闭包，
 // 由 register_builtin_assignment_handlers 工厂构造并捕获 user/org provider。
 // AssignFn 类型 = (@exec.Execution) -> String raise @error.JeeflowError（MoonBit 0.10 无可靠 typealias，内联书写）
@@ -174,6 +174,47 @@ pub fn form_user_dept_leader_handler(
 }
 
 ///|
+/// 10/11. FormDept{Main}LeaderAssignmentHandler —— 表单指定 1–N 个部门的（分管）领导。
+/// 与 issues/254 的「表单指定用户」不同：这里直接把表单值当部门 id 列表，不经过用户部门查询。
+/// 字段四档沿用 `find_form_user_field_value`；部门先按首次出现顺序去重，再逐部门查 SPI，
+/// 最后按「部门输入顺序 → SPI 返回顺序」合并并去重 userId。任一部门查询失败只跳过该部门。
+pub fn form_dept_leader_handler(
+  base : OrgAssignBase,
+  main~ : Bool = false
+) -> (async (@exec.Execution) -> String raise @error.JeeflowError) {
+  let need_main = main
+  (async fn(exec) raise @error.JeeflowError {
+    let node_key = match exec.current_node {
+      Some(node) => node.id
+      None => ""
+    }
+    let dept_ids = form_dept_ids(find_form_user_field_value(exec.args, node_key))
+    match base.org {
+      None => ""
+      Some(org) => {
+        let out : Array[String] = []
+        let seen_users : Map[String, Unit] = Map([])
+        for dept_id in dept_ids {
+          let leaders = try {
+            if need_main {
+              (org.find_dept_main_leaders)(dept_id)
+            } else {
+              (org.find_dept_leaders)(dept_id)
+            }
+          } catch {
+            _ => []
+          }
+          for raw_id in leaders {
+            append_unique_trimmed_id(out, seen_users, raw_id)
+          }
+        }
+        out.join(",")
+      }
+    }
+  })
+}
+
+///|
 /// 「表单指定用户」两档 handler 专用的候选键表（八语言契约 §3.2，顺序即优先级）：
 /// 1. `f_<nodeKey>`（jeeflow 引擎变量带 `f_` 前缀）2. `<nodeKey>` 裸名
 /// 3. nodeKey 含 `#` ⇒ 最后一个 `#` 之后的 field：先裸名、再 `f_<field>`
@@ -327,6 +368,43 @@ fn first_form_user_id(value : Json?) -> String {
     }
   }
   ""
+}
+
+///|
+/// 表单部门列表：标量按英文逗号拆；数组逐元素读取且**不二次拆逗号**。
+/// trim 后丢空，`"0"`／数字 0 保留，部门 id 去重并保持首次出现顺序。
+fn form_dept_ids(value : Json?) -> Array[String] {
+  let out : Array[String] = []
+  let seen : Map[String, Unit] = Map([])
+  match value {
+    None => ()
+    Some(v) =>
+      match @json.as_array(v) {
+        Some(items) =>
+          for item in items {
+            append_unique_trimmed_id(out, seen, json_scalar_to_string(item))
+          }
+        None =>
+          for part in comma_tokens(json_scalar_to_string(v)) {
+            append_unique_trimmed_id(out, seen, part)
+          }
+      }
+  }
+  out
+}
+
+///|
+/// 部门 id／SPI userId 共用的稳定去重：先 trim，空值丢弃，首次出现者保留。
+fn append_unique_trimmed_id(
+  out : Array[String],
+  seen : Map[String, Unit],
+  raw_id : String
+) -> Unit {
+  let id = raw_id.trim(chars=" \t\r\n").to_owned()
+  if !id.is_empty() && seen.get(id) is None {
+    seen[id] = ()
+    out.push(id)
+  }
 }
 
 ///|
