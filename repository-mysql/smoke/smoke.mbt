@@ -397,6 +397,10 @@ fn cell(r : @moondb.Row, col : String) -> String {
         @moondb.Int(n) => n.to_string()
         @moondb.Double(d) => d.to_string()
         @moondb.Bool(b) => if b { "1" } else { "0" }
+        @moondb.Time(s) => s.replace(old="T", new=" ")
+        @moondb.Numeric(s) | @moondb.Json(s) => s
+        @moondb.Uuid(_) => "<UUID>"
+        @moondb.Array(_) => "<ARRAY>"
       }
   }
 }
@@ -481,6 +485,7 @@ async fn select_cell_dt(
       match v {
         @moondb.Null => "<NULL>"
         @moondb.Text(s) => s
+        @moondb.Time(s) => s.replace(old="T", new=" ")
         @moondb.Blob(b) => @utf8.decode_lossy(b[:])
         _ => "<非文本值>"
       }

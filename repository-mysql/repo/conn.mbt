@@ -104,6 +104,9 @@ fn value_to_text(v : @moondb.Value) -> String? {
     Int(n) => Some(n.to_string())
     Double(d) => Some(d.to_string())
     Bool(b) => Some(if b { "1" } else { "0" })
+    Time(s) => Some(s.replace(old="T", new=" "))
+    Numeric(s) | Json(s) => Some(s)
+    Uuid(_) | Array(_) => None
   }
 }
 
