@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.1.76（2026-11-27）
+
+**表单指定 1–N 个部门负责人／分管领导（issues/258），并跟进 moonmysql 上游修复。**
+
+- 新增 `FormDeptLeaderAssignmentHandler`／`FormDeptMainLeaderAssignmentHandler`，注册名为 Java 顶级类 FQCN，order 90/100；四档字段查找、字符串/数组、部门与用户保序去重、单部门 SPI 异常跳过，issues/254 两枚用户版行为不变。
+- `moonmysql 0.8.1→0.8.2`、`moondb 0.3.1→0.3.2`。`v0.1.75` 的发布 CI 被旧 moonmysql 字节字面量阻断，未发布；`v0.1.76` 使用上游修复版，不降级、不固定旧工具链。
+- 五个 `moon.mod` 的 version 与九枚模块间 relay pin 同笔抬到 `0.1.76`，残留旧 pin 为 0。
+- 本机工具链 `moon 0.1.20261126`／`moonc 1.0.0-rc1`：wasm check 通过、T0 **691/691**；独立测试库 T1 **153 PASS/0 FAIL**、T1-F **200 PASS/0 FAIL**；demo T2 全链通过；action 清单三向一致，15 项一致性快照载荷等值。
+- Windows native + async 仍受运行时 MSVC-only 限制，native 测试由 Linux CI 承接。
+
 ## 0.1.70（2026-11-23）
 
 **老 `form_field_assignee_handler` 补上编号后缀第三档（issues/255，八语言同形轮）。**
