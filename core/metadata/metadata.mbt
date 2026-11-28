@@ -198,6 +198,13 @@ pub fn HandlerRegistry::new() -> HandlerRegistry {
   })
   handlers.push({
     handler_type: ah,
+    class_name: "com.mldong.jeeflow.interceptor.impl.OrgUserAssignmentHandlers$TaskPostAssigneeHandler",
+    display_name: "根据任务节点唯一编码关联岗位分配参与者",
+    order: 65,
+    group: "built-in",
+  })
+  handlers.push({
+    handler_type: ah,
     class_name: "com.mldong.jeeflow.interceptor.impl.FormUserDeptLeaderAssignmentHandler",
     display_name: "表单指定用户所属部门经理",
     order: 70,
@@ -222,6 +229,13 @@ pub fn HandlerRegistry::new() -> HandlerRegistry {
     class_name: "com.mldong.jeeflow.interceptor.impl.FormDeptMainLeaderAssignmentHandler",
     display_name: "表单指定部门分管领导",
     order: 100,
+    group: "built-in",
+  })
+  handlers.push({
+    handler_type: ah,
+    class_name: "com.mldong.jeeflow.interceptor.impl.FormPostAssignmentHandler",
+    display_name: "表单指定岗位分配参与者",
+    order: 110,
     group: "built-in",
   })
   // Default ActionPermissionProvider

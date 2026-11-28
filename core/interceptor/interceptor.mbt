@@ -1,4 +1,4 @@
-// 内置 AssignmentHandler（11 个，注册名=Java 全限定名）+ 字段权限过滤
+// 内置 AssignmentHandler（13 个，注册名=Java 全限定名）+ 字段权限过滤
 // 移植自 rust interceptor.rs。MoonBit 形态：handler = (Execution) -> String raise JeeflowError 闭包，
 // 由 register_builtin_assignment_handlers 工厂构造并捕获 user/org provider。
 // AssignFn 类型 = (@exec.Execution) -> String raise @error.JeeflowError（MoonBit 0.10 无可靠 typealias，内联书写）
@@ -148,6 +148,34 @@ pub fn task_role_assignee_handler(
 }
 
 ///|
+/// TaskPostAssigneeHandler —— 节点唯一编码即岗位编码，按 Provider 顺序返回岗位成员。
+/// 节点为空、SPI 未注册、岗位不存在/无成员或查询异常 ⇒ 空串且不抛。
+pub fn task_post_assignee_handler(
+  post : @spi.PostUserProviderFns?
+) -> (async (@exec.Execution) -> String raise @error.JeeflowError) {
+  (async fn(exec) raise @error.JeeflowError {
+    match exec.current_node {
+      None => ""
+      Some(node) =>
+        if node.id.is_empty() {
+          ""
+        } else {
+          match post {
+            None => ""
+            Some(provider) =>
+              try {
+                let ids = (provider.find_by_post)(node.id)
+                if ids.length() > 0 { ids.join(",") } else { "" }
+              } catch {
+                _ => ""
+              }
+          }
+        }
+    }
+  })
+}
+
+///|
 /// 8/9. FormUserDept{Main}LeaderAssignmentHandler —— 表单指定用户所属部门（分管）领导。
 /// 场景＝HR 代员工提交／代理申请：表单里给出被代理人的用户 id，取**该员工**部门的
 /// 经理／分管领导，与当前操作人无关（八语言契约 §3.3：字段 → user → dept → leader）。
@@ -212,6 +240,57 @@ pub fn form_dept_leader_handler(
       }
     }
   })
+}
+
+///|
+/// FormPostAssignmentHandler —— 表单指定 1–N 个岗位，按岗位成员分配参与者。
+/// 字段四档沿用 `find_form_user_field_value`；岗位编码保序去重后逐个查询，
+/// 单岗位异常只跳过该岗位；userId trim 后保序去重。SPI 缺失或最终无人 ⇒ 空串。
+pub fn form_post_assignment_handler(
+  post : @spi.PostUserProviderFns?
+) -> (async (@exec.Execution) -> String raise @error.JeeflowError) {
+  (async fn(exec) raise @error.JeeflowError {
+    let node_key = match exec.current_node {
+      Some(node) => node.id
+      None => ""
+    }
+    let post_codes = form_post_codes(find_form_user_field_value(exec.args, node_key))
+    match post {
+      None => ""
+      Some(provider) => {
+        let out : Array[String] = []
+        let seen_users : Map[String, Unit] = Map([])
+        for post_code in post_codes {
+          let user_ids = try {
+            (provider.find_by_post)(post_code)
+          } catch {
+            _ => []
+          }
+          for raw_id in user_ids {
+            append_unique_trimmed_id(out, seen_users, raw_id)
+          }
+        }
+        out.join(",")
+      }
+    }
+  })
+}
+
+///|
+/// 显式注册两枚岗位 handler（MoonBit 无反射，运行时按 Java FQCN 分发）。
+/// 即使 Provider 未注入也登记实体，由 handler 返回空参与者，避免"元数据有、运行时无"。
+pub fn[R, E] register_post_assignment_handlers(
+  ctx : @spi.Ctx[R, E],
+  post : @spi.PostUserProviderFns?
+) -> Unit {
+  ctx.register_assignment_handler(
+    "com.mldong.jeeflow.interceptor.impl.OrgUserAssignmentHandlers$TaskPostAssigneeHandler",
+    task_post_assignee_handler(post),
+  )
+  ctx.register_assignment_handler(
+    "com.mldong.jeeflow.interceptor.impl.FormPostAssignmentHandler",
+    form_post_assignment_handler(post),
+  )
 }
 
 ///|
@@ -394,7 +473,30 @@ fn form_dept_ids(value : Json?) -> Array[String] {
 }
 
 ///|
-/// 部门 id／SPI userId 共用的稳定去重：先 trim，空值丢弃，首次出现者保留。
+/// 表单岗位列表：标量按英文逗号拆；数组逐元素读取且**不二次拆逗号**。
+/// trim 后丢空，`"0"`／数字 0 保留，岗位编码去重并保持首次出现顺序。
+fn form_post_codes(value : Json?) -> Array[String] {
+  let out : Array[String] = []
+  let seen : Map[String, Unit] = Map([])
+  match value {
+    None => ()
+    Some(v) =>
+      match @json.as_array(v) {
+        Some(items) =>
+          for item in items {
+            append_unique_trimmed_id(out, seen, json_scalar_to_string(item))
+          }
+        None =>
+          for part in comma_tokens(json_scalar_to_string(v)) {
+            append_unique_trimmed_id(out, seen, part)
+          }
+      }
+  }
+  out
+}
+
+///|
+/// 部门 id／岗位编码／SPI userId 共用的稳定去重：先 trim，空值丢弃，首次出现者保留。
 fn append_unique_trimmed_id(
   out : Array[String],
   seen : Map[String, Unit],

@@ -86,16 +86,17 @@ test "metadata: unknown dict" {
 }
 
 ///|
-test "metadata: handler registry built-ins ordered" {
+test "metadata: handler registry built-ins ordered (13 handlers)" {
   let reg = @metadata.HandlerRegistry::new()
   let handlers = reg.list_handlers("AssignmentHandler")
-  assert_eq(handlers.length(), 11)
-  assert_eq(reg.list_handlers_group("AssignmentHandler", "built-in").length(), 11)
-  assert_eq(handlers[0].order(), -9999)
+  assert_eq(handlers.length(), 13)
+  assert_eq(reg.list_handlers_group("AssignmentHandler", "built-in").length(), 13)
+  let expected_orders : Array[Int] = [-9999, 10, 20, 30, 40, 50, 60, 65, 70, 80, 90, 100, 110]
+  assert_eq(handlers.length(), expected_orders.length())
+  for i, order in expected_orders {
+    assert_eq(handlers[i].order(), order)
+  }
   assert_true(handlers[0].class_name().contains("OperatorAssignmentHandler"))
-  assert_eq(handlers[8].order(), 80)
-  assert_eq(handlers[9].order(), 90)
-  assert_eq(handlers[10].order(), 100)
 }
 
 ///|
@@ -107,7 +108,7 @@ test "metadata: handler types and custom register" {
   reg.register(
     @metadata.HandlerMeta::make("AssignmentHandler", "com.custom.MyHandler", "自定义处理器", 100, "custom"),
   )
-  assert_eq(reg.list_handlers("AssignmentHandler").length(), 12)
+  assert_eq(reg.list_handlers("AssignmentHandler").length(), 14)
 }
 
 ///|
@@ -155,8 +156,8 @@ test "metadata: form-dept handlers registered as top-level classes (order 90/100
   )
   assert_eq(leader.length(), 1)
   assert_eq(main.length(), 1)
-  assert_eq(handlers[9].class_name(), leader[0].class_name())
-  assert_eq(handlers[10].class_name(), main[0].class_name())
+  assert_eq(handlers[10].class_name(), leader[0].class_name())
+  assert_eq(handlers[11].class_name(), main[0].class_name())
   assert_eq(leader[0].display_name(), "表单指定部门负责人")
   assert_eq(main[0].display_name(), "表单指定部门分管领导")
   assert_eq(leader[0].order(), 90)
@@ -165,4 +166,28 @@ test "metadata: form-dept handlers registered as top-level classes (order 90/100
   assert_eq(main[0].group(), "built-in")
   assert_false(leader[0].class_name().contains("$"))
   assert_false(main[0].class_name().contains("$"))
+}
+
+///|
+test "metadata: post handlers registered with exact names/order (issues/259)" {
+  let reg = @metadata.HandlerRegistry::new()
+  let handlers = reg.list_handlers("AssignmentHandler")
+  let task = handlers.filter(h =>
+    h.class_name() == "com.mldong.jeeflow.interceptor.impl.OrgUserAssignmentHandlers$TaskPostAssigneeHandler"
+  )
+  let form = handlers.filter(h =>
+    h.class_name() == "com.mldong.jeeflow.interceptor.impl.FormPostAssignmentHandler"
+  )
+  assert_eq(task.length(), 1)
+  assert_eq(form.length(), 1)
+  assert_eq(task[0].display_name(), "根据任务节点唯一编码关联岗位分配参与者")
+  assert_eq(form[0].display_name(), "表单指定岗位分配参与者")
+  assert_eq(task[0].order(), 65)
+  assert_eq(form[0].order(), 110)
+  assert_eq(task[0].group(), "built-in")
+  assert_eq(form[0].group(), "built-in")
+  assert_true(task[0].class_name().contains("$"))
+  assert_false(form[0].class_name().contains("$"))
+  assert_eq(handlers[7].class_name(), task[0].class_name())
+  assert_eq(handlers[12].class_name(), form[0].class_name())
 }

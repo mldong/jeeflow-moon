@@ -12,6 +12,12 @@ pub(all) struct OrgUserProviderFns {
 }
 
 ///|
+/// IPostUserProvider 闭包组（可选，issues/259）：按岗位编码查询成员用户 ID。
+pub(all) struct PostUserProviderFns {
+  find_by_post : (async (String) -> Array[String] raise @error.JeeflowError)
+}
+
+///|
 /// IUserSearchProvider 闭包组（spec/06 §4.3/§6）
 pub(all) struct UserSearchProviderFns {
   page : (async (@model.PageQuery) -> @model.PageResult[Map[String, Json]] raise @error.JeeflowError)
@@ -51,6 +57,7 @@ pub(all) struct Ctx[R, E] {
   // ── 小 SPI（闭包字段）──
   mut user_provider : ((async (String) -> @model.UserInfo? raise @error.JeeflowError))?
   mut org_user_provider : OrgUserProviderFns?
+  mut post_user_provider : PostUserProviderFns?
   mut user_search_provider : UserSearchProviderFns?
   mut json_provider : JsonProviderFns?
   mut expression_evaluator : ((String, Map[String, Json]) -> Json raise @error.JeeflowError)?
@@ -94,6 +101,7 @@ pub fn[R, E] Ctx::new(repository : R, ext_repository : E) -> Ctx[R, E] {
     ext_repository,
     user_provider: None,
     org_user_provider: None,
+    post_user_provider: None,
     user_search_provider: None,
     json_provider: Some(default_json_provider()),
     expression_evaluator: None,
@@ -143,6 +151,7 @@ pub fn[R, E] Ctx::for_request(
     ext_repository,
     user_provider: self.user_provider,
     org_user_provider: self.org_user_provider,
+    post_user_provider: self.post_user_provider,
     user_search_provider: self.user_search_provider,
     json_provider: self.json_provider,
     expression_evaluator: self.expression_evaluator,
@@ -171,6 +180,15 @@ pub fn[R, E] Ctx::with_user_provider(
 ///|
 pub fn[R, E] Ctx::with_org_user_provider(self : Ctx[R, E], p : OrgUserProviderFns) -> Ctx[R, E] {
   self.org_user_provider = Some(p)
+  self
+}
+
+///|
+pub fn[R, E] Ctx::with_post_user_provider(
+  self : Ctx[R, E],
+  p : PostUserProviderFns
+) -> Ctx[R, E] {
+  self.post_user_provider = Some(p)
   self
 }
 
@@ -412,6 +430,18 @@ pub fn OrgUserProviderFnsSync::to_async(self : OrgUserProviderFnsSync) -> OrgUse
 }
 
 ///|
+pub(all) struct PostUserProviderFnsSync {
+  find_by_post : (String) -> Array[String] raise @error.JeeflowError
+}
+
+///|
+pub fn PostUserProviderFnsSync::to_async(self : PostUserProviderFnsSync) -> PostUserProviderFns {
+  {
+    find_by_post: async_of_sync(self.find_by_post),
+  }
+}
+
+///|
 pub(all) struct UserSearchProviderFnsSync {
   page : (@model.PageQuery) -> @model.PageResult[Map[String, Json]] raise @error.JeeflowError
   find_by_id : (String) -> Map[String, Json]? raise @error.JeeflowError
@@ -441,6 +471,14 @@ pub fn[R, E] Ctx::with_org_user_provider_sync(
   p : OrgUserProviderFnsSync
 ) -> Ctx[R, E] {
   self.with_org_user_provider(p.to_async())
+}
+
+///|
+pub fn[R, E] Ctx::with_post_user_provider_sync(
+  self : Ctx[R, E],
+  p : PostUserProviderFnsSync
+) -> Ctx[R, E] {
+  self.with_post_user_provider(p.to_async())
 }
 
 ///|
